@@ -16,6 +16,7 @@ def test_prove_termination_summary_links_counterexample_files(tmp_path):
             "module_program_file": "module_program.txt",
             "program_status": "NON_TERMINATING",
             "terminating": False,
+            "nonterminating_modules": ["main"],
             "recursive_call_rules": ["rule"],
             "modules": [{"module": "main", "status": "NON_TERMINATING", "terminating": False}],
         },
@@ -39,6 +40,7 @@ def test_prove_termination_summary_links_counterexample_files(tmp_path):
         "categories": 1,
         "tasks_with_counterexamples": 1,
     }
+    assert result["primary"]["nonterminating_modules"] == ["main"]
     summary = json.loads((tmp_path / "summary.json").read_text())
     item = summary["by_category"]["structural_termination"]["items"][0]
     counterexample = json.loads((tmp_path / item["path"]).read_text())

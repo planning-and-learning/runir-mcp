@@ -7,23 +7,13 @@ from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
 from pyrunir_mcp.kr.ps.base.execute.service import ExecutePolicyOptions, execute_policy
-from pyrunir_mcp.paths import relative_to
+from pyrunir_mcp.results import execute_result
 
 TOOL_NAME = "runir.ps.base.execute_policy"
 
 
 def _result_payload(result: object, output_dir: Path) -> dict[str, Any]:
-    replay_errors = getattr(result, "replay_errors", None) or []
-    failure = getattr(result, "failure", None)
-    status = "success" if failure is None and not replay_errors else "failure"
-    manifest = output_dir / "manifest.json"
-    return {
-        "status": status,
-        "output_dir": output_dir.as_posix(),
-        "manifest_path": relative_to(manifest, output_dir) if manifest.exists() else None,
-        "summary_md_path": "summary.md" if (output_dir / "summary.md").exists() else None,
-        "replay_errors": replay_errors,
-    }
+    return execute_result(tool=TOOL_NAME, result=result, output_dir=output_dir)
 
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:

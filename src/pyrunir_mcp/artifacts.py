@@ -10,6 +10,7 @@ from typing import Any
 
 from pyrunir_mcp.paths import relative_to
 
+
 @dataclass(frozen=True)
 class CommandResult:
     args: list[str]
@@ -221,10 +222,49 @@ def write_summary(
     (raw_dir / "stderr.txt").write_text(command.stderr, encoding="utf-8")
     _write_json(output_dir / "summary.json", summary)
     write_summary_markdown(output_dir / "summary.md", summary)
+
+    flat_items = [item.__dict__ for item in counterexamples]
+    failure_category = flat_items[0]["category"] if flat_items else None
+    per_task = [task for task in metadata.get("per_task", []) if isinstance(task, dict)]
+    task_statuses = [
+        (task.get("task") or task.get("name"), task.get("status"))
+        for task in per_task
+    ]
+    if not task_statuses:
+        task_statuses = [(task["name"], "counterexample") for task in summary["tasks"]]
+    category_counts = {category: data["count"] for category, data in by_category.items()}
+    primary = {
+        "successful": status == "success",
+        "failure_category": failure_category,
+        "category": "success" if status == "success" else ("resource_limit" if failure_category == "resource_limit" else "counterexample" if failure_category else "unknown"),
+        "task_statuses": task_statuses,
+        "per_task": per_task,
+        "counterexample_count": len(flat_items),
+        "category_counts": category_counts,
+        **{
+            key: metadata[key]
+            for key in ("program_status", "nonterminating_modules")
+            if key in metadata
+        },
+    }
+    artifacts = {
+        "summary_json": relative_to(output_dir / "summary.json", output_dir),
+        "summary_md": relative_to(output_dir / "summary.md", output_dir),
+        "raw_stdout": "raw/stdout.txt",
+        "raw_stderr": "raw/stderr.txt",
+        "output_dir": output_dir.as_posix(),
+    }
     return {
+        "schema_version": summary["schema_version"],
+        "tool": tool,
         "status": status,
-        "summary_path": relative_to(output_dir / "summary.json", output_dir),
-        "summary_md_path": relative_to(output_dir / "summary.md", output_dir),
+        "primary": primary,
+        "summary": summary,
+        "artifacts": artifacts,
+        "items": flat_items,
+        "tasks": summary["tasks"],
+        "summary_path": artifacts["summary_json"],
+        "summary_md_path": artifacts["summary_md"],
         "output_dir": output_dir.as_posix(),
         "counts": summary["counts"],
         "by_category": by_category,

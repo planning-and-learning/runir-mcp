@@ -48,11 +48,13 @@ def prove_termination(options: ProveTerminationOptions) -> dict[str, Any]:
 
     counterexamples: list[dict[str, Any]] = []
     module_summaries: list[dict[str, Any]] = []
+    nonterminating_modules: list[str] = []
     for index, (module, module_result) in enumerate(zip(modules, module_results, strict=True), start=1):
         module_name = _module_name(module, index)
         module_summaries.append(_module_result_metadata(module_name, module_result))
         if module_result.is_terminating():
             continue
+        nonterminating_modules.append(module_name)
         counterexample = module_result.get_counterexample()
         if counterexample is None:
             continue
@@ -75,6 +77,7 @@ def prove_termination(options: ProveTerminationOptions) -> dict[str, Any]:
             "module_program_file": module_program_file.as_posix(),
             "program_status": status_name(program_result.status),
             "terminating": bool(program_result.is_terminating()),
+            "nonterminating_modules": nonterminating_modules,
             "recursive_call_rules": [
                 str(rule).strip() for rule in program_result.get_recursive_call_rules()
             ],

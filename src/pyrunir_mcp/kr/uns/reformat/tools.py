@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
 from pyrunir_mcp.kr.uns.reformat.service import ReformatClassifierOptions, reformat_classifier
+from pyrunir_mcp.results import reformat_result
 
 TOOL_NAME = "runir.uns.reformat_classifier"
 
@@ -23,8 +24,9 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
                 classifier_file=Path(classifier_file).resolve(),
             )
         )
-        return {
-            "status": "success",
-            "classifier_file": result.classifier_file.as_posix(),
-            "num_features": result.num_features,
-        }
+        return reformat_result(
+            tool=TOOL_NAME,
+            path_key="classifier_file",
+            path=result.classifier_file,
+            num_features=result.num_features,
+        )
