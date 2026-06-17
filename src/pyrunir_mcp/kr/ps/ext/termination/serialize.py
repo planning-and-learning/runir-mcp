@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+from typing import Any
+
+
+def string_keyed_dict(values: dict[Any, Any]) -> dict[str, str]:
+    return {str(key): str(value) for key, value in values.items()}
+
+
+def counterexample_to_data(counterexample: object) -> dict[str, object]:
+    vertices = []
+    for index, vertex in enumerate(counterexample.get_vertices()):
+        vertices.append(
+            {
+                "index": index,
+                "memory_state": str(vertex.get_memory_state()),
+                "concepts": string_keyed_dict(vertex.get_concepts()),
+                "booleans": string_keyed_dict(vertex.get_booleans()),
+                "numericals": string_keyed_dict(vertex.get_numericals()),
+            }
+        )
+
+    edges = []
+    for index, edge in enumerate(counterexample.get_edges()):
+        edges.append(
+            {
+                "index": index,
+                "source": edge.get_source(),
+                "target": edge.get_target(),
+                "rule": str(edge.get_rule()).strip(),
+                "numerical_changes": string_keyed_dict(edge.get_numerical_changes()),
+            }
+        )
+
+    return {
+        "num_vertices": counterexample.get_num_vertices(),
+        "num_edges": counterexample.get_num_edges(),
+        "vertices": vertices,
+        "edges": edges,
+    }
+
+
+def status_name(status: object) -> str:
+    name = getattr(status, "name", None)
+    return str(name if name is not None else status)

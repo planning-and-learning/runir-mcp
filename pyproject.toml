@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyrunir-mcp"
+version = "0.1.0"
+description = "MCP server exposing pyrunir tools for planning-and-learning agents"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    {name = "Dominik Drexler"},
+]
+dependencies = [
+    "fastmcp>=2",
+    "pyrunir>=0.0.7,<0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+pyrunir-mcp = "pyrunir_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pyrunir_mcp"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"

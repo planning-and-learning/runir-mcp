@@ -1,0 +1,1 @@
+"""Structural termination output tests."""
