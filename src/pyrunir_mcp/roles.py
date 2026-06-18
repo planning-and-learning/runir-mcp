@@ -30,7 +30,10 @@ class Role:
 
 
 def load_role() -> Role:
-    name = os.environ.get("PYRUNIR_MCP_ROLE", "all")
+    name = os.environ.get("PYRUNIR_MCP_ROLE")
+    if name is None:
+        allowed = ", ".join(sorted(ROLE_TOOLS))
+        raise ValueError(f"Runir MCP role is required. Set PYRUNIR_MCP_ROLE to one of: {allowed}")
     try:
         allowed_tools = ROLE_TOOLS[name]
     except KeyError as exc:

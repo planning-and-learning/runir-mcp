@@ -68,7 +68,7 @@ def prove_sketch_policy(options: ProveSketchPolicyOptions) -> dict[str, Any]:
     if options.policy_file is None:
         policy = SketchFactory.create_empty(repository)
     else:
-        policy = parse_sketch(Path(options.policy_file).read_text(), planning_domain, repository)
+        policy = parse_sketch(Path(options.policy_file).read_text(encoding="utf-8"), planning_domain, repository)
     features = collect_features(policy)
     search_options = make_search_options(
         GroundSketchSearchOptions(),

@@ -5,8 +5,10 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from pyrunir_mcp.artifacts import fresh_output_dir
 from pyrunir_mcp.config import ServerConfig
 from pyrunir_mcp.kr.ps.base.execute.service import ExecutePolicyOptions, execute_policy
+from pyrunir_mcp.paths import server_output_dir
 from pyrunir_mcp.results import execute_result
 
 TOOL_NAME = "runir.ps.base.execute_policy"
@@ -17,7 +19,6 @@ def _result_payload(result: object, output_dir: Path) -> dict[str, Any]:
 
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
-    del config
 
     @mcp.tool(name=TOOL_NAME)
     def execute_base_policy(
@@ -45,7 +46,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         replay_trace: str | None = None,
     ) -> dict[str, Any]:
         """Execute a base Runir sketch policy and write traces/manifests."""
-        resolved_output_dir = Path(output_dir).resolve()
+        resolved_output_dir = fresh_output_dir(server_output_dir(config.output_root, output_dir))
         result = execute_policy(
             ExecutePolicyOptions(
                 domain_path=Path(domain).resolve(),

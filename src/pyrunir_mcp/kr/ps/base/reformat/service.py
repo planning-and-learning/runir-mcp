@@ -32,7 +32,7 @@ def reformat_policy(options: ReformatPolicyOptions) -> ReformatPolicyResult:
     # `create_empty` ignores any input and writes the canonical 0-width policy straight
     # from the Runir factory (`parse_policy_description(fg, None)` -> create_empty_policy),
     # so callers never hard-code a `(:sketch (:features) (:rules))` literal.
-    description = None if options.create_empty else options.policy_file.read_text()
+    description = None if options.create_empty else options.policy_file.read_text(encoding="utf-8")
     parsed = parse_policy_description(feature_generator, description)
-    options.policy_file.write_text(f"{parsed}\n")
+    options.policy_file.write_text(f"{parsed}\n", encoding="utf-8")
     return ReformatPolicyResult(policy_file=options.policy_file, kind="sketch")

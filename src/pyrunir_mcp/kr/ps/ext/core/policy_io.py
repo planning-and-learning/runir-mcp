@@ -8,7 +8,7 @@ from pyrunir_mcp.kr.ps.ext.core.features import FranceDLFeatureGenerator
 
 
 def read_module_program_description(path: Path) -> str:
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def parse_module_program_description(feature_generator: FranceDLFeatureGenerator, description: str) -> ModuleProgram:

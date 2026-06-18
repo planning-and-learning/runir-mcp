@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -11,8 +12,34 @@ def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _result_path(value: object, output_dir: Path) -> str | None:
+    if value is None:
+        return None
+    path = Path(str(value))
+    if not path.is_absolute():
+        return path.as_posix()
+    try:
+        return path.relative_to(output_dir).as_posix()
+    except ValueError:
+        return "<omitted: outside output_dir>"
+
+
+def _manifest_result(manifest: Any, output_dir: Path) -> Any:
+    if not isinstance(manifest, dict):
+        return manifest
+    data = copy.deepcopy(manifest)
+    for collection in (data.get("tasks"), data.get("distinct_failures")):
+        if not isinstance(collection, list):
+            continue
+        for item in collection:
+            if isinstance(item, dict) and "trace_file" in item:
+                item["trace_file"] = _result_path(item.get("trace_file"), output_dir)
+    return data
+
+
 def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: Any) -> dict[str, Any]:
-    primary = {"successful": True, path_key: path.as_posix(), **metadata}
+    artifact_path = path.name
+    primary = {"successful": True, path_key: artifact_path, **metadata}
     return {
         "schema_version": 1,
         "tool": tool,
@@ -24,9 +51,9 @@ def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: Any) ->
             "status": "success",
             **primary,
         },
-        "artifacts": {path_key: path.as_posix()},
+        "artifacts": {path_key: artifact_path},
         "items": [],
-        path_key: path.as_posix(),
+        path_key: artifact_path,
         **metadata,
     }
 
@@ -38,8 +65,9 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
     manifest_path = output_dir / "manifest.json"
     summary_md_path = output_dir / "summary.md"
     manifest = _read_json(manifest_path) if manifest_path.exists() else {}
-    tasks = manifest.get("tasks", []) if isinstance(manifest, dict) else []
-    distinct_failures = manifest.get("distinct_failures", []) if isinstance(manifest, dict) else []
+    result_manifest = _manifest_result(manifest, output_dir)
+    tasks = result_manifest.get("tasks", []) if isinstance(result_manifest, dict) else []
+    distinct_failures = result_manifest.get("distinct_failures", []) if isinstance(result_manifest, dict) else []
 
     task_items: list[dict[str, Any]] = []
     failing_task = None
@@ -48,7 +76,7 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
     for index, task in enumerate(tasks, start=1):
         problem = task.get("problem")
         name = Path(str(problem)).name if problem else f"task-{index:03d}"
-        trace_file = task.get("trace_file")
+        trace_file = _result_path(task.get("trace_file"), output_dir)
         item = {
             "kind": "task",
             "id": f"task-{index:03d}",
@@ -74,8 +102,8 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
             "problem": item.get("problem"),
             "task": Path(str(item.get("problem"))).name if item.get("problem") else None,
             "seed": item.get("seed"),
-            "trace_path": item.get("trace_file"),
-            "path": item.get("trace_file"),
+            "trace_path": _result_path(item.get("trace_file"), output_dir),
+            "path": _result_path(item.get("trace_file"), output_dir),
         }
         for index, item in enumerate(distinct_failures, start=1)
     ]
@@ -104,7 +132,7 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
         "tool": tool,
         "status": status,
         "counts": {"tasks": len(task_items), "failures": len(failure_items), "replay_errors": len(replay_errors)},
-        "manifest": manifest,
+        "manifest": result_manifest,
         "tasks": task_items,
         "distinct_failures": failure_items,
         "replay_errors": replay_errors,
@@ -118,7 +146,7 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
         "artifacts": artifacts,
         "items": failure_items,
         "tasks": task_items,
-        "manifest": manifest,
+        "manifest": result_manifest,
         "manifest_path": artifacts["manifest_json"],
         "summary_md_path": artifacts["summary_md"],
         "output_dir": output_dir.as_posix(),

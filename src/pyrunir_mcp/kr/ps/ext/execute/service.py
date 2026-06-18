@@ -38,6 +38,9 @@ class ExecutePolicyOptions:
     random_seed_start: int = 0
     num_rollouts: int = 1
     shuffle_labeled_succ_nodes: bool = True
+    # Per-subgoal greedy sub-search budget. None => library default.
+    max_num_states: int | None = None
+    max_time: float | None = None
     dump_dir: Path | None = None
     dump_state_mode: Literal["summary", "facts", "full"] = "summary"
     dump_max_steps: int | None = None
@@ -342,6 +345,8 @@ def _dump_options(options: ExecutePolicyOptions) -> dict[str, object]:
         "random_seed_start": options.random_seed_start,
         "num_rollouts": options.num_rollouts,
         "shuffle_labeled_succ_nodes": options.shuffle_labeled_succ_nodes,
+        "max_num_states": options.max_num_states,
+        "max_time": options.max_time,
         "dump_state_mode": options.dump_state_mode,
         "dump_max_steps": options.dump_max_steps,
         "dump_max_compatible_actions": options.dump_max_compatible_actions,
@@ -523,7 +528,8 @@ def _trace_from_result(
 
 def _write_dump_json(path: Path, data: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
 def _failure_fingerprint(trace: dict[str, object]) -> str | None:
@@ -568,7 +574,8 @@ def _write_summary(dump_dir: Path, traces: list[dict[str, object]]) -> None:
                 f"- {trace['failure_category']}: {trace['problem']} "
                 f"seed {trace['options']['random_seed']} fingerprint `{fingerprint}`"
             )
-    dump_dir.joinpath("summary.md").write_text("\n".join(lines) + "\n")
+    with dump_dir.joinpath("summary.md").open("x", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
 
 
 def _rollout_seeds(options: ExecutePolicyOptions) -> list[int]:
@@ -692,6 +699,10 @@ def create_policy_search_options(options: ExecutePolicyOptions, random_seed: int
     search_options = GroundPolicySearchOptions()
     search_options.brfs_options.random_seed = options.random_seed if random_seed is None else random_seed
     search_options.brfs_options.shuffle_labeled_succ_nodes = options.shuffle_labeled_succ_nodes
+    if options.max_num_states is not None:
+        search_options.brfs_options.max_num_states = options.max_num_states
+    if options.max_time is not None:
+        search_options.brfs_options.max_time = timedelta(seconds=options.max_time)
     return search_options
 
 
@@ -711,7 +722,7 @@ def _execute_policy_rollouts_without_dumps(
 
 
 def _load_trace(path: Path) -> dict[str, object]:
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"Replay trace must contain a JSON object: {path}")
     return data
@@ -774,6 +785,8 @@ def _validate_replay_trace(
         options,
         random_seed=int(trace_options.get("random_seed", options.random_seed)),
         shuffle_labeled_succ_nodes=bool(trace_options.get("shuffle_labeled_succ_nodes", options.shuffle_labeled_succ_nodes)),
+        max_num_states=None if trace_options.get("max_num_states") is None else int(trace_options.get("max_num_states")),
+        max_time=None if trace_options.get("max_time") is None else float(trace_options.get("max_time")),
         dump_state_mode=str(trace_options.get("dump_state_mode", options.dump_state_mode)),
         dump_max_steps=len(trace.get("transitions", [])),
         dump_max_compatible_actions=trace_options.get("dump_max_compatible_actions", options.dump_max_compatible_actions),

@@ -7,14 +7,13 @@ from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
 from pyrunir_mcp.kr.ps.ext.reformat.service import ReformatPolicyOptions, reformat_policy
+from pyrunir_mcp.paths import server_output_path
 from pyrunir_mcp.results import reformat_result
 
 TOOL_NAME = "runir.ps.ext.reformat_module_program"
 
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
-    del config
-
     @mcp.tool(name=TOOL_NAME)
     def reformat_module_program(
         domain: str,
@@ -25,7 +24,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         result = reformat_policy(
             ReformatPolicyOptions(
                 domain_path=Path(domain).resolve(),
-                policy_file=Path(policy_file).resolve(),
+                policy_file=server_output_path(config.output_root, policy_file),
                 kind=kind,  # type: ignore[arg-type]
             )
         )

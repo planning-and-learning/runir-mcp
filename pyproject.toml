@@ -23,6 +23,7 @@ dev = [
 ]
 
 [project.scripts]
+pyrunir-mcp-invoke = "pyrunir_mcp.invoke:main"
 pyrunir-mcp = "pyrunir_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]

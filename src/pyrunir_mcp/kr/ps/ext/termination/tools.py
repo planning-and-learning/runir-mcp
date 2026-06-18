@@ -7,11 +7,11 @@ from fastmcp import FastMCP
 from pyrunir_mcp.config import ServerConfig
 from pyrunir_mcp.kr.ps.ext.termination.schemas import ProveTerminationOptions
 from pyrunir_mcp.kr.ps.ext.termination.service import TOOL_NAME
+from pyrunir_mcp.paths import server_output_dir
 from pyrunir_mcp.kr.ps.ext.termination.service import prove_termination as run_prove_termination
 
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
-    del config
 
     @mcp.tool(name=TOOL_NAME)
     def prove_termination(
@@ -24,6 +24,6 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
             ProveTerminationOptions(
                 domain=domain,
                 module_program_file=module_program_file,
-                output_dir=output_dir,
+                output_dir=server_output_dir(config.output_root, output_dir).as_posix(),
             )
         )

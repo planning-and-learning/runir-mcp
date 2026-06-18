@@ -14,7 +14,7 @@ def read_policy_description(path: Path | None) -> str | None:
         return None
     if str(path) == "-":
         return sys.stdin.read()
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def create_empty_policy(feature_generator: FranceDLFeatureGenerator) -> Policy:

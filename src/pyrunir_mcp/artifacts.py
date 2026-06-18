@@ -31,8 +31,56 @@ class CounterexampleItem:
 
 def _slug(value: object, default: str = "counterexample") -> str:
     text = str(value or default).strip().lower()
-    text = re.sub(r"[^a-z0-9_.-]+", "_", text)
+    text = re.sub(r"[^a-z0-9_-]+", "_", text)
     return text.strip("_") or default
+
+
+
+RESERVATION_MARKER = ".pyrunir-mcp-output"
+
+
+def _has_existing_run_output(output_dir: Path) -> bool:
+    return any(
+        (output_dir / name).exists()
+        for name in (
+            RESERVATION_MARKER,
+            "summary.json",
+            "summary.md",
+            "counterexamples",
+            "raw",
+            "manifest.json",
+            "failures",
+        )
+    )
+
+
+def _reserve_output_dir(output_dir: Path) -> bool:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if _has_existing_run_output(output_dir):
+        return False
+    try:
+        with (output_dir / RESERVATION_MARKER).open("x", encoding="utf-8") as fh:
+            fh.write("reserved\n")
+    except FileExistsError:
+        return False
+    return True
+
+
+def fresh_output_dir(output_dir: Path) -> Path:
+    """Return an output dir that will not overwrite a previous MCP run.
+
+    App orchestration often pre-creates an empty trial directory before invoking a
+    tool; that remains the primary output dir. If the same directory is reused and
+    already contains a prior MCP summary/raw/counterexample tree, allocate a
+    numbered child under it so every call remains inspectable.
+    """
+    if _reserve_output_dir(output_dir):
+        return output_dir
+    for index in range(2, 10000):
+        candidate = output_dir / f"run-{index:03d}"
+        if _reserve_output_dir(candidate):
+            return candidate
+    raise RuntimeError(f"could not allocate fresh MCP output directory under {output_dir}")
 
 
 def _read_json(path: Path) -> Any:
@@ -41,7 +89,8 @@ def _read_json(path: Path) -> Any:
 
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
 def _copy_counterexample(
@@ -79,7 +128,7 @@ def normalize_trace_dump(
     command: CommandResult,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = fresh_output_dir(output_dir)
     raw_target = output_dir / "raw"
     if raw_target.exists():
         shutil.rmtree(raw_target)
@@ -123,7 +172,7 @@ def normalize_unsolvability_dump(
     command: CommandResult,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = fresh_output_dir(output_dir)
     raw_target = output_dir / "raw"
     if raw_target.exists():
         shutil.rmtree(raw_target)
@@ -218,8 +267,10 @@ def write_summary(
 
     raw_dir = output_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    (raw_dir / "stdout.txt").write_text(command.stdout, encoding="utf-8")
-    (raw_dir / "stderr.txt").write_text(command.stderr, encoding="utf-8")
+    with (raw_dir / "stdout.txt").open("x", encoding="utf-8") as fh:
+        fh.write(command.stdout)
+    with (raw_dir / "stderr.txt").open("x", encoding="utf-8") as fh:
+        fh.write(command.stderr)
     _write_json(output_dir / "summary.json", summary)
     write_summary_markdown(output_dir / "summary.md", summary)
 
@@ -295,7 +346,8 @@ def write_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
             task = f" task `{item['task']}`" if item.get("task") else ""
             lines.append(f"- `{item['id']}`{task}: `{item['path']}`")
         lines.append("")
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write("\n".join(lines).rstrip() + "\n")
 
 
 def write_native_counterexample_run(
@@ -306,7 +358,7 @@ def write_native_counterexample_run(
     metadata: dict[str, Any],
     counterexamples: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = fresh_output_dir(output_dir)
     items: list[CounterexampleItem] = []
     for index, counterexample in enumerate(counterexamples, start=1):
         category = _slug(counterexample.get("category"), "counterexample")

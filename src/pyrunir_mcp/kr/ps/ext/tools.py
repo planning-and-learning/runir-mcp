@@ -6,11 +6,11 @@ from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
 from pyrunir_mcp.kr.ps.ext.schemas import ProveModuleProgramOptions
+from pyrunir_mcp.paths import server_output_dir
 from pyrunir_mcp.kr.ps.ext.service import TOOL_NAME, prove_module_program as run_prove_module_program
 
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
-    del config
 
     @mcp.tool(name=TOOL_NAME)
     def prove_module_program(
@@ -30,7 +30,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
                 domain=domain,
                 train_dir=train_dir,
                 module_program_file=module_program_file,
-                output_dir=output_dir,
+                output_dir=server_output_dir(config.output_root, output_dir).as_posix(),
                 num_threads=num_threads,
                 max_num_states=max_num_states,
                 max_time_seconds=max_time_seconds,

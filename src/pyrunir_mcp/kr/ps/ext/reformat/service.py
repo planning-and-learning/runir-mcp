@@ -34,7 +34,7 @@ def _detect_kind(description: str) -> Literal["module-program", "module"]:
 
 
 def reformat_policy(options: ReformatPolicyOptions) -> ReformatPolicyResult:
-    description = options.policy_file.read_text()
+    description = options.policy_file.read_text(encoding="utf-8")
     kind = _detect_kind(description) if options.kind == "auto" else options.kind
     feature_generator = create_france_dl_feature_generator(options.domain_path)
 
@@ -45,5 +45,5 @@ def reformat_policy(options: ReformatPolicyOptions) -> ReformatPolicyResult:
     else:
         raise ValueError(f"Unsupported policy kind: {kind}")
 
-    options.policy_file.write_text(f"{parsed}\n")
+    options.policy_file.write_text(f"{parsed}\n", encoding="utf-8")
     return ReformatPolicyResult(policy_file=options.policy_file, kind=kind)

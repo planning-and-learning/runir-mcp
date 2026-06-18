@@ -106,7 +106,7 @@ def prove_classifier(options: ProveClassifierOptions) -> dict[str, Any]:
     domain_path = Path(options.domain).resolve()
     train_path = Path(options.train_dir).resolve()
     planning_domain, repository = _repositories(domain_path)
-    description = Path(options.classifier_file).read_text() if options.classifier_file is not None else ""
+    description = Path(options.classifier_file).read_text(encoding="utf-8") if options.classifier_file is not None else ""
     classifier = parse_classifier(description, planning_domain, repository)
     builder = Builder()
     denotations = DenotationRepositoryFactory().create()

@@ -82,7 +82,7 @@ def prove_module_program(options: ProveModuleProgramOptions) -> dict[str, Any]:
     train_path = Path(options.train_dir).resolve()
     planning_domain, repository = _repositories(domain_path)
     program = parse_module_program(
-        Path(options.module_program_file).read_text(),
+        Path(options.module_program_file).read_text(encoding="utf-8"),
         planning_domain,
         repository,
     )

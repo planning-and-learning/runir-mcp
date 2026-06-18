@@ -5,8 +5,10 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from pyrunir_mcp.artifacts import fresh_output_dir
 from pyrunir_mcp.config import ServerConfig
 from pyrunir_mcp.kr.ps.ext.execute.service import ExecutePolicyOptions, execute_policy
+from pyrunir_mcp.paths import server_output_dir
 from pyrunir_mcp.results import execute_result
 
 TOOL_NAME = "runir.ps.ext.execute_module_program"
@@ -17,7 +19,6 @@ def _result_payload(result: object, output_dir: Path) -> dict[str, Any]:
 
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
-    del config
 
     @mcp.tool(name=TOOL_NAME)
     def execute_module_program(
@@ -30,6 +31,8 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         random_seed_start: int = 0,
         num_rollouts: int = 1,
         shuffle_labeled_succ_nodes: bool = True,
+        max_num_states: int | None = None,
+        max_time: float | None = None,
         dump_state_mode: str = "summary",
         dump_max_steps: int | None = None,
         dump_max_compatible_actions: int | None = None,
@@ -43,7 +46,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         replay_trace: str | None = None,
     ) -> dict[str, Any]:
         """Execute an extended Runir module program and write traces/manifests."""
-        resolved_output_dir = Path(output_dir).resolve()
+        resolved_output_dir = fresh_output_dir(server_output_dir(config.output_root, output_dir))
         result = execute_policy(
             ExecutePolicyOptions(
                 domain_path=Path(domain).resolve(),
@@ -54,6 +57,8 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
                 random_seed_start=random_seed_start,
                 num_rollouts=num_rollouts,
                 shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+                max_num_states=max_num_states,
+                max_time=max_time,
                 dump_dir=resolved_output_dir,
                 dump_state_mode=dump_state_mode,  # type: ignore[arg-type]
                 dump_max_steps=dump_max_steps,

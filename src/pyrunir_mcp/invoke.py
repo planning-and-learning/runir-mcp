@@ -25,7 +25,9 @@ from pyrunir_mcp.kr.uns.reformat.service import ReformatClassifierOptions
 from pyrunir_mcp.kr.uns.reformat.service import reformat_classifier
 from pyrunir_mcp.kr.uns.schemas import ProveClassifierOptions
 from pyrunir_mcp.kr.uns.service import prove_classifier
+from pyrunir_mcp.artifacts import fresh_output_dir
 from pyrunir_mcp.results import execute_result, reformat_result
+from pyrunir_mcp.roles import load_role
 
 
 def _base_prove(args: dict[str, Any]) -> dict[str, Any]:
@@ -108,7 +110,7 @@ def _uns_reformat(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _base_execute(args: dict[str, Any]) -> dict[str, Any]:
-    output_dir = Path(args["output_dir"]).resolve()
+    output_dir = fresh_output_dir(Path(args["output_dir"]).resolve())
     result = execute_base_policy(
         BaseExecuteOptions(
             domain_path=Path(args["domain"]).resolve(),
@@ -131,7 +133,7 @@ def _base_execute(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ext_execute(args: dict[str, Any]) -> dict[str, Any]:
-    output_dir = Path(args["output_dir"]).resolve()
+    output_dir = fresh_output_dir(Path(args["output_dir"]).resolve())
     result = execute_ext_policy(
         ExtExecuteOptions(
             domain_path=Path(args["domain"]).resolve(),
@@ -142,6 +144,8 @@ def _ext_execute(args: dict[str, Any]) -> dict[str, Any]:
             random_seed_start=int(args.get("random_seed_start", 0)),
             num_rollouts=int(args.get("num_rollouts", 1)),
             shuffle_labeled_succ_nodes=bool(args.get("shuffle_labeled_succ_nodes", True)),
+            max_num_states=args.get("max_num_states"),
+            max_time=args.get("max_time"),
             dump_dir=output_dir,
             dump_state_mode=args.get("dump_state_mode", "summary"),
             audit_compatible_successors=bool(args.get("audit_compatible_successors", False)),
@@ -187,12 +191,33 @@ TOOLS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 }
 
 
+def _write_result_json(path: Path, rendered: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write(rendered)
+
+
+def _ensure_tool_allowed(tool_name: str) -> None:
+    role = load_role()
+    if role.allows(tool_name):
+        return
+    allowed = ", ".join(sorted(role.allowed_tools))
+    raise PermissionError(
+        f"{tool_name} is not allowed for PYRUNIR_MCP_ROLE={role.name}; "
+        f"allowed tools: {allowed}"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Invoke a pyrunir-mcp tool with JSON arguments.")
     parser.add_argument("tool", choices=sorted(TOOLS))
     parser.add_argument("--args-json", required=True)
     parser.add_argument("--result-json")
     parsed = parser.parse_args()
+    try:
+        _ensure_tool_allowed(parsed.tool)
+    except (PermissionError, ValueError) as exc:
+        parser.error(str(exc))
     args = json.loads(parsed.args_json)
     if not isinstance(args, dict):
         raise TypeError("--args-json must decode to an object")
@@ -205,8 +230,7 @@ def main() -> None:
     rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if parsed.result_json:
         result_path = Path(parsed.result_json).resolve()
-        result_path.parent.mkdir(parents=True, exist_ok=True)
-        result_path.write_text(rendered, encoding="utf-8")
+        _write_result_json(result_path, rendered)
     else:
         print(rendered, end="")
 
