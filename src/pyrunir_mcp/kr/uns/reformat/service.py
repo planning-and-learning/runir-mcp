@@ -10,10 +10,14 @@ from pyrunir.kr.uns.dl import parse_classifier
 from pytyr.formalism.planning import Parser
 
 
+EMPTY_CLASSIFIER = '(:classifier (:symbol c0) (:description "") (:features) (:expression (or)))'
+
+
 @dataclass(frozen=True)
 class ReformatClassifierOptions:
     domain_path: Path
     classifier_file: Path
+    create_empty: bool = False
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,10 @@ def _repositories(domain_path: Path):
 
 def reformat_classifier(options: ReformatClassifierOptions) -> ReformatClassifierResult:
     planning_domain, repository = _repositories(options.domain_path)
+    if options.create_empty and not options.classifier_file.exists():
+        options.classifier_file.parent.mkdir(parents=True, exist_ok=True)
+        with options.classifier_file.open("x", encoding="utf-8") as fh:
+            fh.write(EMPTY_CLASSIFIER + "\n")
     text = options.classifier_file.read_text(encoding="utf-8")
     classifier = parse_classifier(text, planning_domain, repository)
     options.classifier_file.write_text(f"{classifier}\n", encoding="utf-8")

@@ -15,12 +15,13 @@ TOOL_NAME = "runir.uns.reformat_classifier"
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
     @mcp.tool(name=TOOL_NAME)
-    def reformat_unsolvability_classifier(domain: str, classifier_file: str) -> dict[str, Any]:
+    def reformat_unsolvability_classifier(domain: str, classifier_file: str, create_empty: bool = False) -> dict[str, Any]:
         """Parse-check and rewrite an unsolvability classifier in canonical form."""
         result = reformat_classifier(
             ReformatClassifierOptions(
                 domain_path=Path(domain).resolve(),
                 classifier_file=server_output_path(config.output_root, classifier_file),
+                create_empty=create_empty,
             )
         )
         return reformat_result(

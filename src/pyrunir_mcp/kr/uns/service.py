@@ -24,6 +24,7 @@ from pyrunir_mcp.kr.uns.serialize import feature_values, fluent_facts
 from pyrunir_mcp.planning import build_ground_search_context, get_problem_paths
 
 TOOL_NAME = "runir.uns.prove_classifier"
+EMPTY_CLASSIFIER = '(:classifier (:symbol c0) (:description "") (:features) (:expression (or)))'
 
 
 class ResourceLimit(RuntimeError):
@@ -102,11 +103,16 @@ def _repositories(domain_path: Path):
 
 
 def prove_classifier(options: ProveClassifierOptions) -> dict[str, Any]:
-    del options.max_time_seconds  # Full enumeration is state-bounded for now.
+    # Full enumeration is currently state-bounded; keep max_time_seconds in the
+    # options schema for API consistency, but do not mutate frozen options.
     domain_path = Path(options.domain).resolve()
     train_path = Path(options.train_dir).resolve()
     planning_domain, repository = _repositories(domain_path)
-    description = Path(options.classifier_file).read_text(encoding="utf-8") if options.classifier_file is not None else ""
+    description = (
+        Path(options.classifier_file).read_text(encoding="utf-8")
+        if options.classifier_file is not None
+        else EMPTY_CLASSIFIER
+    )
     classifier = parse_classifier(description, planning_domain, repository)
     builder = Builder()
     denotations = DenotationRepositoryFactory().create()

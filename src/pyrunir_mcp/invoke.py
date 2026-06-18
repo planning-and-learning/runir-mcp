@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import re
+import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Callable
@@ -99,6 +101,7 @@ def _uns_reformat(args: dict[str, Any]) -> dict[str, Any]:
         ReformatClassifierOptions(
             domain_path=Path(args["domain"]).resolve(),
             classifier_file=Path(args["classifier_file"]).resolve(),
+            create_empty=bool(args.get("create_empty", False)),
         )
     )
     return reformat_result(
@@ -197,6 +200,78 @@ def _write_result_json(path: Path, rendered: str) -> None:
         fh.write(rendered)
 
 
+_OFFSET_RE = re.compile(r"\bat offset (\d+)\b")
+
+
+def _source_path_from_args(args: dict[str, Any]) -> Path | None:
+    for key in ("policy_file", "module_program_file", "classifier_file"):
+        value = args.get(key)
+        if value:
+            return Path(str(value))
+    return None
+
+
+def _source_excerpt(path: Path | None, message: str) -> dict[str, Any] | None:
+    match = _OFFSET_RE.search(message)
+    if path is None or match is None:
+        return None
+    try:
+        offset = int(match.group(1))
+        text = path.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+    offset = max(0, min(offset, len(text)))
+    line_start = text.rfind("\n", 0, offset) + 1
+    line_end = text.find("\n", offset)
+    if line_end == -1:
+        line_end = len(text)
+    line = text[line_start:line_end]
+    line_no = text.count("\n", 0, offset) + 1
+    column = offset - line_start + 1
+    return {
+        "path": path.as_posix(),
+        "offset": offset,
+        "line": line_no,
+        "column": column,
+        "source_line": line,
+        "pointer": " " * max(column - 1, 0) + "^",
+    }
+
+
+def _format_tool_error(tool: str, args: dict[str, Any], exc: BaseException) -> tuple[dict[str, Any], str]:
+    error_type = type(exc).__name__
+    message = str(exc)
+    source = _source_excerpt(_source_path_from_args(args), message)
+    result: dict[str, Any] = {
+        "status": "error",
+        "primary": {
+            "successful": False,
+            "category": "tool_error",
+            "error_type": error_type,
+            "message": message,
+        },
+        "summary": {
+            "tool": tool,
+            "status": "error",
+            "error_type": error_type,
+            "message": message,
+        },
+        "items": [],
+    }
+    lines = [f"{tool} failed: {error_type}: {message}"]
+    if source is not None:
+        result["primary"]["source"] = source
+        result["summary"]["source"] = source
+        lines.extend(
+            [
+                f"{source['path']}:{source['line']}:{source['column']}",
+                str(source["source_line"]),
+                str(source["pointer"]),
+            ]
+        )
+    return result, "\n".join(lines) + "\n"
+
+
 def _ensure_tool_allowed(tool_name: str) -> None:
     role = load_role()
     if role.allows(tool_name):
@@ -222,8 +297,22 @@ def main() -> None:
     if not isinstance(args, dict):
         raise TypeError("--args-json must decode to an object")
     captured_stdout = io.StringIO()
-    with redirect_stdout(captured_stdout):
-        result = TOOLS[parsed.tool](args)
+    try:
+        with redirect_stdout(captured_stdout):
+            result = TOOLS[parsed.tool](args)
+    except Exception as exc:
+        tool_stdout = captured_stdout.getvalue()
+        result, rendered_error = _format_tool_error(parsed.tool, args, exc)
+        if tool_stdout:
+            result["_tool_stdout"] = tool_stdout
+        rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"
+        if parsed.result_json:
+            result_path = Path(parsed.result_json).resolve()
+            _write_result_json(result_path, rendered)
+        else:
+            print(rendered, end="")
+        sys.stderr.write(rendered_error)
+        raise SystemExit(1) from None
     tool_stdout = captured_stdout.getvalue()
     if tool_stdout:
         result = {**result, "_tool_stdout": tool_stdout}
