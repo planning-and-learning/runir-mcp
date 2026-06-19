@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,18 @@ from pyrunir_mcp.paths import relative_to
 
 def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _slug(value: object, default: str = "counterexample") -> str:
+    text = str(value or default).strip().lower()
+    text = re.sub(r"[^a-z0-9_-]+", "_", text)
+    return text.strip("_") or default
+
+
+def _write_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
 def _result_path(value: object, output_dir: Path) -> str | None:
@@ -119,20 +133,55 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
             failing_status = task.get("status")
             failure_category = task.get("failure_category")
 
-    failure_items = [
-        {
+    failure_items: list[dict[str, Any]] = []
+    for index, item in enumerate(distinct_failures, start=1):
+        category = _slug(item.get("failure_category"), "failure")
+        failure_id = f"{category}-{index:03d}"
+        problem = item.get("problem")
+        task = Path(str(problem)).name if problem else None
+        source_trace = item.get("trace_file")
+        source_trace_path = _result_path(source_trace, output_dir)
+        trace_path = None
+        trace_available = False
+        if source_trace_path and source_trace_path != "<omitted: outside output_dir>":
+            source = output_dir / source_trace_path
+            if source.is_file():
+                trace_target = output_dir / "traces" / category / f"{failure_id}.json"
+                trace_target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, trace_target)
+                trace_path = trace_target.relative_to(output_dir).as_posix()
+                trace_available = True
+        counterexample_path = output_dir / "counterexamples" / category / f"{failure_id}.json"
+        counterexample = {
+            "schema_version": 1,
+            "id": failure_id,
+            "category": category,
             "kind": "failure",
-            "id": f"failure-{index:03d}",
             "fingerprint": item.get("fingerprint"),
             "failure_category": item.get("failure_category"),
-            "problem": item.get("problem"),
-            "task": Path(str(item.get("problem"))).name if item.get("problem") else None,
+            "problem": problem,
+            "task": task,
             "seed": item.get("seed"),
-            "trace_path": _result_path(item.get("trace_file"), output_dir),
-            "path": _result_path(item.get("trace_file"), output_dir),
+            "source_trace_path": source_trace_path,
+            "trace_available": trace_available,
         }
-        for index, item in enumerate(distinct_failures, start=1)
-    ]
+        if trace_path is not None:
+            counterexample["trace_path"] = trace_path
+        _write_json(counterexample_path, counterexample)
+        failure_items.append({
+            "kind": "failure",
+            "id": failure_id,
+            "category": category,
+            "fingerprint": item.get("fingerprint"),
+            "failure_category": item.get("failure_category"),
+            "problem": problem,
+            "task": task,
+            "seed": item.get("seed"),
+            "path": counterexample_path.relative_to(output_dir).as_posix(),
+            "trace_path": trace_path,
+            "trace_available": trace_available,
+            "source_trace_path": source_trace_path,
+        })
     if failure_category is None and failure_items:
         failure_category = failure_items[0].get("failure_category")
     if failing_task is None and failure_items:

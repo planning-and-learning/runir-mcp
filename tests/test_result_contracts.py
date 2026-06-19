@@ -140,6 +140,21 @@ def test_existing_counterexample_tree_forces_child_run(tmp_path):
     assert (output_dir / "run-002" / ".pyrunir-mcp-output").is_file()
 
 
+
+def test_existing_traces_tree_forces_child_run(tmp_path):
+    from pyrunir_mcp.artifacts import fresh_output_dir
+
+    output_dir = tmp_path / "run"
+    stale_tree = output_dir / "traces" / "open_state"
+    stale_tree.mkdir(parents=True)
+    (stale_tree / "old.json").write_text("{}\n", encoding="utf-8")
+
+    fresh = fresh_output_dir(output_dir)
+
+    assert fresh == output_dir / "run-002"
+    assert (stale_tree / "old.json").is_file()
+    assert (output_dir / "run-002" / ".pyrunir-mcp-output").is_file()
+
 def test_partial_execute_output_forces_child_run(tmp_path):
     from pyrunir_mcp.artifacts import fresh_output_dir
 
@@ -244,8 +259,11 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
     result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
 
     assert result["tasks"][0]["trace_path"] == "task-001_seed-0_trace.json"
-    assert result["items"][0]["trace_path"] == "task-001_seed-0_trace.json"
-    assert result["items"][0]["path"] == "task-001_seed-0_trace.json"
+    assert result["items"][0]["path"] == "counterexamples/open_state/open_state-001.json"
+    assert result["items"][0]["trace_path"] == "traces/open_state/open_state-001.json"
+    assert result["items"][0]["trace_available"] is True
+    assert (output_dir / result["items"][0]["path"]).is_file()
+    assert (output_dir / result["items"][0]["trace_path"]).is_file()
     assert result["manifest"]["tasks"][0]["trace_file"] == "task-001_seed-0_trace.json"
     assert result["manifest"]["distinct_failures"][0]["trace_file"] == "task-001_seed-0_trace.json"
     persisted = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -286,8 +304,10 @@ def test_execute_result_omits_absolute_trace_paths_outside_output_dir(tmp_path):
     result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
 
     assert result["tasks"][0]["trace_path"] == "<omitted: outside output_dir>"
-    assert result["items"][0]["trace_path"] == "<omitted: outside output_dir>"
-    assert result["items"][0]["path"] == "<omitted: outside output_dir>"
+    assert result["items"][0]["path"] == "counterexamples/open_state/open_state-001.json"
+    assert result["items"][0]["trace_path"] is None
+    assert result["items"][0]["trace_available"] is False
+    assert (output_dir / result["items"][0]["path"]).is_file()
     assert result["manifest"]["tasks"][0]["trace_file"] == "<omitted: outside output_dir>"
     assert result["manifest"]["distinct_failures"][0]["trace_file"] == "<omitted: outside output_dir>"
 

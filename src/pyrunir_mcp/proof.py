@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable
+from collections import deque
 
 from pypddl.formalism import ParserOptions
 from pytyr.formalism.planning import Parser
@@ -45,6 +46,121 @@ def failure_items(result: object) -> list[tuple[str, Any]]:
     if result.cycle:
         items.append(("cycle", [int(vertex) for vertex in result.cycle]))
     return items
+
+
+
+def _vertex_indices(graph: object) -> list[int]:
+    get_vertex_indices = getattr(graph, "get_vertex_indices", None)
+    if callable(get_vertex_indices):
+        return [int(vertex) for vertex in get_vertex_indices()]
+    return list(range(int(graph.get_num_vertices())))
+
+
+def _edge_indices(graph: object) -> list[int]:
+    get_edge_indices = getattr(graph, "get_edge_indices", None)
+    if callable(get_edge_indices):
+        return [int(edge) for edge in get_edge_indices()]
+    return list(range(int(graph.get_num_edges())))
+
+
+def _out_edge_indices(graph: object, vertex: int) -> list[int]:
+    get_out_edge_indices = getattr(graph, "get_out_edge_indices", None)
+    if callable(get_out_edge_indices):
+        return [int(edge) for edge in get_out_edge_indices(int(vertex))]
+    return [edge for edge in _edge_indices(graph) if int(graph.get_source(edge)) == int(vertex)]
+
+
+def _label_flag(label: object, name: str) -> bool:
+    if not hasattr(label, name):
+        return False
+    value = getattr(label, name)
+    if callable(value):
+        value = value()
+    return bool(value)
+
+
+def _initial_vertices(graph: object) -> list[int]:
+    vertices = _vertex_indices(graph)
+    found: list[int] = []
+    for vertex in vertices:
+        try:
+            label = graph.get_vertex_property(int(vertex))
+        except Exception:  # noqa: BLE001
+            continue
+        if _label_flag(label, "is_initial"):
+            found.append(int(vertex))
+    return found or ([vertices[0]] if vertices else [])
+
+
+def _path_edges_to(graph: object, target: int) -> list[int] | None:
+    target = int(target)
+    starts = _initial_vertices(graph)
+    if target in starts:
+        return []
+    queue: deque[int] = deque(starts)
+    seen = set(starts)
+    predecessor: dict[int, tuple[int, int]] = {}
+    while queue:
+        source = queue.popleft()
+        for edge in _out_edge_indices(graph, source):
+            successor = int(graph.get_target(edge))
+            if successor in seen:
+                continue
+            seen.add(successor)
+            predecessor[successor] = (source, edge)
+            if successor == target:
+                path: list[int] = []
+                cursor = target
+                while cursor not in starts:
+                    prev, via = predecessor[cursor]
+                    path.append(via)
+                    cursor = prev
+                path.reverse()
+                return path
+            queue.append(successor)
+    return None
+
+
+def _states_for_edges(graph: object, path_edges: list[int], evidence: Callable[[object], dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not path_edges:
+        starts = _initial_vertices(graph)
+        return [state_summary(graph, starts[0], evidence)] if starts else []
+    vertices = [int(graph.get_source(path_edges[0]))]
+    vertices.extend(int(graph.get_target(edge)) for edge in path_edges)
+    return [state_summary(graph, vertex, evidence) for vertex in vertices]
+
+
+def _trace_from_path(
+    *,
+    task: LoadedSearchContext,
+    result: object,
+    category: str,
+    witness: Any,
+    path_edges: list[int] | None,
+    evidence: Callable[[object], dict[str, Any]] | None,
+    extra_edges: list[int] | None = None,
+) -> dict[str, Any]:
+    graph = result.graph
+    edges = list(path_edges or []) + list(extra_edges or [])
+    trace = {
+        "task": task_name(task),
+        "problem_path": task.problem_path.as_posix(),
+        "category": category,
+        "proof_status": status_name(result.status),
+        "witness": witness,
+        "trace_available": path_edges is not None,
+        "path_edges": [int(edge) for edge in path_edges] if path_edges is not None else None,
+            "states": _states_for_edges(graph, edges, evidence) if edges else (
+            [state_summary(graph, int(witness), evidence)] if category == "open_state" else (
+                [state_summary(graph, int(witness[0]), evidence)]
+                if category == "cycle" and isinstance(witness, list) and witness else []
+            )
+        ),
+        "transitions": [edge_summary(graph, edge) for edge in edges],
+    }
+    if category == "cycle" and isinstance(witness, list):
+        trace["cycle_vertices"] = [int(vertex) for vertex in witness]
+    return trace
 
 
 def state_summary(
@@ -113,19 +229,53 @@ def counterexample_data(
         "witness": witness,
     }
     if category == "open_state":
-        data["states"] = [state_summary(graph, int(witness), evidence)]
-        data["transitions"] = []
+        path_edges = _path_edges_to(graph, int(witness))
+        trace = _trace_from_path(
+            task=task,
+            result=result,
+            category=category,
+            witness=witness,
+            path_edges=path_edges,
+            evidence=evidence,
+        )
+        data["states"] = trace["states"]
+        data["transitions"] = trace["transitions"]
+        data["trace"] = trace
     elif category == "deadend_transition":
         edge = int(witness)
-        data["transitions"] = [edge_summary(graph, edge)]
-        data["states"] = [
-            state_summary(graph, int(graph.get_source(edge)), evidence),
-            state_summary(graph, int(graph.get_target(edge)), evidence),
-        ]
+        source = int(graph.get_source(edge))
+        path_edges = _path_edges_to(graph, source)
+        trace = _trace_from_path(
+            task=task,
+            result=result,
+            category=category,
+            witness=witness,
+            path_edges=path_edges,
+            evidence=evidence,
+            extra_edges=[edge],
+        )
+        data["transitions"] = trace["transitions"]
+        data["states"] = trace["states"]
+        data["trace"] = trace
     elif category == "cycle":
         vertices = [int(vertex) for vertex in witness]
-        data["states"] = [state_summary(graph, vertex, evidence) for vertex in vertices]
-        data["transitions"] = []
+        path_edges = _path_edges_to(graph, vertices[0]) if vertices else None
+        trace = _trace_from_path(
+            task=task,
+            result=result,
+            category=category,
+            witness=vertices,
+            path_edges=path_edges,
+            evidence=evidence,
+        )
+        if vertices:
+            cycle_state_ids = {state.get("vertex") for state in trace["states"] if isinstance(state, dict)}
+            for vertex in vertices:
+                if vertex not in cycle_state_ids:
+                    trace["states"].append(state_summary(graph, vertex, evidence))
+        data["states"] = trace["states"]
+        data["transitions"] = trace["transitions"]
+        data["trace"] = trace
     return data
 
 

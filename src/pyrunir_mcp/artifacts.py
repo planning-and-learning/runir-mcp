@@ -27,6 +27,8 @@ class CounterexampleItem:
     category: str
     task: str | None
     path: str
+    trace_path: str | None = None
+    trace_available: bool = False
 
 
 def _slug(value: object, default: str = "counterexample") -> str:
@@ -47,6 +49,7 @@ def _has_existing_run_output(output_dir: Path) -> bool:
             "summary.json",
             "summary.md",
             "counterexamples",
+            "traces",
             "raw",
             "manifest.json",
             "failures",
@@ -93,6 +96,54 @@ def _write_json(path: Path, data: Any) -> None:
         fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
+def _extract_trace_data(data: dict[str, Any]) -> dict[str, Any] | None:
+    trace = data.get("trace")
+    if isinstance(trace, dict):
+        return dict(trace)
+    detail_keys = (
+        "states",
+        "transitions",
+        "counterexample",
+        "fluent_facts",
+        "feature_values",
+        "native_counterexamples",
+    )
+    if any(key in data for key in detail_keys):
+        return dict(data)
+    return None
+
+
+def _write_counterexample_and_trace(
+    *,
+    output_dir: Path,
+    counterexample_id: str,
+    category_slug: str,
+    data: dict[str, Any],
+) -> tuple[Path, str | None, bool]:
+    trace_data = _extract_trace_data(data)
+    trace_path: str | None = None
+    trace_available = False
+    if trace_data is not None:
+        trace_target = output_dir / "traces" / category_slug / f"{counterexample_id}.json"
+        trace_data.setdefault("schema_version", 1)
+        trace_data.setdefault("id", counterexample_id)
+        trace_data.setdefault("category", category_slug)
+        _write_json(trace_target, trace_data)
+        trace_path = relative_to(trace_target, output_dir)
+        trace_available = True
+
+    target = output_dir / "counterexamples" / category_slug / f"{counterexample_id}.json"
+    stored = dict(data)
+    stored.setdefault("schema_version", 1)
+    stored.setdefault("id", counterexample_id)
+    stored.setdefault("category", category_slug)
+    stored["trace_available"] = trace_available
+    if trace_path is not None:
+        stored["trace_path"] = trace_path
+    _write_json(target, stored)
+    return target, trace_path, trace_available
+
+
 def _copy_counterexample(
     *,
     source: Path,
@@ -103,19 +154,22 @@ def _copy_counterexample(
 ) -> CounterexampleItem:
     category_slug = _slug(category)
     counterexample_id = f"{category_slug}-{index:03d}"
-    target = output_dir / "counterexamples" / category_slug / f"{counterexample_id}.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
     data = _read_json(source)
-    if isinstance(data, dict):
-        data.setdefault("schema_version", 1)
-        data.setdefault("id", counterexample_id)
-        data.setdefault("category", category_slug)
-    _write_json(target, data)
+    if not isinstance(data, dict):
+        data = {"value": data}
+    target, trace_path, trace_available = _write_counterexample_and_trace(
+        output_dir=output_dir,
+        counterexample_id=counterexample_id,
+        category_slug=category_slug,
+        data=data,
+    )
     return CounterexampleItem(
         id=counterexample_id,
         category=category_slug,
         task=task,
         path=relative_to(target, output_dir),
+        trace_path=trace_path,
+        trace_available=trace_available,
     )
 
 
@@ -187,17 +241,21 @@ def normalize_unsolvability_dump(
     for index, counterexample in enumerate(counterexamples, start=1):
         category = _slug(counterexample.get("category"), "counterexample")
         counterexample_id = f"{category}-{index:03d}"
-        target = output_dir / "counterexamples" / category / f"{counterexample_id}.json"
         data = dict(counterexample)
-        data.setdefault("schema_version", 1)
-        data.setdefault("id", counterexample_id)
-        _write_json(target, data)
+        target, trace_path, trace_available = _write_counterexample_and_trace(
+            output_dir=output_dir,
+            counterexample_id=counterexample_id,
+            category_slug=category,
+            data=data,
+        )
         items.append(
             CounterexampleItem(
                 id=counterexample_id,
                 category=category,
                 task=data.get("task"),
                 path=relative_to(target, output_dir),
+                trace_path=trace_path,
+                trace_available=trace_available,
             )
         )
 
@@ -397,7 +455,10 @@ def write_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
         lines.append("")
         for item in data["items"]:
             task = f" task `{item['task']}`" if item.get("task") else ""
-            lines.append(f"- `{item['id']}`{task}: `{item['path']}`")
+            line = f"- `{item['id']}`{task}: `{item['path']}`"
+            if item.get("trace_available") and item.get("trace_path"):
+                line += f"; trace `{item['trace_path']}`"
+            lines.append(line)
         lines.append("")
     with path.open("x", encoding="utf-8") as fh:
         fh.write("\n".join(lines).rstrip() + "\n")
@@ -416,18 +477,21 @@ def write_native_counterexample_run(
     for index, counterexample in enumerate(counterexamples, start=1):
         category = _slug(counterexample.get("category"), "counterexample")
         counterexample_id = f"{category}-{index:03d}"
-        target = output_dir / "counterexamples" / category / f"{counterexample_id}.json"
         data = dict(counterexample)
-        data.setdefault("schema_version", 1)
-        data.setdefault("id", counterexample_id)
-        data.setdefault("category", category)
-        _write_json(target, data)
+        target, trace_path, trace_available = _write_counterexample_and_trace(
+            output_dir=output_dir,
+            counterexample_id=counterexample_id,
+            category_slug=category,
+            data=data,
+        )
         items.append(
             CounterexampleItem(
                 id=counterexample_id,
                 category=category,
                 task=data.get("task"),
                 path=relative_to(target, output_dir),
+                trace_path=trace_path,
+                trace_available=trace_available,
             )
         )
 

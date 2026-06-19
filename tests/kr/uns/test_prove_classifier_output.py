@@ -37,10 +37,18 @@ def test_prove_classifier_writes_all_classifier_counterexamples_separately(tmp_p
 
     fp_item = summary["by_category"]["false_positive"]["items"][0]
     fn_item = summary["by_category"]["false_negative"]["items"][0]
+    assert fp_item["trace_path"] == "traces/false_positive/false_positive-001.json"
+    assert fn_item["trace_path"] == "traces/false_negative/false_negative-002.json"
+    assert fp_item["trace_available"] is True
+    assert fn_item["trace_available"] is True
     fp = read_json(run_dir / fp_item["path"])
     fn = read_json(run_dir / fn_item["path"])
-    assert fp["feature_values"] == {"deadend_like": True}
-    assert fn["feature_values"] == {"deadend_like": False}
+    fp_trace = read_json(run_dir / fp_item["trace_path"])
+    fn_trace = read_json(run_dir / fn_item["trace_path"])
+    assert fp["trace_path"] == fp_item["trace_path"]
+    assert fn["trace_path"] == fn_item["trace_path"]
+    assert fp_trace["feature_values"] == {"deadend_like": True}
+    assert fn_trace["feature_values"] == {"deadend_like": False}
 
 
 def test_prove_classifier_accepts_frozen_options(monkeypatch, tmp_path):

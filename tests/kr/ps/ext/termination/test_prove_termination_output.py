@@ -43,6 +43,10 @@ def test_prove_termination_summary_links_counterexample_files(tmp_path):
     assert result["primary"]["nonterminating_modules"] == ["main"]
     summary = json.loads((tmp_path / "summary.json").read_text())
     item = summary["by_category"]["structural_termination"]["items"][0]
+    assert item["trace_path"] == "traces/structural_termination/structural_termination-001.json"
+    assert item["trace_available"] is True
     counterexample = json.loads((tmp_path / item["path"]).read_text())
+    trace = json.loads((tmp_path / item["trace_path"]).read_text())
     assert counterexample["module"] == "main"
-    assert counterexample["counterexample"]["num_edges"] == 1
+    assert counterexample["trace_path"] == item["trace_path"]
+    assert trace["counterexample"]["num_edges"] == 1
