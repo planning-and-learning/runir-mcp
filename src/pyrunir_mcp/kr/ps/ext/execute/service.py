@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory, GroundEvaluationContext
 from pyrunir.kr.ps.ext import (
     GroundModuleProgramProofGraph,
     GroundModuleProgramProofResults,
@@ -19,6 +18,7 @@ from pytyr.planning import ExecutionContext
 from pytyr.planning import SearchStatus
 from pytyr.planning.ground import GoalCountHeuristic, astar_eager
 
+from pyrunir_mcp.feature_evidence import evaluate_features
 from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext, load_grounded_search_contexts
 from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure, create_france_dl_feature_generator
 from pyrunir_mcp.kr.ps.ext.core.policy_evaluation import execute_policy_on_tasks, failure_category_from_status, is_success_status
@@ -118,15 +118,28 @@ def _iter_module_rules(policy: Policy) -> list[tuple[object, object, object]]:
     return rules
 
 
+
+def _declared_features(value: object) -> list[object]:
+    features: list[object] = []
+    for accessor in ("get_concept_features", "get_boolean_features", "get_numerical_features"):
+        get_typed_features = getattr(value, accessor, None)
+        if callable(get_typed_features):
+            features.extend(get_typed_features())
+    return features
+
+
+def _declared_module_program_features(policy: Policy) -> list[object]:
+    features = _declared_features(policy)
+    get_modules = getattr(policy, "get_modules", None)
+    if callable(get_modules):
+        for module in get_modules():
+            features.extend(_declared_features(module))
+    return features
+
 def _collect_features(policy: Policy) -> list[object]:
     features_by_key: dict[str, object] = {}
-    get_rules = getattr(policy, "get_rules", None)
-    rules = list(get_rules()) if callable(get_rules) else [rule for _, _, rule in _iter_module_rules(policy)]
-    for rule in rules:
-        for variant in _rule_feature_variants(rule):
-            feature = _variant_feature(variant)
-            if feature is not None:
-                features_by_key.setdefault(_feature_key(feature), feature)
+    for feature in _declared_module_program_features(policy):
+        features_by_key.setdefault(_feature_key(feature), feature)
     return list(features_by_key.values())
 
 
@@ -142,8 +155,7 @@ def _state_facts(state: object, mode: str) -> dict[str, object]:
 
 
 def _feature_values(state: object, features: list[object]) -> dict[str, object]:
-    context = GroundEvaluationContext(state, Builder(), DenotationRepositoryFactory().create())
-    return {_feature_key(feature): feature.evaluate(context) for feature in features}
+    return evaluate_features(state, features)
 
 
 def _feature_delta(before: dict[str, object], after: dict[str, object]) -> dict[str, dict[str, object]]:
@@ -166,11 +178,6 @@ def _matched_rules(
     # per-edge rule labels directly.
     return []
 
-
-def _json_value(value: object) -> object:
-    if isinstance(value, bool | int | float | str) or value is None:
-        return value
-    return str(value)
 
 
 def _has_compatible_successor(policy: Policy, successor_generator: object, node: object) -> bool:
@@ -375,7 +382,7 @@ def _add_state(
         states[state_id] = {"id": state_id, "truncated": True}
         return
     data = _state_facts(state, mode)
-    data["feature_values"] = {key: _json_value(value) for key, value in _feature_values(state, features).items()}
+    data["feature_values"] = _feature_values(state, features)
     states[state_id] = data
 
 

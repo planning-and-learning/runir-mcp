@@ -65,15 +65,28 @@ def _iter_module_rules(program: object) -> list[object]:
     return rules
 
 
+
+def _declared_features(value: object) -> list[object]:
+    features: list[object] = []
+    for accessor in ("get_concept_features", "get_boolean_features", "get_numerical_features"):
+        get_typed_features = getattr(value, accessor, None)
+        if callable(get_typed_features):
+            features.extend(get_typed_features())
+    return features
+
+
+def _declared_module_program_features(program: object) -> list[object]:
+    features = _declared_features(program)
+    get_modules = getattr(program, "get_modules", None)
+    if callable(get_modules):
+        for module in get_modules():
+            features.extend(_declared_features(module))
+    return features
+
 def collect_features(program: object) -> list[object]:
     features_by_key: dict[str, object] = {}
-    get_rules = getattr(program, "get_rules", None)
-    rules = list(get_rules()) if callable(get_rules) else _iter_module_rules(program)
-    for rule in rules:
-        for variant in _rule_feature_variants(rule):
-            feature = _variant_feature(variant)
-            if feature is not None:
-                features_by_key.setdefault(feature_key(feature), feature)
+    for feature in _declared_module_program_features(program):
+        features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
 
 

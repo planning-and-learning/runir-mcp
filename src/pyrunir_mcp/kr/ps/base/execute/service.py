@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory, GroundEvaluationContext
+from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
 from pyrunir.kr.ps.base import (
     GroundSketchProofGraph,
     GroundSketchProofResults,
@@ -20,6 +20,7 @@ from pytyr.planning import ExecutionContext
 from pytyr.planning import SearchStatus
 from pytyr.planning.ground import GoalCountHeuristic, astar_eager
 
+from pyrunir_mcp.feature_evidence import evaluate_features
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext, load_grounded_search_contexts
 from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, create_france_dl_feature_generator
 from pyrunir_mcp.kr.ps.base.core.policy_evaluation import execute_policy_on_tasks, failure_category_from_status, is_success_status
@@ -82,14 +83,12 @@ def _feature_key(feature: object) -> str:
 
 
 def _collect_features(policy: Policy) -> list[object]:
+    get_features = getattr(policy, "get_features", None)
+    if not callable(get_features):
+        return []
     features_by_key: dict[str, object] = {}
-    for rule in policy.get_rules():
-        variants = list(rule.get_conditions()) + list(rule.get_effects())
-        for variant in variants:
-            concrete = variant.get_variant().get_variant()
-            if hasattr(concrete, "get_feature"):
-                feature = concrete.get_feature()
-                features_by_key.setdefault(_feature_key(feature), feature)
+    for feature in get_features():
+        features_by_key.setdefault(_feature_key(feature), feature)
     return list(features_by_key.values())
 
 
@@ -105,8 +104,7 @@ def _state_facts(state: object, mode: str) -> dict[str, object]:
 
 
 def _feature_values(state: object, features: list[object]) -> dict[str, object]:
-    context = GroundEvaluationContext(state, Builder(), DenotationRepositoryFactory().create())
-    return {_feature_key(feature): feature.evaluate(context) for feature in features}
+    return evaluate_features(state, features)
 
 
 def _feature_delta(before: dict[str, object], after: dict[str, object]) -> dict[str, dict[str, object]]:
@@ -133,11 +131,6 @@ def _matched_rules(
             matches.append(match)
     return matches
 
-
-def _json_value(value: object) -> object:
-    if isinstance(value, bool | int | float | str) or value is None:
-        return value
-    return str(value)
 
 
 def _has_compatible_successor(policy: Policy, successor_generator: object, node: object) -> bool:
@@ -328,7 +321,7 @@ def _add_state(
         states[state_id] = {"id": state_id, "truncated": True}
         return
     data = _state_facts(state, mode)
-    data["feature_values"] = {key: _json_value(value) for key, value in _feature_values(state, features).items()}
+    data["feature_values"] = _feature_values(state, features)
     states[state_id] = data
 
 

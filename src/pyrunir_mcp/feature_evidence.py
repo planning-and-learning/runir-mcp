@@ -5,9 +5,19 @@ from typing import Any
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory, GroundEvaluationContext
 
 
+def _object_name(value: object) -> str:
+    get_name = getattr(value, "get_name", None)
+    if callable(get_name):
+        return str(get_name())
+    return str(value)
+
+
 def json_value(value: object) -> object:
     if isinstance(value, bool | int | float | str) or value is None:
         return value
+    get_objects = getattr(value, "get_objects", None)
+    if callable(get_objects):
+        return [_object_name(obj) for obj in get_objects()]
     return str(value)
 
 

@@ -836,7 +836,7 @@ wheels = [
 
 [[package]]
 name = "pyrunir-mcp"
-version = "0.0.5"
+version = "0.0.6"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -852,7 +852,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=2" },
-    { name = "pyrunir", specifier = ">=0.0.7,<0.1" },
+    { name = "pyrunir", specifier = ">=0.0.9,<0.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
 ]

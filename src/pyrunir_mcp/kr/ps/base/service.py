@@ -51,13 +51,12 @@ def _variant_feature(variant: object) -> object | None:
 
 
 def collect_features(policy: object) -> list[object]:
+    get_features = getattr(policy, "get_features", None)
+    if not callable(get_features):
+        return []
     features_by_key: dict[str, object] = {}
-    for rule in policy.get_rules():
-        variants = list(rule.get_conditions()) + list(rule.get_effects())
-        for variant in variants:
-            feature = _variant_feature(variant)
-            if feature is not None:
-                features_by_key.setdefault(feature_key(feature), feature)
+    for feature in get_features():
+        features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
 
 
