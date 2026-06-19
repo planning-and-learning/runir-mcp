@@ -28,6 +28,15 @@ def test_counterexample_result_exposes_primary_category_counts(tmp_path):
         "false_negative": 1,
         "false_positive": 2,
     }
+    assert result["prompt_summary"]["classifier_polarity"] == {
+        "positive_class": "unsolvable",
+        "expression_true": "predicted_unsolvable",
+        "expression_false": "predicted_solvable",
+    }
+    assert result["prompt_summary"]["category_semantics"] == {
+        "false_positive": "predicted unsolvable but actually solvable",
+        "false_negative": "predicted solvable but actually unsolvable",
+    }
     assert "items" not in result["prompt_summary"]
     assert [item["path"] for item in result["items"]] == [
         "counterexamples/false_positive/false_positive-001.json",

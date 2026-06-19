@@ -221,7 +221,7 @@ def _prompt_summary(
     category_counts: dict[str, int],
     task_statuses: list[tuple[Any, Any]],
 ) -> dict[str, Any]:
-    return {
+    summary = {
         "tool": tool,
         "status": status,
         "successful": status == "success",
@@ -233,6 +233,17 @@ def _prompt_summary(
         "task_statuses": task_statuses,
         "note": "Detailed counterexamples are written under output_dir; start with summary_md/summary_json.",
     }
+    if tool == "runir.uns.prove_classifier":
+        summary["classifier_polarity"] = {
+            "positive_class": "unsolvable",
+            "expression_true": "predicted_unsolvable",
+            "expression_false": "predicted_solvable",
+        }
+        summary["category_semantics"] = {
+            "false_positive": "predicted unsolvable but actually solvable",
+            "false_negative": "predicted solvable but actually unsolvable",
+        }
+    return summary
 
 
 def write_summary(
