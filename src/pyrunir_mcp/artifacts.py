@@ -234,14 +234,11 @@ def _prompt_summary(
         "note": "Detailed counterexamples are written under output_dir; start with summary_md/summary_json.",
     }
     if tool == "runir.uns.prove_classifier":
-        summary["classifier_polarity"] = {
-            "positive_class": "unsolvable",
-            "expression_true": "predicted_unsolvable",
-            "expression_false": "predicted_solvable",
-        }
-        summary["category_semantics"] = {
-            "false_positive": "predicted unsolvable but actually solvable",
-            "false_negative": "predicted solvable but actually unsolvable",
+        summary["classifier_semantics"] = {
+            "true": "predicted unsolvable",
+            "false": "predicted solvable",
+            "false_positive": "true on a solvable state",
+            "false_negative": "false on an unsolvable state",
         }
     return summary
 
