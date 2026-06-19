@@ -42,4 +42,13 @@ def assert_common_output(run_dir: Path, result: dict[str, Any], *, expected_coun
     assert result["primary"]["counterexample_count"] == expected_count
     assert len(result["items"]) == expected_count
     assert result["summary"] == summary
+
+    prompt_summary = result["prompt_summary"]
+    assert result["primary"]["prompt_summary"] == prompt_summary
+    assert prompt_summary["output_dir"] == run_dir.as_posix()
+    assert prompt_summary["summary_json"] == "summary.json"
+    assert prompt_summary["summary_md"] == "summary.md"
+    assert prompt_summary["counts"] == summary["counts"]
+    assert "items" not in prompt_summary
+    assert "tasks" not in prompt_summary
     return summary

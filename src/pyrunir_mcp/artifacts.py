@@ -211,6 +211,30 @@ def normalize_unsolvability_dump(
     )
 
 
+def _prompt_summary(
+    *,
+    tool: str,
+    status: str,
+    output_dir: Path,
+    artifacts: dict[str, Any],
+    counts: dict[str, Any],
+    category_counts: dict[str, int],
+    task_statuses: list[tuple[Any, Any]],
+) -> dict[str, Any]:
+    return {
+        "tool": tool,
+        "status": status,
+        "successful": status == "success",
+        "output_dir": output_dir.as_posix(),
+        "summary_json": artifacts.get("summary_json"),
+        "summary_md": artifacts.get("summary_md"),
+        "counts": counts,
+        "category_counts": category_counts,
+        "task_statuses": task_statuses,
+        "note": "Detailed counterexamples are written under output_dir; start with summary_md/summary_json.",
+    }
+
+
 def write_summary(
     *,
     tool: str,
@@ -284,26 +308,46 @@ def write_summary(
     if not task_statuses:
         task_statuses = [(task["name"], "counterexample") for task in summary["tasks"]]
     category_counts = {category: data["count"] for category, data in by_category.items()}
-    primary = {
-        "successful": status == "success",
-        "failure_category": failure_category,
-        "category": "success" if status == "success" else ("resource_limit" if failure_category == "resource_limit" else "counterexample" if failure_category else "unknown"),
-        "task_statuses": task_statuses,
-        "per_task": per_task,
-        "counterexample_count": len(flat_items),
-        "category_counts": category_counts,
-        **{
-            key: metadata[key]
-            for key in ("program_status", "nonterminating_modules")
-            if key in metadata
-        },
-    }
     artifacts = {
         "summary_json": relative_to(output_dir / "summary.json", output_dir),
         "summary_md": relative_to(output_dir / "summary.md", output_dir),
         "raw_stdout": "raw/stdout.txt",
         "raw_stderr": "raw/stderr.txt",
         "output_dir": output_dir.as_posix(),
+    }
+    prompt_summary = _prompt_summary(
+        tool=tool,
+        status=status,
+        output_dir=output_dir,
+        artifacts=artifacts,
+        counts=summary["counts"],
+        category_counts=category_counts,
+        task_statuses=task_statuses,
+    )
+    primary = {
+        "successful": status == "success",
+        "failure_category": failure_category,
+        "category": (
+            "success"
+            if status == "success"
+            else (
+                "resource_limit"
+                if failure_category == "resource_limit"
+                else "counterexample"
+                if failure_category
+                else "unknown"
+            )
+        ),
+        "task_statuses": task_statuses,
+        "per_task": per_task,
+        "counterexample_count": len(flat_items),
+        "category_counts": category_counts,
+        "prompt_summary": prompt_summary,
+        **{
+            key: metadata[key]
+            for key in ("program_status", "nonterminating_modules")
+            if key in metadata
+        },
     }
     return {
         "schema_version": summary["schema_version"],
@@ -312,6 +356,7 @@ def write_summary(
         "primary": primary,
         "summary": summary,
         "artifacts": artifacts,
+        "prompt_summary": prompt_summary,
         "items": flat_items,
         "tasks": summary["tasks"],
         "summary_path": artifacts["summary_json"],

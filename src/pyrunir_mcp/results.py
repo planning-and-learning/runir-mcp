@@ -37,9 +37,31 @@ def _manifest_result(manifest: Any, output_dir: Path) -> Any:
     return data
 
 
+def _reformat_prompt_summary(
+    *,
+    tool: str,
+    path_key: str,
+    artifact_path: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "tool": tool,
+        "status": "success",
+        "successful": True,
+        "artifacts": {path_key: artifact_path},
+        **metadata,
+    }
+
+
 def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: Any) -> dict[str, Any]:
     artifact_path = path.name
-    primary = {"successful": True, path_key: artifact_path, **metadata}
+    prompt_summary = _reformat_prompt_summary(
+        tool=tool,
+        path_key=path_key,
+        artifact_path=artifact_path,
+        metadata=metadata,
+    )
+    primary = {"successful": True, path_key: artifact_path, "prompt_summary": prompt_summary, **metadata}
     return {
         "schema_version": 1,
         "tool": tool,
@@ -52,6 +74,7 @@ def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: Any) ->
             **primary,
         },
         "artifacts": {path_key: artifact_path},
+        "prompt_summary": prompt_summary,
         "items": [],
         path_key: artifact_path,
         **metadata,
@@ -88,7 +111,10 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
             "trace_path": trace_file,
         }
         task_items.append(item)
-        if failing_task is None and (task.get("failure_category") is not None or task.get("status") not in (None, "SOLVED", "SUCCESS")):
+        if failing_task is None and (
+            task.get("failure_category") is not None
+            or task.get("status") not in (None, "SOLVED", "SUCCESS")
+        ):
             failing_task = name
             failing_status = task.get("status")
             failure_category = task.get("failure_category")
@@ -112,20 +138,39 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
     if failing_task is None and failure_items:
         failing_task = failure_items[0].get("task")
 
+    task_statuses = [(item["name"], item.get("status")) for item in task_items]
+    artifacts = {
+        "output_dir": output_dir.as_posix(),
+        "manifest_json": relative_to(manifest_path, output_dir) if manifest_path.exists() else None,
+        "summary_md": relative_to(summary_md_path, output_dir) if summary_md_path.exists() else None,
+    }
+    prompt_summary = {
+        "tool": tool,
+        "status": status,
+        "successful": status == "success",
+        "output_dir": output_dir.as_posix(),
+        "manifest_json": artifacts.get("manifest_json"),
+        "summary_md": artifacts.get("summary_md"),
+        "counts": {
+            "tasks": len(task_items),
+            "failures": len(failure_items),
+            "replay_errors": len(replay_errors),
+        },
+        "task_statuses": task_statuses,
+        "failure_category": failure_category,
+        "failing_task": failing_task,
+        "note": "Detailed rollout traces are written under output_dir; start with summary_md/manifest_json.",
+    }
     primary = {
         "successful": status == "success",
         "failing_task": failing_task,
         "status": failing_status,
         "failure_category": failure_category,
-        "task_statuses": [(item["name"], item.get("status")) for item in task_items],
+        "task_statuses": task_statuses,
         "replay_errors": replay_errors,
         "task_count": len(task_items),
         "failure_count": len(failure_items),
-    }
-    artifacts = {
-        "output_dir": output_dir.as_posix(),
-        "manifest_json": relative_to(manifest_path, output_dir) if manifest_path.exists() else None,
-        "summary_md": relative_to(summary_md_path, output_dir) if summary_md_path.exists() else None,
+        "prompt_summary": prompt_summary,
     }
     summary = {
         "schema_version": 1,
@@ -144,6 +189,7 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
         "primary": primary,
         "summary": summary,
         "artifacts": artifacts,
+        "prompt_summary": prompt_summary,
         "items": failure_items,
         "tasks": task_items,
         "manifest": result_manifest,
