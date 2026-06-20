@@ -134,17 +134,22 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
             failure_category = task.get("failure_category")
 
     failure_items: list[dict[str, Any]] = []
-    for index, item in enumerate(distinct_failures, start=1):
-        category = _slug(item.get("failure_category"), "failure")
+    failing_tasks = [
+        item
+        for item in task_items
+        if item.get("failure_category") is not None
+        or item.get("status") not in (None, "SOLVED", "SUCCESS")
+    ]
+    for index, item in enumerate(failing_tasks, start=1):
+        category = _slug(item.get("failure_category") or item.get("status"), "failure")
         failure_id = f"{category}-{index:03d}"
         problem = item.get("problem")
-        task = Path(str(problem)).name if problem else None
-        source_trace = item.get("trace_file")
-        source_trace_path = _result_path(source_trace, output_dir)
+        task = item.get("name")
+        source_trace_path = item.get("trace_path")
         trace_path = None
         trace_available = False
         if source_trace_path and source_trace_path != "<omitted: outside output_dir>":
-            source = output_dir / source_trace_path
+            source = output_dir / str(source_trace_path)
             if source.is_file():
                 trace_target = output_dir / "traces" / category / f"{failure_id}.json"
                 trace_target.parent.mkdir(parents=True, exist_ok=True)
@@ -157,7 +162,6 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
             "id": failure_id,
             "category": category,
             "kind": "failure",
-            "fingerprint": item.get("fingerprint"),
             "failure_category": item.get("failure_category"),
             "problem": problem,
             "task": task,
@@ -172,7 +176,6 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
             "kind": "failure",
             "id": failure_id,
             "category": category,
-            "fingerprint": item.get("fingerprint"),
             "failure_category": item.get("failure_category"),
             "problem": problem,
             "task": task,

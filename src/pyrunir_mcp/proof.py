@@ -41,10 +41,10 @@ def make_search_options(options: object, max_num_states: int, max_time_seconds: 
 
 def failure_items(result: object) -> list[tuple[str, Any]]:
     items: list[tuple[str, Any]] = []
-    items.extend(("open_state", int(vertex)) for vertex in result.open_states)
-    items.extend(("deadend_transition", int(edge)) for edge in result.deadend_transitions)
     if result.cycle:
         items.append(("cycle", [int(vertex) for vertex in result.cycle]))
+    items.extend(("open_state", int(vertex)) for vertex in result.open_states)
+    items.extend(("deadend_transition", int(edge)) for edge in result.deadend_transitions)
     return items
 
 

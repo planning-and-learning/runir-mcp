@@ -295,10 +295,10 @@ def _state_from_vertex(graph: GroundModuleProgramProofGraph, vertex: int) -> obj
 
 def _native_failure_items(result: GroundModuleProgramProofResults) -> list[tuple[str, object]]:
     items: list[tuple[str, object]] = []
-    items.extend(("open_state", int(vertex)) for vertex in result.open_states)
-    items.extend(("deadend_transition", int(edge)) for edge in result.deadend_transitions)
     if result.cycle:
         items.append(("cycle", [int(vertex) for vertex in result.cycle]))
+    items.extend(("open_state", int(vertex)) for vertex in result.open_states)
+    items.extend(("deadend_transition", int(edge)) for edge in result.deadend_transitions)
     return items
 
 
@@ -614,13 +614,13 @@ def _execute_single_rollout(
             trace_name = f"task-{index:03d}_seed-{random_seed}_trace.json"
             _write_dump_json(dump_dir / trace_name, trace)
         if not is_success_status(result.status):
-            failure = ExecutionFailure(task=task, result=result)
+            if failure is None:
+                failure = ExecutionFailure(task=task, result=result)
             if dump_dir is not None and traces:
                 trace = traces[-1]
                 failure_name = f"{trace['failure_category']}_{index:03d}_seed-{random_seed}.json"
                 failure_path = dump_dir / "failures" / failure_name
                 _write_dump_json(failure_path, trace)
-            break
     return failure, traces
 
 

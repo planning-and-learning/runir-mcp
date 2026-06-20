@@ -270,6 +270,59 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
     assert persisted["tasks"][0]["trace_file"] == trace.as_posix()
 
 
+def test_execute_result_writes_failure_item_for_each_failing_task(tmp_path):
+    class Result:
+        failure = object()
+        replay_errors = []
+
+    output_dir = tmp_path / "execute"
+    output_dir.mkdir()
+    for index in (1, 2):
+        (output_dir / f"task-{index:03d}_seed-0_trace.json").write_text("{}\n", encoding="utf-8")
+    manifest = {
+        "tasks": [
+            {
+                "problem": "p1.pddl",
+                "status": "FAILED",
+                "failure_category": "open_state",
+                "seed": 0,
+                "trace_file": "task-001_seed-0_trace.json",
+            },
+            {
+                "problem": "p2.pddl",
+                "status": "FAILED",
+                "failure_category": "open_state",
+                "seed": 0,
+                "trace_file": "task-002_seed-0_trace.json",
+            },
+        ],
+        "distinct_failures": [
+            {
+                "problem": "p1.pddl",
+                "failure_category": "open_state",
+                "seed": 0,
+                "trace_file": "task-001_seed-0_trace.json",
+                "fingerprint": "same",
+            }
+        ],
+    }
+    (output_dir / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+    result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
+
+    assert [item["task"] for item in result["items"]] == ["p1.pddl", "p2.pddl"]
+    assert [item["path"] for item in result["items"]] == [
+        "counterexamples/open_state/open_state-001.json",
+        "counterexamples/open_state/open_state-002.json",
+    ]
+    assert [item["trace_path"] for item in result["items"]] == [
+        "traces/open_state/open_state-001.json",
+        "traces/open_state/open_state-002.json",
+    ]
+    assert result["primary"]["failure_count"] == 2
+    assert result["prompt_summary"]["counts"]["failures"] == 2
+
+
 def test_execute_result_omits_absolute_trace_paths_outside_output_dir(tmp_path):
     class Result:
         failure = object()
