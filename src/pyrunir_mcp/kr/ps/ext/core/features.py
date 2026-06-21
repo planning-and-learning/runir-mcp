@@ -8,7 +8,8 @@ from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtDLConstructorRe
 from pyrunir.kr.ps.ext import GroundModuleProgramProofResults as GroundPolicyProofResults
 from pyrunir.kr.ps.ext import Repository as PolicyRepository
 from pyrunir.kr.ps.ext import RepositoryFactory as PolicyRepositoryFactory
-from pytyr.formalism.planning import Parser, ParserOptions, PlanningDomain
+from pypddl.formalism import ParserOptions
+from pytyr.formalism.planning import Parser, PlanningDomain
 
 from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext
 

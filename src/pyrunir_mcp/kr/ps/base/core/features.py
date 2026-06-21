@@ -8,7 +8,8 @@ from pyrunir.kr.dl.base.semantics import ConstructorRepositoryFactory as DLConst
 from pyrunir.kr.ps.base import GroundSketchProofResults as GroundPolicyProofResults
 from pyrunir.kr.ps.base import Repository as PolicyRepository
 from pyrunir.kr.ps.base import RepositoryFactory as PolicyRepositoryFactory
-from pytyr.formalism.planning import Parser, ParserOptions, PlanningDomain
+from pypddl.formalism import ParserOptions
+from pytyr.formalism.planning import Parser, PlanningDomain
 
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext
 

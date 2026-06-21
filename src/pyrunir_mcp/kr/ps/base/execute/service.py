@@ -18,7 +18,7 @@ from pyrunir.kr.ps.base import (
     prove_ground_solution,
 )
 from pyrunir.kr.ps.base.dl import GroundEvaluationContext as PolicyGroundEvaluationContext
-from pytyr.planning import ExecutionContext
+from pyyggdrasil.execution import ExecutionContext
 from pytyr.planning import SearchStatus
 from pytyr.planning.ground import GoalCountHeuristic, LabeledNode, Node, State, SuccessorGenerator, astar_eager
 

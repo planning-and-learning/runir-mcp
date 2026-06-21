@@ -27,7 +27,7 @@ from pyrunir.kr.ps.ext import (
     find_ground_solution,
     prove_ground_solution,
 )
-from pytyr.planning import ExecutionContext
+from pyyggdrasil.execution import ExecutionContext
 from pytyr.planning import SearchStatus
 from pytyr.planning.ground import GoalCountHeuristic, LabeledNode, Node, State, SuccessorGenerator, astar_eager
 
