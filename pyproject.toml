@@ -13,7 +13,7 @@ authors = [
 ]
 dependencies = [
     "fastmcp>=2",
-    "pyrunir>=0.0.11,<0.1",
+    "pyrunir>=0.0.12,<0.1",
 ]
 
 [project.optional-dependencies]

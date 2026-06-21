@@ -8,10 +8,7 @@ from pyrunir_mcp.json_types import JsonObject
 from pypddl.formalism import ParserOptions
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
 from pyrunir.kr.dl.uns import ConstructorRepositoryFactory as UnsDLRepositoryFactory
-try:
-    from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
-except ImportError:
-    from pyrunir._pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
+from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
 from pyrunir.kr.uns import RepositoryFactory, classify
 from pyrunir.kr.uns.dl import parse_classifier
 from pyyggdrasil.execution import ExecutionContext

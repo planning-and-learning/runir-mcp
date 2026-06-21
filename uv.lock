@@ -800,15 +800,15 @@ crypto = [
 
 [[package]]
 name = "pypddl"
-version = "1.0.11"
+version = "1.0.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyggdrasil" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/30/92/756d44e163037a62dbcea6366da2fe419cfd301b941cfc25d455ab24ce11/pypddl-1.0.11.tar.gz", hash = "sha256:2e4541583d2d920391ba59bebacd07874ef0489cb0436848fb424e4890093edc", size = 3752073, upload-time = "2026-06-13T18:58:19.917Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/08/34b7d89b3aa89d2713459a985f2770f5df5b23b4812cf78177b4fc4e2a0a/pypddl-1.0.12.tar.gz", hash = "sha256:96b3f3dc55067093df810d85bb1c215be6a4b2782dfed61989c683a5f1557ade", size = 3751676, upload-time = "2026-06-21T17:08:51.941Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/29/0e/425df4888c90bcc344a389faa829e5834f53832b268da2d13d81adb5a6dc/pypddl-1.0.11-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:9474d0e944e12b3ae6286ffe5c2ed49cded23c20e8d2d6252f482788ff977c0d", size = 854420, upload-time = "2026-06-13T18:58:14.483Z" },
-    { url = "https://files.pythonhosted.org/packages/c7/4a/5eac424d6d4a8845e189f2c57e9bf74ed172e6439c63f530540bdd168fb5/pypddl-1.0.11-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:156a76fddc668f3ccab034a77655e9ef623948d6f4f9861b48c8c2fafe22f1d7", size = 1020546, upload-time = "2026-06-13T18:58:15.69Z" },
+    { url = "https://files.pythonhosted.org/packages/02/ac/8ec83e90a148f327e449eb72e37a2fb3fb7c733fd62c84b2dde9392ac983/pypddl-1.0.12-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:a9ec3e2edc2ad10bd357829d3c338041df3f57503fa8d27778b591ea14ead225", size = 859969, upload-time = "2026-06-21T17:08:45.512Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/bd/e557bbc70358752987ca91467efba2c0a0c2b382e6b960692c744894fbaa/pypddl-1.0.12-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6c1c050fc550ab7128eda4627987405802e144b10f3732364c7a2a21050f3a88", size = 1026090, upload-time = "2026-06-21T17:08:46.915Z" },
 ]
 
 [[package]]
@@ -822,7 +822,7 @@ wheels = [
 
 [[package]]
 name = "pyrunir"
-version = "0.0.10"
+version = "0.0.12"
 source = { editable = "../runir" }
 dependencies = [
     { name = "pytyr" },
@@ -832,14 +832,14 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pytest", marker = "extra == 'test'" },
-    { name = "pytyr", specifier = ">=0.0.24,<0.1" },
+    { name = "pytyr", specifier = ">=0.0.25,<0.1" },
     { name = "pyyggdrasil", specifier = ">=0.0.18,<0.1" },
 ]
 provides-extras = ["test"]
 
 [[package]]
 name = "pyrunir-mcp"
-version = "0.0.9"
+version = "0.0.10"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -897,16 +897,16 @@ wheels = [
 
 [[package]]
 name = "pytyr"
-version = "0.0.24"
+version = "0.0.25"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pypddl" },
     { name = "pyyggdrasil" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/7e/1bfd9dd70859845387779385312e6e938565c1eab0a03104f3515aea797d/pytyr-0.0.24.tar.gz", hash = "sha256:fe0b2ee1cdbe088521c9c1786e553d7d003b8c0579438e4dba9a9711ccf8b6ae", size = 404213, upload-time = "2026-06-13T20:17:49.966Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/82/08c5ecabe30013dcbd6b63c0fbfb435df5de0ad5bc3995a51f471bb1d614/pytyr-0.0.25.tar.gz", hash = "sha256:302f08f0219bc8966376e703424605dddc55a0f6930ea0824fd355e2c88feb74", size = 404231, upload-time = "2026-06-21T18:08:07.355Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/7b/db52baeda8437e00bda51f1d71a696c044fab19ac3051bbcae346c6693d4/pytyr-0.0.24-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:a4f5cdfe869efc35830b1d822613369190ee96666afbd29c5ab5292f4aa97eda", size = 2759515, upload-time = "2026-06-13T20:17:43.449Z" },
-    { url = "https://files.pythonhosted.org/packages/00/9f/bb058d1c3ba8521b3254887876ed3cc1e2809cb3a0d47f3a1c5170243a6b/pytyr-0.0.24-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:afa0d09c6948036c8f5353502c7938c77bfa25f12f6f4a175d77021f8d5c7b11", size = 4019391, upload-time = "2026-06-13T20:17:45.039Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/1f/a0dfdab761192bbbbcd273f83286d7ce8418b4dfae7c6eb4e178f9b2a233/pytyr-0.0.25-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:5dbd7f19a7a90de3fb4954da7018b659dbcca7f9937d9ed6388cd70dbb72178d", size = 2759524, upload-time = "2026-06-21T18:08:00.017Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/96/9208ecdc164276de2bce93f018251806a6c44eb0ac4cdf65a0756bd0df6e/pytyr-0.0.25-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:2240a290030e0375670da8b5c28647f65b234cfe205070c0e7c1ad096cd4fad5", size = 4019393, upload-time = "2026-06-21T18:08:01.919Z" },
 ]
 
 [[package]]

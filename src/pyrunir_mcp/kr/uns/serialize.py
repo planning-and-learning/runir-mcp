@@ -3,10 +3,7 @@ from __future__ import annotations
 from pyrunir.kr.uns import Classifier
 from pytyr.planning.ground import State
 
-try:
-    from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
-except ImportError:
-    from pyrunir._pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
+from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
 
 
 def fluent_facts(state: State) -> list[str]:
