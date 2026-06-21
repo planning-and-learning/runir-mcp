@@ -1,18 +1,38 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import TypeAlias
+
+from pyrunir.kr.ps.base.dl import BooleanFeature as BaseBooleanFeature, NumericalFeature as BaseNumericalFeature
+from pyrunir.kr.ps.ext import (
+    BooleanFeature as ExtBooleanFeature,
+    ConceptFeature as ExtConceptFeature,
+    NumericalFeature as ExtNumericalFeature,
+)
+from pytyr.planning.ground import State
 
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory, GroundEvaluationContext
+from pyrunir_mcp.json_types import JsonObject, JsonValue
+
+Feature: TypeAlias = (
+    BaseBooleanFeature
+    | BaseNumericalFeature
+    | ExtConceptFeature
+    | ExtBooleanFeature
+    | ExtNumericalFeature
+)
+FeatureEvidence: TypeAlias = Callable[[State], JsonObject]
 
 
-def _object_name(value: object) -> str:
+
+def _object_name(value) -> str:
     get_name = getattr(value, "get_name", None)
     if callable(get_name):
         return str(get_name())
     return str(value)
 
 
-def json_value(value: object) -> object:
+def json_value(value) -> JsonValue:
     if isinstance(value, bool | int | float | str) or value is None:
         return value
     get_objects = getattr(value, "get_objects", None)
@@ -21,7 +41,7 @@ def json_value(value: object) -> object:
     return str(value)
 
 
-def feature_key(feature: object) -> str:
+def feature_key(feature: Feature) -> str:
     try:
         variant = feature.get_variant()
         symbol = variant.get_symbol()
@@ -30,9 +50,9 @@ def feature_key(feature: object) -> str:
         return str(feature)
 
 
-def evaluate_features(state: object, features: list[object]) -> dict[str, Any]:
+def evaluate_features(state: State, features: list[Feature]) -> JsonObject:
     context = GroundEvaluationContext(state, Builder(), DenotationRepositoryFactory().create())
-    values: dict[str, Any] = {}
+    values: JsonObject = {}
     for feature in features:
         try:
             values[feature_key(feature)] = json_value(feature.evaluate(context))
@@ -41,8 +61,8 @@ def evaluate_features(state: object, features: list[object]) -> dict[str, Any]:
     return values
 
 
-def state_facts(state: object) -> dict[str, Any]:
-    data: dict[str, Any] = {}
+def state_facts(state: State) -> JsonObject:
+    data: JsonObject = {}
     try:
         data["static_atoms"] = [str(atom) for atom in state.static_atoms()]
         data["fluent_facts"] = [str(fact) for fact in state.fluent_facts()]
@@ -52,9 +72,9 @@ def state_facts(state: object) -> dict[str, Any]:
     return data
 
 
-def state_evidence(features: list[object], *, include_facts: bool) -> object:
-    def evidence(state: object) -> dict[str, Any]:
-        data: dict[str, Any] = {"feature_values": evaluate_features(state, features)}
+def state_evidence(features: list[Feature], *, include_facts: bool) -> FeatureEvidence:
+    def evidence(state: State) -> JsonObject:
+        data: JsonObject = {"feature_values": evaluate_features(state, features)}
         if include_facts:
             data.update(state_facts(state))
         return data

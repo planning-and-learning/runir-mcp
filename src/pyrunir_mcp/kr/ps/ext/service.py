@@ -1,34 +1,50 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TypeAlias, cast
 
 from pypddl.formalism import ParserOptions
 from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtRepositoryFactory
 from pyrunir.kr.ps.ext import (
+    CallRule,
+    ConditionVariant,
+    ConditionVariantData,
+    DoRule,
+    EffectVariant,
+    EffectVariantData,
     GroundModuleProgramSearchOptions,
+    LoadRule,
+    Module,
+    ModuleProgram,
+    Repository,
     RepositoryFactory,
+    SketchRule,
     parse_module_program,
     prove_ground_solution,
 )
-from pytyr.formalism.planning import Parser
+from pytyr.formalism.planning import Parser, PlanningDomain
 
-from pyrunir_mcp.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.feature_evidence import Feature, feature_key, state_evidence
+from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.ext.schemas import ProveModuleProgramOptions
 from pyrunir_mcp.proof import make_search_options, prove_tasks, write_proof_run
 
 TOOL_NAME = "runir.ps.ext.prove_module_program"
 
 
-def _repositories(domain_path: Path):
+ModuleRule: TypeAlias = LoadRule | SketchRule | DoRule | CallRule
+RuleFeatureVariant: TypeAlias = ConditionVariant | EffectVariant | ConditionVariantData | EffectVariantData
+
+
+def _repositories(domain_path: Path) -> tuple[PlanningDomain, Repository]:
     planning_domain = Parser(domain_path, ParserOptions()).get_domain()
     dl_repository = ExtRepositoryFactory().create(planning_domain)
     program_repository = RepositoryFactory().create(dl_repository)
     return planning_domain, program_repository
 
 
-def _rule_feature_variants(rule: object) -> list[object]:
-    variants: list[object] = []
+def _rule_feature_variants(rule: ModuleRule) -> list[RuleFeatureVariant]:
+    variants: list[RuleFeatureVariant] = []
     get_conditions = getattr(rule, "get_conditions", None)
     if callable(get_conditions):
         variants.extend(get_conditions())
@@ -38,7 +54,7 @@ def _rule_feature_variants(rule: object) -> list[object]:
     return variants
 
 
-def _variant_feature(variant: object) -> object | None:
+def _variant_feature(variant: RuleFeatureVariant) -> Feature | None:
     concrete = variant
     for _ in range(2):
         get_variant = getattr(concrete, "get_variant", None)
@@ -46,51 +62,43 @@ def _variant_feature(variant: object) -> object | None:
             break
         concrete = get_variant()
     get_feature = getattr(concrete, "get_feature", None)
-    return get_feature() if callable(get_feature) else None
+    return cast(Feature, get_feature()) if callable(get_feature) else None
 
 
-def _iter_module_rules(program: object) -> list[object]:
-    get_modules = getattr(program, "get_modules", None)
-    if not callable(get_modules):
-        return []
-    rules: list[object] = []
-    for module in get_modules():
-        transitions = getattr(module, "get_memory_transitions", None)
-        if not callable(transitions):
-            continue
-        for transition in transitions():
+def _iter_module_rules(program: ModuleProgram) -> list[ModuleRule]:
+    rules: list[ModuleRule] = []
+    for module in program.get_modules():
+        for transition in module.get_memory_transitions():
             for rule_variant in transition:
-                get_variant = getattr(rule_variant, "get_variant", None)
-                rules.append(get_variant() if callable(get_variant) else rule_variant)
+                rules.append(cast(ModuleRule, rule_variant.get_variant()))
     return rules
 
 
 
-def _declared_features(value: object) -> list[object]:
-    features: list[object] = []
+def _declared_features(value: ModuleProgram | Module) -> list[Feature]:
+    features: list[Feature] = []
     for accessor in ("get_concept_features", "get_boolean_features", "get_numerical_features"):
         get_typed_features = getattr(value, accessor, None)
         if callable(get_typed_features):
-            features.extend(get_typed_features())
+            features.extend(cast(list[Feature], get_typed_features()))
     return features
 
 
-def _declared_module_program_features(program: object) -> list[object]:
+def _declared_module_program_features(program: ModuleProgram) -> list[Feature]:
     features = _declared_features(program)
-    get_modules = getattr(program, "get_modules", None)
-    if callable(get_modules):
-        for module in get_modules():
-            features.extend(_declared_features(module))
+    for module in program.get_modules():
+        features.extend(_declared_features(module))
     return features
 
-def collect_features(program: object) -> list[object]:
-    features_by_key: dict[str, object] = {}
+
+def collect_features(program: ModuleProgram) -> list[Feature]:
+    features_by_key: dict[str, Feature] = {}
     for feature in _declared_module_program_features(program):
         features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
 
 
-def prove_module_program(options: ProveModuleProgramOptions) -> dict[str, Any]:
+def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
     domain_path = Path(options.domain).resolve()
     train_path = Path(options.train_dir).resolve()
     planning_domain, repository = _repositories(domain_path)

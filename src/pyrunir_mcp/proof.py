@@ -3,14 +3,48 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Literal, TypeAlias, cast
 from collections import deque
 
 from pypddl.formalism import ParserOptions
-from pytyr.formalism.planning import Parser
+from pyrunir.datasets import (
+    GroundAnnotatedStateGraphVertexLabel,
+    GroundStateGraphVertexLabel,
+    LiftedAnnotatedStateGraphVertexLabel,
+    LiftedStateGraphVertexLabel,
+    StateGraphEdgeLabel,
+)
+from pyrunir.kr.ps.base import (
+    GroundSketchProofGraph,
+    GroundSketchProofResults,
+    GroundSketchSearchOptions,
+    LiftedSketchProofGraph,
+    LiftedSketchProofResults,
+    LiftedSketchSearchOptions,
+    Rule as SketchRule,
+    SketchProofEdgeLabel,
+    SketchProofStatus,
+)
+from pyrunir.kr.ps.ext import (
+    GroundModuleProgramProofGraph,
+    GroundModuleProgramProofVertexLabel,
+    GroundModuleProgramProofResults,
+    GroundModuleProgramSearchOptions,
+    LiftedModuleProgramProofGraph,
+    LiftedModuleProgramProofVertexLabel,
+    LiftedModuleProgramProofResults,
+    LiftedModuleProgramSearchOptions,
+    ModuleProgramProofEdgeLabel,
+    ModuleProgramProofStatus,
+    RuleVariant as ModuleRule,
+)
+from pytyr.formalism.planning import GroundAction, Parser, PlanningDomain
+from pytyr.planning.ground import State
 from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.artifacts import write_native_counterexample_run
+from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.planning import LoadedSearchContext, load_grounded_search_contexts
 
 
@@ -18,18 +52,52 @@ from pyrunir_mcp.planning import LoadedSearchContext, load_grounded_search_conte
 class ProofRunResult:
     status: str
     num_tasks: int
-    counterexamples: list[dict[str, Any]]
+    counterexamples: list[JsonObject]
+
+
+ProofEdgeLabel: TypeAlias = StateGraphEdgeLabel | SketchProofEdgeLabel | ModuleProgramProofEdgeLabel
+ProofGraph: TypeAlias = (
+    GroundSketchProofGraph
+    | LiftedSketchProofGraph
+    | GroundModuleProgramProofGraph
+    | LiftedModuleProgramProofGraph
+)
+ProofVertexLabel: TypeAlias = (
+    GroundAnnotatedStateGraphVertexLabel
+    | LiftedAnnotatedStateGraphVertexLabel
+    | GroundModuleProgramProofVertexLabel
+    | LiftedModuleProgramProofVertexLabel
+    | GroundStateGraphVertexLabel
+    | LiftedStateGraphVertexLabel
+)
+ProofResult: TypeAlias = (
+    GroundSketchProofResults
+    | LiftedSketchProofResults
+    | GroundModuleProgramProofResults
+    | LiftedModuleProgramProofResults
+)
+ProofRule: TypeAlias = SketchRule | ModuleRule
+ProofStatus: TypeAlias = SketchProofStatus | ModuleProgramProofStatus
+ProofSearchOptions: TypeAlias = (
+    GroundSketchSearchOptions
+    | LiftedSketchSearchOptions
+    | GroundModuleProgramSearchOptions
+    | LiftedModuleProgramSearchOptions
+)
+FailureWitness: TypeAlias = int | list[int]
+FailureItem: TypeAlias = tuple[Literal["cycle"], list[int]] | tuple[Literal["open_state", "deadend_transition"], int]
+StateEvidence: TypeAlias = Callable[[State], JsonObject]
 
 
 def task_name(task: LoadedSearchContext) -> str:
     return task.problem_path.name
 
 
-def status_name(status: object) -> str:
+def status_name(status: ProofStatus) -> str:
     return getattr(status, "name", str(status))
 
 
-def make_search_options(options: object, max_num_states: int, max_time_seconds: float) -> object:
+def make_search_options(options: ProofSearchOptions, max_num_states: int, max_time_seconds: float) -> ProofSearchOptions:
     options.max_arity = getattr(options, "max_arity", 0)
     max_time = timedelta(seconds=max_time_seconds)
     options.brfs_options.max_num_states = max_num_states
@@ -39,8 +107,8 @@ def make_search_options(options: object, max_num_states: int, max_time_seconds: 
     return options
 
 
-def failure_items(result: object) -> list[tuple[str, Any]]:
-    items: list[tuple[str, Any]] = []
+def failure_items(result: ProofResult) -> list[FailureItem]:
+    items: list[FailureItem] = []
     if result.cycle:
         items.append(("cycle", [int(vertex) for vertex in result.cycle]))
     items.extend(("open_state", int(vertex)) for vertex in result.open_states)
@@ -49,28 +117,28 @@ def failure_items(result: object) -> list[tuple[str, Any]]:
 
 
 
-def _vertex_indices(graph: object) -> list[int]:
+def _vertex_indices(graph: ProofGraph) -> list[int]:
     get_vertex_indices = getattr(graph, "get_vertex_indices", None)
     if callable(get_vertex_indices):
         return [int(vertex) for vertex in get_vertex_indices()]
     return list(range(int(graph.get_num_vertices())))
 
 
-def _edge_indices(graph: object) -> list[int]:
+def _edge_indices(graph: ProofGraph) -> list[int]:
     get_edge_indices = getattr(graph, "get_edge_indices", None)
     if callable(get_edge_indices):
         return [int(edge) for edge in get_edge_indices()]
     return list(range(int(graph.get_num_edges())))
 
 
-def _out_edge_indices(graph: object, vertex: int) -> list[int]:
+def _out_edge_indices(graph: ProofGraph, vertex: int) -> list[int]:
     get_out_edge_indices = getattr(graph, "get_out_edge_indices", None)
     if callable(get_out_edge_indices):
         return [int(edge) for edge in get_out_edge_indices(int(vertex))]
     return [edge for edge in _edge_indices(graph) if int(graph.get_source(edge)) == int(vertex)]
 
 
-def _label_flag(label: object, name: str) -> bool:
+def _label_flag(label: ProofVertexLabel, name: str) -> bool:
     if not hasattr(label, name):
         return False
     value = getattr(label, name)
@@ -79,7 +147,7 @@ def _label_flag(label: object, name: str) -> bool:
     return bool(value)
 
 
-def _initial_vertices(graph: object) -> list[int]:
+def _initial_vertices(graph: ProofGraph) -> list[int]:
     vertices = _vertex_indices(graph)
     found: list[int] = []
     for vertex in vertices:
@@ -92,7 +160,7 @@ def _initial_vertices(graph: object) -> list[int]:
     return found or ([vertices[0]] if vertices else [])
 
 
-def _path_edges_to(graph: object, target: int) -> list[int] | None:
+def _path_edges_to(graph: ProofGraph, target: int) -> list[int] | None:
     target = int(target)
     starts = _initial_vertices(graph)
     if target in starts:
@@ -121,7 +189,7 @@ def _path_edges_to(graph: object, target: int) -> list[int] | None:
     return None
 
 
-def _states_for_edges(graph: object, path_edges: list[int], evidence: Callable[[object], dict[str, Any]] | None) -> list[dict[str, Any]]:
+def _states_for_edges(graph: ProofGraph, path_edges: list[int], evidence: StateEvidence | None) -> list[JsonObject]:
     if not path_edges:
         starts = _initial_vertices(graph)
         return [state_summary(graph, starts[0], evidence)] if starts else []
@@ -130,16 +198,32 @@ def _states_for_edges(graph: object, path_edges: list[int], evidence: Callable[[
     return [state_summary(graph, vertex, evidence) for vertex in vertices]
 
 
+def _trace_states(
+    graph: ProofGraph,
+    category: str,
+    witness: FailureWitness,
+    edges: list[int],
+    evidence: StateEvidence | None,
+) -> list[JsonObject]:
+    if edges:
+        return _states_for_edges(graph, edges, evidence)
+    if category == "open_state":
+        return [state_summary(graph, int(witness), evidence)]
+    if category == "cycle" and isinstance(witness, list) and witness:
+        return [state_summary(graph, int(witness[0]), evidence)]
+    return []
+
+
 def _trace_from_path(
     *,
     task: LoadedSearchContext,
-    result: object,
+    result: ProofResult,
     category: str,
-    witness: Any,
+    witness: FailureWitness,
     path_edges: list[int] | None,
-    evidence: Callable[[object], dict[str, Any]] | None,
+    evidence: StateEvidence | None,
     extra_edges: list[int] | None = None,
-) -> dict[str, Any]:
+) -> JsonObject:
     graph = result.graph
     edges = list(path_edges or []) + list(extra_edges or [])
     trace = {
@@ -150,12 +234,7 @@ def _trace_from_path(
         "witness": witness,
         "trace_available": path_edges is not None,
         "path_edges": [int(edge) for edge in path_edges] if path_edges is not None else None,
-            "states": _states_for_edges(graph, edges, evidence) if edges else (
-            [state_summary(graph, int(witness), evidence)] if category == "open_state" else (
-                [state_summary(graph, int(witness[0]), evidence)]
-                if category == "cycle" and isinstance(witness, list) and witness else []
-            )
-        ),
+        "states": _trace_states(graph, category, witness, edges, evidence),
         "transitions": [edge_summary(graph, edge) for edge in edges],
     }
     if category == "cycle" and isinstance(witness, list):
@@ -164,15 +243,15 @@ def _trace_from_path(
 
 
 def state_summary(
-    graph: object,
+    graph: ProofGraph,
     vertex: int,
-    evidence: Callable[[object], dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    evidence: StateEvidence | None = None,
+) -> JsonObject:
     label = graph.get_vertex_property(int(vertex))
     state = getattr(label, "state", None)
     if state is None and hasattr(label, "get_state"):
         state = label.get_state()
-    out: dict[str, Any] = {"vertex": int(vertex)}
+    out: JsonObject = {"vertex": int(vertex)}
     if state is not None:
         try:
             out["state_id"] = int(state.get_index())
@@ -190,34 +269,65 @@ def state_summary(
     return out
 
 
-def edge_summary(graph: object, edge: int) -> dict[str, Any]:
-    out = {
+def _format_ground_action(action: GroundAction | StateGraphEdgeLabel | None) -> str | None:
+    if action is None:
+        return None
+
+    ground_action = action.action if hasattr(action, "action") else cast(GroundAction, action)
+    action_name = str(ground_action.get_action().get_name())
+    row_text = str(ground_action.get_row()).strip()
+    if row_text.startswith("(") and row_text.endswith(")"):
+        row_text = row_text[1:-1].strip()
+    arguments = ", ".join(row_text.split())
+    return f"{action_name}({arguments})"
+
+
+def _format_module_rule(rule: ProofRule | None) -> str | None:
+    if rule is None:
+        return None
+    return str(rule.get_symbol()).strip()
+
+
+def _edge_action(prop: ProofEdgeLabel) -> str | None:
+    for name in ("transition", "state_transition", "action"):
+        action = getattr(prop, name, None)
+        if action is not None:
+            return _format_ground_action(cast(GroundAction | StateGraphEdgeLabel, action))
+    return None
+
+
+def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
+    out: JsonObject = {
         "edge": int(edge),
         "source": int(graph.get_source(int(edge))),
         "target": int(graph.get_target(int(edge))),
     }
     try:
         prop = graph.get_edge_property(int(edge))
+        action = _edge_action(prop)
+        if action is not None:
+            out["action"] = action
         rule = getattr(prop, "rule", None)
-        if rule is not None:
-            out["rule"] = str(rule).strip()
+        module_rule = _format_module_rule(cast(ProofRule | None, rule))
+        if module_rule is not None:
+            out["module_rule"] = module_rule
         transition = getattr(prop, "transition", None) or getattr(prop, "state_transition", None)
         if transition is not None:
             out["transition"] = str(transition).strip()
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        out["label_error"] = {"type": type(exc).__name__, "message": str(exc)}
     return out
 
 
 def counterexample_data(
     task: LoadedSearchContext,
-    result: object,
+    result: ProofResult,
     category: str,
-    witness: Any,
-    evidence: Callable[[object], dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    witness: FailureWitness,
+    evidence: StateEvidence | None = None,
+) -> JsonObject:
     graph = result.graph
-    data: dict[str, Any] = {
+    data: JsonObject = {
         "task": task_name(task),
         "problem_path": task.problem_path.as_posix(),
         "category": category,
@@ -284,12 +394,12 @@ def prove_tasks(
     domain_path: Path,
     train_dir: Path,
     num_threads: int,
-    prove_one: Callable[[LoadedSearchContext], object],
-    evidence: Callable[[object], dict[str, Any]] | None = None,
+    prove_one: Callable[[LoadedSearchContext], ProofResult],
+    evidence: StateEvidence | None = None,
 ) -> ProofRunResult:
     execution_context = ExecutionContext(num_threads)
     tasks = load_grounded_search_contexts(domain_path, train_dir, execution_context)
-    counterexamples: list[dict[str, Any]] = []
+    counterexamples: list[JsonObject] = []
     for task in tasks:
         result = prove_one(task)
         if not result.is_successful():
@@ -306,9 +416,9 @@ def write_proof_run(
     *,
     tool: str,
     output_dir: Path,
-    metadata: dict[str, Any],
+    metadata: JsonObject,
     result: ProofRunResult,
-) -> dict[str, Any]:
+) -> JsonObject:
     metadata = {**metadata, "num_tasks": result.num_tasks}
     return write_native_counterexample_run(
         tool=tool,
@@ -319,5 +429,5 @@ def write_proof_run(
     )
 
 
-def planning_domain(domain_path: Path) -> object:
+def planning_domain(domain_path: Path) -> PlanningDomain:
     return Parser(domain_path, ParserOptions()).get_domain()

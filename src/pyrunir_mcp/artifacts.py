@@ -6,7 +6,7 @@ import shutil
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from pyrunir_mcp.json_types import JsonObject, JsonValue
 
 from pyrunir_mcp.paths import relative_to
 
@@ -31,7 +31,7 @@ class CounterexampleItem:
     trace_available: bool = False
 
 
-def _slug(value: object, default: str = "counterexample") -> str:
+def _slug(value, default: str = "counterexample") -> str:
     text = str(value or default).strip().lower()
     text = re.sub(r"[^a-z0-9_-]+", "_", text)
     return text.strip("_") or default
@@ -86,17 +86,17 @@ def fresh_output_dir(output_dir: Path) -> Path:
     raise RuntimeError(f"could not allocate fresh MCP output directory under {output_dir}")
 
 
-def _read_json(path: Path) -> Any:
+def _read_json(path: Path) -> JsonValue:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, data: Any) -> None:
+def _write_json(path: Path, data: JsonValue) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as fh:
         fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def _extract_trace_data(data: dict[str, Any]) -> dict[str, Any] | None:
+def _extract_trace_data(data: JsonObject) -> JsonObject | None:
     trace = data.get("trace")
     if isinstance(trace, dict):
         return dict(trace)
@@ -118,7 +118,7 @@ def _write_counterexample_and_trace(
     output_dir: Path,
     counterexample_id: str,
     category_slug: str,
-    data: dict[str, Any],
+    data: JsonObject,
 ) -> tuple[Path, str | None, bool]:
     trace_data = _extract_trace_data(data)
     trace_path: str | None = None
@@ -180,8 +180,8 @@ def normalize_trace_dump(
     output_dir: Path,
     raw_dump_dir: Path,
     command: CommandResult,
-    metadata: dict[str, Any],
-) -> dict[str, Any]:
+    metadata: JsonObject,
+) -> JsonObject:
     output_dir = fresh_output_dir(output_dir)
     raw_target = output_dir / "raw"
     if raw_target.exists():
@@ -224,8 +224,8 @@ def normalize_unsolvability_dump(
     output_dir: Path,
     raw_dump_dir: Path,
     command: CommandResult,
-    metadata: dict[str, Any],
-) -> dict[str, Any]:
+    metadata: JsonObject,
+) -> JsonObject:
     output_dir = fresh_output_dir(output_dir)
     raw_target = output_dir / "raw"
     if raw_target.exists():
@@ -274,11 +274,11 @@ def _prompt_summary(
     tool: str,
     status: str,
     output_dir: Path,
-    artifacts: dict[str, Any],
-    counts: dict[str, Any],
+    artifacts: JsonObject,
+    counts: JsonObject,
     category_counts: dict[str, int],
-    task_statuses: list[tuple[Any, Any]],
-) -> dict[str, Any]:
+    task_statuses: list[tuple[JsonValue, JsonValue]],
+) -> JsonObject:
     summary = {
         "tool": tool,
         "status": status,
@@ -307,10 +307,10 @@ def write_summary(
     status: str,
     output_dir: Path,
     command: CommandResult,
-    metadata: dict[str, Any],
+    metadata: JsonObject,
     counterexamples: list[CounterexampleItem],
-) -> dict[str, Any]:
-    by_category: dict[str, dict[str, Any]] = {}
+) -> JsonObject:
+    by_category: dict[str, JsonObject] = {}
     grouped: dict[str, list[CounterexampleItem]] = defaultdict(list)
     for item in counterexamples:
         grouped[item.category].append(item)
@@ -433,7 +433,7 @@ def write_summary(
     }
 
 
-def write_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
+def write_summary_markdown(path: Path, summary: JsonObject) -> None:
     lines = [
         f"# {summary['tool']}",
         "",
@@ -469,9 +469,9 @@ def write_native_counterexample_run(
     tool: str,
     status: str,
     output_dir: Path,
-    metadata: dict[str, Any],
-    counterexamples: list[dict[str, Any]],
-) -> dict[str, Any]:
+    metadata: JsonObject,
+    counterexamples: list[JsonObject],
+) -> JsonObject:
     output_dir = fresh_output_dir(output_dir)
     items: list[CounterexampleItem] = []
     for index, counterexample in enumerate(counterexamples, start=1):

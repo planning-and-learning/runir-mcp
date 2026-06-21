@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, TypeAlias
 
 from fastmcp import FastMCP
 
@@ -24,6 +24,8 @@ from pyrunir_mcp.kr.uns.tools import register_tools as register_uns_tools
 from pyrunir_mcp.kr.uns.reformat.tools import TOOL_NAME as REFORMAT_CLASSIFIER_TOOL
 from pyrunir_mcp.kr.uns.reformat.tools import register_tools as register_uns_reformat_tools
 from pyrunir_mcp.roles import Role, load_role
+
+ServerInfo: TypeAlias = dict[str, str | list[str]]
 
 
 class Registrar(Protocol):
@@ -53,7 +55,7 @@ def create_server(config: ServerConfig | None = None, role: Role | None = None) 
             register(mcp, config)
 
     @mcp.tool(name="pyrunir_mcp.server_info")
-    def server_info() -> dict[str, object]:
+    def server_info() -> ServerInfo:
         return {
             "name": "pyrunir-mcp",
             "role": role.name,

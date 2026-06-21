@@ -5,8 +5,9 @@ from datetime import timedelta
 import hashlib
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
+from pyrunir.datasets import GroundTaskSearchContext
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
 from pyrunir.kr.ps.base import (
     GroundSketchProofGraph,
@@ -19,14 +20,16 @@ from pyrunir.kr.ps.base import (
 from pyrunir.kr.ps.base.dl import GroundEvaluationContext as PolicyGroundEvaluationContext
 from pytyr.planning import ExecutionContext
 from pytyr.planning import SearchStatus
-from pytyr.planning.ground import GoalCountHeuristic, astar_eager
+from pytyr.planning.ground import GoalCountHeuristic, LabeledNode, Node, State, SuccessorGenerator, astar_eager
 
-from pyrunir_mcp.feature_evidence import evaluate_features
+from pyrunir_mcp.feature_evidence import Feature, evaluate_features, feature_key
+from pyrunir_mcp.json_types import JsonDictList, JsonObject
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext, load_grounded_search_contexts
 from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, create_base_policy_context
 from pyrunir_mcp.kr.ps.base.core.policy_evaluation import execute_policy_on_tasks, failure_category_from_status, is_success_status
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description, read_policy_description
 
+NativeFailureItem: TypeAlias = tuple[Literal["cycle"], list[int]] | tuple[Literal["open_state", "deadend_transition"], int]
 
 ARTIFACT_VERSION = 1
 
@@ -78,25 +81,19 @@ def _policy_sha256(policy_file: Path) -> str | None:
     return hashlib.sha256(policy_file.read_bytes()).hexdigest()
 
 
-def _feature_key(feature: object) -> str:
-    variant = feature.get_variant()
-    symbol = variant.get_symbol()
-    return symbol or str(feature)
-
-
-def _collect_features(policy: Policy) -> list[object]:
-    features_by_key: dict[str, object] = {}
+def _collect_features(policy: Policy) -> list[Feature]:
+    features_by_key: dict[str, Feature] = {}
     for getter_name in ("get_boolean_features", "get_numerical_features"):
         get_features = getattr(policy, getter_name, None)
         if not callable(get_features):
             continue
         for feature in get_features():
-            features_by_key.setdefault(_feature_key(feature), feature)
+            features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
 
 
-def _state_facts(state: object, mode: str) -> dict[str, object]:
-    data: dict[str, object] = {"id": int(state.get_index())}
+def _state_facts(state: State, mode: str) -> JsonObject:
+    data: JsonObject = {"id": int(state.get_index())}
     if mode == "full":
         data["raw"] = str(state)
     if mode in {"facts", "full"}:
@@ -106,11 +103,11 @@ def _state_facts(state: object, mode: str) -> dict[str, object]:
     return data
 
 
-def _feature_values(state: object, features: list[object]) -> dict[str, object]:
+def _feature_values(state: State, features: list[Feature]) -> JsonObject:
     return evaluate_features(state, features)
 
 
-def _feature_delta(before: dict[str, object], after: dict[str, object]) -> dict[str, dict[str, object]]:
+def _feature_delta(before: JsonObject, after: JsonObject) -> dict[str, JsonObject]:
     return {
         key: {"before": before[key], "after": after[key]}
         for key in before.keys() & after.keys()
@@ -120,15 +117,15 @@ def _feature_delta(before: dict[str, object], after: dict[str, object]) -> dict[
 
 def _matched_rules(
     policy: Policy,
-    source_state: object,
-    target_state: object,
+    source_state: State,
+    target_state: State,
     include_rule_text: bool,
-) -> list[dict[str, object]]:
+) -> JsonDictList:
     context = PolicyGroundEvaluationContext(source_state, target_state, Builder(), DenotationRepositoryFactory().create())
-    matches = []
+    matches: JsonDictList = []
     for index, rule in enumerate(policy.get_rules()):
         if rule.is_compatible_with(context):
-            match: dict[str, object] = {"index": index}
+            match: JsonObject = {"index": index}
             if include_rule_text:
                 match["rule"] = str(rule).strip()
             matches.append(match)
@@ -136,7 +133,7 @@ def _matched_rules(
 
 
 
-def _has_compatible_successor(policy: Policy, successor_generator: object, node: object) -> bool:
+def _has_compatible_successor(policy: Policy, successor_generator: SuccessorGenerator, node: Node) -> bool:
     source_state = node.get_state()
     for labeled in successor_generator.get_labeled_successor_nodes(node):
         if _matched_rules(policy, source_state, labeled.node.get_state(), False):
@@ -147,17 +144,17 @@ def _has_compatible_successor(policy: Policy, successor_generator: object, node:
 def _successor_classification(
     *,
     policy: Policy,
-    search_context: object | None,
-    successor_generator: object,
-    labeled: object,
+    search_context: GroundTaskSearchContext | None,
+    successor_generator: SuccessorGenerator,
+    labeled: LabeledNode,
     chosen_target_state: int | None,
     cycle_state_ids: set[int] | None,
     classifier: str,
     classifier_max_time: float,
     classifier_max_states: int,
-) -> dict[str, object]:
+) -> JsonObject:
     target_state_id = int(labeled.node.get_state().get_index())
-    metadata: dict[str, object] = {
+    metadata: JsonObject = {
         "classifier": classifier,
         "classifier_max_time": classifier_max_time,
         "classifier_max_states": classifier_max_states,
@@ -199,22 +196,22 @@ def _successor_classification(
 
 def _compatible_successors(
     policy: Policy,
-    successor_generator: object,
-    node: object,
-    features: list[object],
+    successor_generator: SuccessorGenerator,
+    node: Node,
+    features: list[Feature],
     max_actions: int | None,
     include_rule_text: bool,
     classify: bool = False,
     classifier: str = "astar",
     chosen_target_state: int | None = None,
     cycle_state_ids: set[int] | None = None,
-    search_context: object | None = None,
+    search_context: GroundTaskSearchContext | None = None,
     classifier_max_time: float = 1.0,
     classifier_max_states: int = 10_000,
-) -> list[dict[str, object]]:
+) -> JsonDictList:
     source_state = node.get_state()
     source_values = _feature_values(source_state, features)
-    compatible = []
+    compatible: JsonDictList = []
     for labeled in successor_generator.get_labeled_successor_nodes(node):
         target_state = labeled.node.get_state()
         matches = _matched_rules(policy, source_state, target_state, include_rule_text)
@@ -245,16 +242,16 @@ def _compatible_successors(
     return compatible
 
 
-def _state_id(state: object) -> int:
+def _state_id(state: State) -> int:
     return int(state.get_index())
 
 
-def _state_from_vertex(graph: GroundSketchProofGraph, vertex: int) -> object:
+def _state_from_vertex(graph: GroundSketchProofGraph, vertex: int) -> State:
     return graph.get_vertex_property(vertex).state
 
 
-def _native_failure_items(result: GroundSketchProofResults) -> list[tuple[str, object]]:
-    items: list[tuple[str, object]] = []
+def _native_failure_items(result: GroundSketchProofResults) -> list[NativeFailureItem]:
+    items: list[NativeFailureItem] = []
     if result.cycle:
         items.append(("cycle", [int(vertex) for vertex in result.cycle]))
     items.extend(("open_state", int(vertex)) for vertex in result.open_states)
@@ -262,7 +259,7 @@ def _native_failure_items(result: GroundSketchProofResults) -> list[tuple[str, o
     return items
 
 
-def _native_failure_vertices(graph: GroundSketchProofGraph, failure_items: list[tuple[str, object]]) -> list[int]:
+def _native_failure_vertices(graph: GroundSketchProofGraph, failure_items: list[NativeFailureItem]) -> list[int]:
     vertices: list[int] = []
     for failure_category, item in failure_items:
         if failure_category == "deadend_transition":
@@ -275,29 +272,29 @@ def _native_failure_vertices(graph: GroundSketchProofGraph, failure_items: list[
     return list(dict.fromkeys(vertices))
 
 
-def _native_counterexamples(failure_items: list[tuple[str, object]]) -> list[dict[str, object]]:
+def _native_counterexamples(failure_items: list[NativeFailureItem]) -> JsonDictList:
     return [{"failure_category": failure_category, "failure": item} for failure_category, item in failure_items]
 
 
-def _native_cycle_description(result: GroundSketchProofResults, graph: GroundSketchProofGraph | None) -> dict[str, object] | None:
+def _native_cycle_description(result: GroundSketchProofResults, graph: GroundSketchProofGraph | None) -> JsonObject | None:
     if not result.cycle:
         return None
     cycle_vertex_ids = [int(vertex) for vertex in result.cycle]
-    data: dict[str, object] = {"cycle_vertex_ids": cycle_vertex_ids}
+    data: JsonObject = {"cycle_vertex_ids": cycle_vertex_ids}
     if graph is not None:
         data["cycle_state_ids"] = [int(_state_from_vertex(graph, vertex).get_index()) for vertex in cycle_vertex_ids]
     return data
 
 
-def _policy_metadata(policy: Policy, include_metadata: bool) -> tuple[list[str], list[dict[str, object]]]:
-    features = [_feature_key(feature) for feature in _collect_features(policy)]
+def _policy_metadata(policy: Policy, include_metadata: bool) -> tuple[list[str], JsonDictList]:
+    features = [feature_key(feature) for feature in _collect_features(policy)]
     if not include_metadata:
         return features, []
     rules = [{"index": index, "rule": str(rule).strip()} for index, rule in enumerate(policy.get_rules())]
     return features, rules
 
 
-def _dump_options(options: ExecutePolicyOptions) -> dict[str, object]:
+def _dump_options(options: ExecutePolicyOptions) -> JsonObject:
     return {
         "num_threads": options.num_threads,
         "random_seed": options.random_seed,
@@ -322,9 +319,9 @@ def _dump_options(options: ExecutePolicyOptions) -> dict[str, object]:
 
 
 def _add_state(
-    states: dict[int, dict[str, object]],
-    state: object,
-    features: list[object],
+    states: dict[int, JsonObject],
+    state: State,
+    features: list[Feature],
     mode: str,
     max_states: int | None,
 ) -> None:
@@ -339,7 +336,7 @@ def _add_state(
     states[state_id] = data
 
 
-def _cycle_description(start_state_id: int | None, transitions: list[dict[str, object]]) -> dict[str, object] | None:
+def _cycle_description(start_state_id: int | None, transitions: JsonDictList) -> JsonObject | None:
     if start_state_id is None:
         return None
     state_ids = [start_state_id]
@@ -368,15 +365,15 @@ def _trace_from_result(
     task: LoadedSearchContext,
     result: GroundSketchProofResults,
     task_index: int,
-) -> dict[str, object]:
+) -> JsonObject:
     features = _collect_features(policy)
     feature_names, rules = _policy_metadata(policy, options.include_policy_metadata)
-    states: dict[int, dict[str, object]] = {}
-    transitions: list[dict[str, object]] = []
+    states: dict[int, JsonObject] = {}
+    transitions: JsonDictList = []
     start_state_id: int | None = None
     plan = getattr(result, "plan", None)
 
-    native_counterexamples: list[dict[str, object]] = []
+    native_counterexamples: JsonDictList = []
     graph = getattr(result, "graph", None)
 
     if plan is None:
@@ -419,7 +416,7 @@ def _trace_from_result(
             target_state = labeled.node.get_state()
             source_values = _feature_values(source_state, features)
             target_values = _feature_values(target_state, features)
-            transition: dict[str, object] = {
+            transition: JsonObject = {
                 "step": step,
                 "source_state": int(source_state.get_index()),
                 "target_state": int(target_state.get_index()),
@@ -488,13 +485,13 @@ def _trace_from_result(
     }
 
 
-def _write_dump_json(path: Path, data: dict[str, object]) -> None:
+def _write_dump_json(path: Path, data: JsonObject) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as fh:
         fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def _failure_fingerprint(trace: dict[str, object]) -> str | None:
+def _failure_fingerprint(trace: JsonObject) -> str | None:
     category = trace.get("failure_category")
     if category is None:
         return None
@@ -509,8 +506,8 @@ def _failure_fingerprint(trace: dict[str, object]) -> str | None:
     return f"{category}|{json.dumps(feature_values, sort_keys=True)}"
 
 
-def _failure_representatives(traces: list[dict[str, object]]) -> dict[tuple[str, str], dict[str, object]]:
-    representatives: dict[tuple[str, str], dict[str, object]] = {}
+def _failure_representatives(traces: JsonDictList) -> dict[tuple[str, str], JsonObject]:
+    representatives: dict[tuple[str, str], JsonObject] = {}
     for trace in traces:
         category = trace.get("failure_category")
         if category is None:
@@ -520,7 +517,7 @@ def _failure_representatives(traces: list[dict[str, object]]) -> dict[tuple[str,
     return representatives
 
 
-def _write_summary(dump_dir: Path, traces: list[dict[str, object]]) -> None:
+def _write_summary(dump_dir: Path, traces: JsonDictList) -> None:
     counts: dict[str, int] = {}
     rollout_counts: dict[str, int] = {}
     for trace in traces:
@@ -560,10 +557,10 @@ def _execute_single_rollout(
     tasks: list[LoadedSearchContext],
     random_seed: int,
     dump_dir: Path | None,
-) -> tuple[ExecutionFailure | None, list[dict[str, object]]]:
+) -> tuple[ExecutionFailure | None, JsonDictList]:
     rollout_options = replace(options, random_seed=random_seed)
     search_options = create_policy_search_options(rollout_options, random_seed)
-    traces = []
+    traces: JsonDictList = []
     failure = None
     num_tasks = len(tasks)
     for index, task in enumerate(tasks, start=1):
@@ -596,9 +593,9 @@ def _execute_policy_with_dumps(
     dump_dir = options.dump_dir
     dump_dir.mkdir(parents=True, exist_ok=True)
     dump_dir.joinpath("failures").mkdir(exist_ok=True)
-    all_traces = []
+    all_traces: JsonDictList = []
     first_failure = None
-    rollouts = []
+    rollouts: JsonDictList = []
     for seed in _rollout_seeds(options):
         failure, traces = _execute_single_rollout(options=options, policy=policy, tasks=tasks, random_seed=seed, dump_dir=dump_dir)
         all_traces.extend(traces)
@@ -693,14 +690,14 @@ def _execute_policy_rollouts_without_dumps(
     return first_failure
 
 
-def _load_trace(path: Path) -> dict[str, object]:
+def _load_trace(path: Path) -> JsonObject:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"Replay trace must contain a JSON object: {path}")
     return data
 
 
-def _trace_task(trace: dict[str, object], tasks: list[LoadedSearchContext]) -> LoadedSearchContext | None:
+def _trace_task(trace: JsonObject, tasks: list[LoadedSearchContext]) -> LoadedSearchContext | None:
     problem = trace.get("problem")
     if not isinstance(problem, str):
         return None
@@ -711,7 +708,7 @@ def _trace_task(trace: dict[str, object], tasks: list[LoadedSearchContext]) -> L
     return None
 
 
-def _trace_projection(trace: dict[str, object]) -> dict[str, object]:
+def _trace_projection(trace: JsonObject) -> JsonObject:
     return {
         "status": trace.get("status"),
         "failure_category": trace.get("failure_category"),

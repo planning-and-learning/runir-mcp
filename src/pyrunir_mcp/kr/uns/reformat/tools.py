@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-
 from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
@@ -15,7 +13,7 @@ TOOL_NAME = "runir.uns.reformat_classifier"
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
     @mcp.tool(name=TOOL_NAME)
-    def reformat_unsolvability_classifier(domain: str, classifier_file: str, create_empty: bool = False) -> dict[str, Any]:
+    def reformat_unsolvability_classifier(domain: str, classifier_file: str, create_empty: bool = False) -> dict:
         """Parse-check and rewrite an unsolvability classifier in canonical form."""
         result = reformat_classifier(
             ReformatClassifierOptions(

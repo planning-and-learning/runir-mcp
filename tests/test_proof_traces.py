@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from pyrunir_mcp.proof import counterexample_data
+from pyrunir_mcp.proof import counterexample_data, edge_summary
 
 
 class Label:
@@ -39,7 +39,16 @@ class Graph:
         return self.edges[edge][1]
 
     def get_edge_property(self, edge):
-        return SimpleNamespace(rule=f"rule-{edge}")
+        action_schema = SimpleNamespace(get_name=lambda: "move", get_original_arity=lambda: 2)
+        class Row:
+            def __str__(self):
+                return f"(room{edge}a room{edge}b)"
+
+        action = SimpleNamespace(get_action=lambda: action_schema, get_row=Row)
+        return SimpleNamespace(
+            rule=SimpleNamespace(get_symbol=lambda: f"rule-{edge}"),
+            transition=SimpleNamespace(action=action),
+        )
 
 
 def test_open_state_counterexample_includes_initial_to_witness_trace():
@@ -52,4 +61,54 @@ def test_open_state_counterexample_includes_initial_to_witness_trace():
     assert data["trace"]["path_edges"] == [0, 1]
     assert [state["state_id"] for state in data["trace"]["states"]] == [10, 11, 12]
     assert [(edge["source"], edge["target"]) for edge in data["trace"]["transitions"]] == [(0, 1), (1, 2)]
+    assert [edge["action"] for edge in data["trace"]["transitions"]] == [
+        "move(room0a, room0b)",
+        "move(room1a, room1b)",
+    ]
+    assert [edge["module_rule"] for edge in data["trace"]["transitions"]] == [
+        "rule-0",
+        "rule-1",
+    ]
     assert data["states"] == data["trace"]["states"]
+
+
+def test_module_program_edge_summary_uses_state_transition_action_and_rule_symbol():
+    action_schema = SimpleNamespace(get_name=lambda: "move", get_original_arity=lambda: 2)
+    class Row:
+        def __str__(self):
+            return "(rooma roomb)"
+
+    state_transition = SimpleNamespace(
+        action=SimpleNamespace(get_action=lambda: action_schema, get_row=Row)
+    )
+    rule = SimpleNamespace(get_symbol=lambda: "do-move")
+    graph = SimpleNamespace(
+        get_source=lambda edge: 1,
+        get_target=lambda edge: 2,
+        get_edge_property=lambda edge: SimpleNamespace(state_transition=state_transition, rule=rule),
+    )
+
+    assert edge_summary(graph, 7) == {
+        "edge": 7,
+        "source": 1,
+        "target": 2,
+        "action": "move(rooma, roomb)",
+        "module_rule": "do-move",
+        "transition": str(state_transition),
+    }
+
+
+def test_module_program_load_edge_summary_uses_rule_symbol_without_action():
+    rule = SimpleNamespace(get_symbol=lambda: "load")
+    graph = SimpleNamespace(
+        get_source=lambda edge: 1,
+        get_target=lambda edge: 2,
+        get_edge_property=lambda edge: SimpleNamespace(state_transition=None, rule=rule),
+    )
+
+    assert edge_summary(graph, 8) == {
+        "edge": 8,
+        "source": 1,
+        "target": 2,
+        "module_rule": "load",
+    }

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
@@ -22,7 +20,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         max_num_states: int = 100_000,
         max_time_seconds: float = 5.0,
         dump_state_mode: str = "summary",
-    ) -> dict[str, Any]:
+    ) -> dict:
         """Prove a Runir sketch policy and write every counterexample separately."""
         return run_prove_sketch_policy(
             ProveSketchPolicyOptions(

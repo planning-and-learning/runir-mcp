@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
@@ -23,7 +21,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         max_time_seconds: float = 5.0,
         max_arity: int = 0,
         dump_state_mode: str = "summary",
-    ) -> dict[str, Any]:
+    ) -> dict:
         """Prove an extended Runir module program and write every counterexample separately."""
         return run_prove_module_program(
             ProveModuleProgramOptions(

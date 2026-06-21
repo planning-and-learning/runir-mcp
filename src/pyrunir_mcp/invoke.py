@@ -7,7 +7,8 @@ import re
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import TypeAlias
 
 from pyrunir_mcp.kr.ps.base.execute.service import ExecutePolicyOptions as BaseExecuteOptions
 from pyrunir_mcp.kr.ps.base.execute.service import execute_policy as execute_base_policy
@@ -28,48 +29,124 @@ from pyrunir_mcp.kr.uns.reformat.service import reformat_classifier
 from pyrunir_mcp.kr.uns.schemas import ProveClassifierOptions
 from pyrunir_mcp.kr.uns.service import prove_classifier
 from pyrunir_mcp.artifacts import fresh_output_dir
+from pyrunir_mcp.json_types import JsonObject, JsonValue
 from pyrunir_mcp.results import execute_result, reformat_result
 from pyrunir_mcp.roles import load_role
 
 
-def _base_prove(args: dict[str, Any]) -> dict[str, Any]:
+ToolResult: TypeAlias = JsonObject
+
+
+class Args:
+    def __init__(self, values: JsonObject) -> None:
+        self.values = values
+
+    def value(self, key: str, default: JsonValue | None = None) -> JsonValue | None:
+        return self.values[key] if key in self.values else default
+
+    def string(self, key: str, default: str | None = None) -> str:
+        value = self.value(key, default)
+        if not isinstance(value, str):
+            raise TypeError(f"{key} must be a string")
+        return value
+
+    def optional_string(self, key: str) -> str | None:
+        value = self.value(key)
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise TypeError(f"{key} must be a string or null")
+        return value
+
+    def integer(self, key: str, default: int) -> int:
+        value = self.value(key, default)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"{key} must be an integer")
+        return value
+
+    def optional_integer(self, key: str) -> int | None:
+        value = self.value(key)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"{key} must be an integer or null")
+        return value
+
+    def number(self, key: str, default: float) -> float:
+        value = self.value(key, default)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise TypeError(f"{key} must be a number")
+        return float(value)
+
+    def number_alias(self, key: str, alias: str, default: float) -> float:
+        return self.number(key, default) if key in self.values else self.number(alias, default)
+
+    def optional_number(self, key: str) -> float | None:
+        value = self.value(key)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise TypeError(f"{key} must be a number or null")
+        return float(value)
+
+    def boolean(self, key: str, default: bool) -> bool:
+        value = self.value(key, default)
+        if not isinstance(value, bool):
+            raise TypeError(f"{key} must be a boolean")
+        return value
+
+    def path(self, key: str) -> Path:
+        return Path(self.string(key)).resolve()
+
+
+ToolHandler: TypeAlias = Callable[[Args], ToolResult]
+
+
+def _args(args: Args | JsonObject) -> Args:
+    return args if isinstance(args, Args) else Args(args)
+
+
+def _base_prove(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
     return prove_sketch_policy(
         ProveSketchPolicyOptions(
-            domain=args["domain"],
-            train_dir=args["train_dir"],
-            output_dir=args["output_dir"],
-            policy_file=args.get("policy_file"),
-            num_threads=int(args.get("num_threads", 1)),
-            max_num_states=int(args.get("max_num_states", 100_000)),
-            max_time_seconds=float(args.get("max_time_seconds", args.get("max_time", 5.0))),
-            dump_state_mode=args.get("dump_state_mode", "summary"),
+            domain=args.string("domain"),
+            train_dir=args.string("train_dir"),
+            output_dir=args.string("output_dir"),
+            policy_file=args.optional_string("policy_file"),
+            num_threads=args.integer("num_threads", 1),
+            max_num_states=args.integer("max_num_states", 100_000),
+            max_time_seconds=args.number_alias("max_time_seconds", "max_time", 5.0),
+            dump_state_mode=args.string("dump_state_mode", "summary"),
         )
     )
 
 
-def _ext_prove(args: dict[str, Any]) -> dict[str, Any]:
+def _ext_prove(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
     return prove_module_program(
         ProveModuleProgramOptions(
-            domain=args["domain"],
-            train_dir=args["train_dir"],
-            module_program_file=args["module_program_file"],
-            output_dir=args["output_dir"],
-            num_threads=int(args.get("num_threads", 1)),
-            max_num_states=int(args.get("max_num_states", 100_000)),
-            max_time_seconds=float(args.get("max_time_seconds", args.get("max_time", 5.0))),
-            max_arity=int(args.get("max_arity", 0)),
-            dump_state_mode=args.get("dump_state_mode", "summary"),
+            domain=args.string("domain"),
+            train_dir=args.string("train_dir"),
+            module_program_file=args.string("module_program_file"),
+            output_dir=args.string("output_dir"),
+            num_threads=args.integer("num_threads", 1),
+            max_num_states=args.integer("max_num_states", 100_000),
+            max_time_seconds=args.number_alias("max_time_seconds", "max_time", 5.0),
+            max_arity=args.integer("max_arity", 0),
+            dump_state_mode=args.string("dump_state_mode", "summary"),
         )
     )
 
 
-def _base_reformat(args: dict[str, Any]) -> dict[str, Any]:
+def _base_reformat(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
     result = reformat_base_policy(
         BaseReformatOptions(
-            domain_path=Path(args["domain"]).resolve(),
-            policy_file=Path(args["policy_file"]).resolve(),
-            kind=args.get("kind", "auto"),
-            create_empty=bool(args.get("create_empty", False)),
+            domain_path=args.path("domain"),
+            policy_file=args.path("policy_file"),
+            kind=args.string("kind", "auto"),
+            create_empty=args.boolean("create_empty", False),
         )
     )
     return reformat_result(
@@ -80,12 +157,13 @@ def _base_reformat(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _ext_reformat(args: dict[str, Any]) -> dict[str, Any]:
+def _ext_reformat(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
     result = reformat_ext_policy(
         ExtReformatOptions(
-            domain_path=Path(args["domain"]).resolve(),
-            policy_file=Path(args.get("policy_file") or args["module_program_file"]).resolve(),
-            kind=args.get("kind", "auto"),
+            domain_path=args.path("domain"),
+            policy_file=Path(args.optional_string("policy_file") or args.string("module_program_file")).resolve(),
+            kind=args.string("kind", "auto"),
         )
     )
     return reformat_result(
@@ -96,12 +174,13 @@ def _ext_reformat(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _uns_reformat(args: dict[str, Any]) -> dict[str, Any]:
+def _uns_reformat(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
     result = reformat_classifier(
         ReformatClassifierOptions(
-            domain_path=Path(args["domain"]).resolve(),
-            classifier_file=Path(args["classifier_file"]).resolve(),
-            create_empty=bool(args.get("create_empty", False)),
+            domain_path=args.path("domain"),
+            classifier_file=args.path("classifier_file"),
+            create_empty=args.boolean("create_empty", False),
         )
     )
     return reformat_result(
@@ -112,94 +191,98 @@ def _uns_reformat(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _base_execute(args: dict[str, Any]) -> dict[str, Any]:
-    output_dir = fresh_output_dir(Path(args["output_dir"]).resolve())
+def _base_execute(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
+    output_dir = fresh_output_dir(args.path("output_dir"))
     result = execute_base_policy(
         BaseExecuteOptions(
-            domain_path=Path(args["domain"]).resolve(),
-            problem_dir=Path(args["problem_dir"]).resolve(),
-            policy_file=Path(args["policy_file"]).resolve(),
-            num_threads=int(args.get("num_threads", 1)),
-            random_seed=int(args.get("random_seed", 0)),
-            random_seed_start=int(args.get("random_seed_start", 0)),
-            num_rollouts=int(args.get("num_rollouts", 1)),
-            shuffle_labeled_succ_nodes=bool(args.get("shuffle_labeled_succ_nodes", True)),
-            max_arity=int(args.get("max_arity", 0)),
-            max_num_states=args.get("max_num_states"),
-            max_time=args.get("max_time"),
+            domain_path=args.path("domain"),
+            problem_dir=args.path("problem_dir"),
+            policy_file=args.path("policy_file"),
+            num_threads=args.integer("num_threads", 1),
+            random_seed=args.integer("random_seed", 0),
+            random_seed_start=args.integer("random_seed_start", 0),
+            num_rollouts=args.integer("num_rollouts", 1),
+            shuffle_labeled_succ_nodes=args.boolean("shuffle_labeled_succ_nodes", True),
+            max_arity=args.integer("max_arity", 0),
+            max_num_states=args.optional_integer("max_num_states"),
+            max_time=args.optional_number("max_time"),
             dump_dir=output_dir,
-            dump_state_mode=args.get("dump_state_mode", "summary"),
-            dump_max_steps=args.get("dump_max_steps"),
-            dump_max_compatible_actions=args.get("dump_max_compatible_actions"),
-            dump_max_states=args.get("dump_max_states"),
-            audit_compatible_successors=bool(args.get("audit_compatible_successors", False)),
-            classify_compatible_successors=bool(args.get("classify_compatible_successors", False)),
-            classifier=args.get("classifier", "astar"),
-            classifier_max_time=float(args.get("classifier_max_time", 1.0)),
-            classifier_max_states=int(args.get("classifier_max_states", 10_000)),
-            include_policy_metadata=bool(args.get("include_policy_metadata", False)),
-            replay_trace=None if args.get("replay_trace") is None else Path(args["replay_trace"]).resolve(),
+            dump_state_mode=args.string("dump_state_mode", "summary"),
+            dump_max_steps=args.optional_integer("dump_max_steps"),
+            dump_max_compatible_actions=args.optional_integer("dump_max_compatible_actions"),
+            dump_max_states=args.optional_integer("dump_max_states"),
+            audit_compatible_successors=args.boolean("audit_compatible_successors", False),
+            classify_compatible_successors=args.boolean("classify_compatible_successors", False),
+            classifier=args.string("classifier", "astar"),
+            classifier_max_time=args.number("classifier_max_time", 1.0),
+            classifier_max_states=args.integer("classifier_max_states", 10_000),
+            include_policy_metadata=args.boolean("include_policy_metadata", False),
+            replay_trace=None if args.optional_string("replay_trace") is None else args.path("replay_trace"),
         )
     )
     return execute_result(tool="runir.ps.base.execute_policy", result=result, output_dir=output_dir)
 
 
-def _ext_execute(args: dict[str, Any]) -> dict[str, Any]:
-    output_dir = fresh_output_dir(Path(args["output_dir"]).resolve())
+def _ext_execute(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
+    output_dir = fresh_output_dir(args.path("output_dir"))
     result = execute_ext_policy(
         ExtExecuteOptions(
-            domain_path=Path(args["domain"]).resolve(),
-            problem_dir=Path(args["problem_dir"]).resolve(),
-            module_program_file=Path(args["module_program_file"]).resolve(),
-            num_threads=int(args.get("num_threads", 1)),
-            random_seed=int(args.get("random_seed", 0)),
-            random_seed_start=int(args.get("random_seed_start", 0)),
-            num_rollouts=int(args.get("num_rollouts", 1)),
-            shuffle_labeled_succ_nodes=bool(args.get("shuffle_labeled_succ_nodes", True)),
-            max_arity=int(args.get("max_arity", 0)),
-            max_num_states=args.get("max_num_states"),
-            max_time=args.get("max_time"),
+            domain_path=args.path("domain"),
+            problem_dir=args.path("problem_dir"),
+            module_program_file=args.path("module_program_file"),
+            num_threads=args.integer("num_threads", 1),
+            random_seed=args.integer("random_seed", 0),
+            random_seed_start=args.integer("random_seed_start", 0),
+            num_rollouts=args.integer("num_rollouts", 1),
+            shuffle_labeled_succ_nodes=args.boolean("shuffle_labeled_succ_nodes", True),
+            max_arity=args.integer("max_arity", 0),
+            max_num_states=args.optional_integer("max_num_states"),
+            max_time=args.optional_number("max_time"),
             dump_dir=output_dir,
-            dump_state_mode=args.get("dump_state_mode", "summary"),
-            dump_max_steps=args.get("dump_max_steps"),
-            dump_max_compatible_actions=args.get("dump_max_compatible_actions"),
-            dump_max_states=args.get("dump_max_states"),
-            audit_compatible_successors=bool(args.get("audit_compatible_successors", False)),
-            classify_compatible_successors=bool(args.get("classify_compatible_successors", False)),
-            classifier=args.get("classifier", "astar"),
-            classifier_max_time=float(args.get("classifier_max_time", 1.0)),
-            classifier_max_states=int(args.get("classifier_max_states", 10_000)),
-            include_policy_metadata=bool(args.get("include_policy_metadata", False)),
-            replay_trace=None if args.get("replay_trace") is None else Path(args["replay_trace"]).resolve(),
+            dump_state_mode=args.string("dump_state_mode", "summary"),
+            dump_max_steps=args.optional_integer("dump_max_steps"),
+            dump_max_compatible_actions=args.optional_integer("dump_max_compatible_actions"),
+            dump_max_states=args.optional_integer("dump_max_states"),
+            audit_compatible_successors=args.boolean("audit_compatible_successors", False),
+            classify_compatible_successors=args.boolean("classify_compatible_successors", False),
+            classifier=args.string("classifier", "astar"),
+            classifier_max_time=args.number("classifier_max_time", 1.0),
+            classifier_max_states=args.integer("classifier_max_states", 10_000),
+            include_policy_metadata=args.boolean("include_policy_metadata", False),
+            replay_trace=None if args.optional_string("replay_trace") is None else args.path("replay_trace"),
         )
     )
     return execute_result(tool="runir.ps.ext.execute_module_program", result=result, output_dir=output_dir)
 
 
-def _termination(args: dict[str, Any]) -> dict[str, Any]:
+def _termination(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
     return prove_termination(
         ProveTerminationOptions(
-            domain=args["domain"],
-            module_program_file=args["module_program_file"],
-            output_dir=args["output_dir"],
+            domain=args.string("domain"),
+            module_program_file=args.string("module_program_file"),
+            output_dir=args.string("output_dir"),
         )
     )
 
 
-def _uns_prove(args: dict[str, Any]) -> dict[str, Any]:
+def _uns_prove(args: Args | JsonObject) -> ToolResult:
+    args = _args(args)
     return prove_classifier(
         ProveClassifierOptions(
-            domain=args["domain"],
-            train_dir=args["train_dir"],
-            output_dir=args["output_dir"],
-            classifier_file=args.get("classifier_file"),
-            max_num_states=int(args.get("max_num_states", 100_000)),
-            max_time_seconds=float(args.get("max_time_seconds", args.get("max_time", 5.0))),
+            domain=args.string("domain"),
+            train_dir=args.string("train_dir"),
+            output_dir=args.string("output_dir"),
+            classifier_file=args.optional_string("classifier_file"),
+            max_num_states=args.integer("max_num_states", 100_000),
+            max_time_seconds=args.number_alias("max_time_seconds", "max_time", 5.0),
         )
     )
 
 
-TOOLS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+TOOLS: dict[str, ToolHandler] = {
     "runir.ps.base.prove_sketch_policy": _base_prove,
     "runir.ps.base.execute_policy": _base_execute,
     "runir.ps.base.reformat_policy": _base_reformat,
@@ -221,15 +304,16 @@ def _write_result_json(path: Path, rendered: str) -> None:
 _OFFSET_RE = re.compile(r"\bat offset (\d+)\b")
 
 
-def _source_path_from_args(args: dict[str, Any]) -> Path | None:
+def _source_path_from_args(args: Args | JsonObject) -> Path | None:
+    args = _args(args)
     for key in ("policy_file", "module_program_file", "classifier_file"):
-        value = args.get(key)
+        value = args.value(key)
         if value:
             return Path(str(value))
     return None
 
 
-def _source_excerpt(path: Path | None, message: str) -> dict[str, Any] | None:
+def _source_excerpt(path: Path | None, message: str) -> JsonObject | None:
     match = _OFFSET_RE.search(message)
     if path is None or match is None:
         return None
@@ -256,11 +340,12 @@ def _source_excerpt(path: Path | None, message: str) -> dict[str, Any] | None:
     }
 
 
-def _format_tool_error(tool: str, args: dict[str, Any], exc: BaseException) -> tuple[dict[str, Any], str]:
+def _format_tool_error(tool: str, args: Args | JsonObject, exc: BaseException) -> tuple[ToolResult, str]:
+    args = _args(args)
     error_type = type(exc).__name__
     message = str(exc)
     source = _source_excerpt(_source_path_from_args(args), message)
-    result: dict[str, Any] = {
+    result: ToolResult = {
         "status": "error",
         "primary": {
             "successful": False,
@@ -314,13 +399,14 @@ def main() -> None:
     args = json.loads(parsed.args_json)
     if not isinstance(args, dict):
         raise TypeError("--args-json must decode to an object")
+    tool_args = Args(args)
     captured_stdout = io.StringIO()
     try:
         with redirect_stdout(captured_stdout):
-            result = TOOLS[parsed.tool](args)
+            result = TOOLS[parsed.tool](tool_args)
     except Exception as exc:
         tool_stdout = captured_stdout.getvalue()
-        result, rendered_error = _format_tool_error(parsed.tool, args, exc)
+        result, rendered_error = _format_tool_error(parsed.tool, tool_args, exc)
         if tool_stdout:
             result["_tool_stdout"] = tool_stdout
         rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"

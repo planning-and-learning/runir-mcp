@@ -5,28 +5,28 @@ import json
 import re
 import shutil
 from pathlib import Path
-from typing import Any
+from pyrunir_mcp.json_types import JsonObject, JsonValue
 
 from pyrunir_mcp.paths import relative_to
 
 
-def _read_json(path: Path) -> Any:
+def _read_json(path: Path) -> JsonValue:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _slug(value: object, default: str = "counterexample") -> str:
+def _slug(value, default: str = "counterexample") -> str:
     text = str(value or default).strip().lower()
     text = re.sub(r"[^a-z0-9_-]+", "_", text)
     return text.strip("_") or default
 
 
-def _write_json(path: Path, data: Any) -> None:
+def _write_json(path: Path, data: JsonValue) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as fh:
         fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def _result_path(value: object, output_dir: Path) -> str | None:
+def _result_path(value, output_dir: Path) -> str | None:
     if value is None:
         return None
     path = Path(str(value))
@@ -38,7 +38,7 @@ def _result_path(value: object, output_dir: Path) -> str | None:
         return "<omitted: outside output_dir>"
 
 
-def _manifest_result(manifest: Any, output_dir: Path) -> Any:
+def _manifest_result(manifest: JsonValue, output_dir: Path) -> JsonValue:
     if not isinstance(manifest, dict):
         return manifest
     data = copy.deepcopy(manifest)
@@ -56,8 +56,8 @@ def _reformat_prompt_summary(
     tool: str,
     path_key: str,
     artifact_path: str,
-    metadata: dict[str, Any],
-) -> dict[str, Any]:
+    metadata: JsonObject,
+) -> JsonObject:
     return {
         "tool": tool,
         "status": "success",
@@ -67,7 +67,7 @@ def _reformat_prompt_summary(
     }
 
 
-def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: Any) -> dict[str, Any]:
+def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: JsonValue) -> JsonObject:
     artifact_path = path.name
     prompt_summary = _reformat_prompt_summary(
         tool=tool,
@@ -95,7 +95,7 @@ def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: Any) ->
     }
 
 
-def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, Any]:
+def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
     replay_errors = getattr(result, "replay_errors", None) or []
     failure = getattr(result, "failure", None)
     status = "success" if failure is None and not replay_errors else "failure"
@@ -106,7 +106,7 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
     tasks = result_manifest.get("tasks", []) if isinstance(result_manifest, dict) else []
     distinct_failures = result_manifest.get("distinct_failures", []) if isinstance(result_manifest, dict) else []
 
-    task_items: list[dict[str, Any]] = []
+    task_items: list[JsonObject] = []
     failing_task = None
     failing_status = None
     failure_category = None
@@ -133,7 +133,7 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
             failing_status = task.get("status")
             failure_category = task.get("failure_category")
 
-    failure_items: list[dict[str, Any]] = []
+    failure_items: list[JsonObject] = []
     failing_tasks = [
         item
         for item in task_items

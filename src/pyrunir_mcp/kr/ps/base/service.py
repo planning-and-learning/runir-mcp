@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-from pyrunir.kr.ps.base import GroundSketchSearchOptions, prove_ground_solution
+from pyrunir.kr.ps.base import GroundSketchSearchOptions, Sketch, prove_ground_solution
 
-from pyrunir_mcp.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.feature_evidence import Feature, feature_key, state_evidence
+from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.base.core.features import create_base_policy_context
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description
 from pyrunir_mcp.kr.ps.base.schemas import ProveSketchPolicyOptions
@@ -15,8 +15,8 @@ TOOL_NAME = "runir.ps.base.prove_sketch_policy"
 
 
 
-def collect_features(policy: object) -> list[object]:
-    features_by_key: dict[str, object] = {}
+def collect_features(policy: Sketch) -> list[Feature]:
+    features_by_key: dict[str, Feature] = {}
     for getter_name in ("get_boolean_features", "get_numerical_features"):
         get_features = getattr(policy, getter_name, None)
         if not callable(get_features):
@@ -26,7 +26,7 @@ def collect_features(policy: object) -> list[object]:
     return list(features_by_key.values())
 
 
-def prove_sketch_policy(options: ProveSketchPolicyOptions) -> dict[str, Any]:
+def prove_sketch_policy(options: ProveSketchPolicyOptions) -> JsonObject:
     domain_path = Path(options.domain).resolve()
     train_path = Path(options.train_dir).resolve()
     context = create_base_policy_context(domain_path)

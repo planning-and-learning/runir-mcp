@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from pyrunir_mcp.json_types import JsonObject
 
 from pypddl.formalism import ParserOptions
 from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtRepositoryFactory
-from pyrunir.kr.ps.ext import RepositoryFactory, parse_module_program, structural_termination
+from pyrunir.kr.ps.ext import Module, ModuleStructuralTerminationResult, RepositoryFactory, parse_module_program, structural_termination
 from pytyr.formalism.planning import Parser
 
 from pyrunir_mcp.artifacts import write_native_counterexample_run
@@ -22,14 +22,14 @@ def _repositories(domain_path: Path):
     return planning_domain, program_repository
 
 
-def _module_name(module: object, index: int) -> str:
+def _module_name(module: Module, index: int) -> str:
     get_name = getattr(module, "get_name", None)
     if callable(get_name):
         return str(get_name())
     return f"module-{index:03d}"
 
 
-def _module_result_metadata(module_name: str, module_result: object) -> dict[str, Any]:
+def _module_result_metadata(module_name: str, module_result: ModuleStructuralTerminationResult) -> JsonObject:
     return {
         "module": module_name,
         "status": status_name(module_result.status),
@@ -37,7 +37,7 @@ def _module_result_metadata(module_name: str, module_result: object) -> dict[str
     }
 
 
-def prove_termination(options: ProveTerminationOptions) -> dict[str, Any]:
+def prove_termination(options: ProveTerminationOptions) -> JsonObject:
     domain_path = Path(options.domain).resolve()
     module_program_file = Path(options.module_program_file).resolve()
     planning_domain, repository = _repositories(domain_path)
@@ -46,8 +46,8 @@ def prove_termination(options: ProveTerminationOptions) -> dict[str, Any]:
     program_result = structural_termination(program)
     module_results = list(program_result.get_module_results())
 
-    counterexamples: list[dict[str, Any]] = []
-    module_summaries: list[dict[str, Any]] = []
+    counterexamples: list[JsonObject] = []
+    module_summaries: list[JsonObject] = []
     nonterminating_modules: list[str] = []
     for index, (module, module_result) in enumerate(zip(modules, module_results, strict=True), start=1):
         module_name = _module_name(module, index)

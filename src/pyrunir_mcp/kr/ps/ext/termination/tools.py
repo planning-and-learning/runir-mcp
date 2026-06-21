@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
@@ -18,7 +16,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         domain: str,
         module_program_file: str,
         output_dir: str,
-    ) -> dict[str, Any]:
+    ) -> dict:
         """Prove structural termination for an extended Runir module program."""
         return run_prove_termination(
             ProveTerminationOptions(

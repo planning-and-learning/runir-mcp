@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
+from pyrunir.kr.ps.ext import StructuralTerminationStatus
+
+from pyrunir_mcp.json_types import JsonObject
 
 
-def string_keyed_dict(values: dict[Any, Any]) -> dict[str, str]:
+def string_keyed_dict(values) -> dict[str, str]:
     return {str(key): str(value) for key, value in values.items()}
 
 
-def counterexample_to_data(counterexample: object) -> dict[str, object]:
+def counterexample_to_data(counterexample) -> JsonObject:
     vertices = []
     for index, vertex in enumerate(counterexample.get_vertices()):
         vertices.append(
@@ -40,6 +42,6 @@ def counterexample_to_data(counterexample: object) -> dict[str, object]:
     }
 
 
-def status_name(status: object) -> str:
+def status_name(status: StructuralTerminationStatus) -> str:
     name = getattr(status, "name", None)
     return str(name if name is not None else status)

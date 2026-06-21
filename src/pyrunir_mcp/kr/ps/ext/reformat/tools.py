@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-
 from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
@@ -19,7 +17,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         domain: str,
         policy_file: str,
         kind: str = "auto",
-    ) -> dict[str, Any]:
+    ) -> dict:
         """Parse-check and rewrite an extended Runir module or module program in canonical form."""
         result = reformat_policy(
             ReformatPolicyOptions(

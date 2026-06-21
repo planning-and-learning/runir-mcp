@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
@@ -20,7 +18,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         classifier_file: str | None = None,
         max_num_states: int = 1_000_000,
         max_time_seconds: float = 1_000_000_000.0,
-    ) -> dict[str, Any]:
+    ) -> dict:
         """Prove an unsolvability DNF classifier and write each counterexample separately."""
         return run_prove_classifier(
             ProveClassifierOptions(

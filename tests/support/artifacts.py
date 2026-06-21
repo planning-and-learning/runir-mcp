@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
-
 from pyrunir_mcp.artifacts import write_native_counterexample_run
+from pyrunir_mcp.json_types import JsonObject, JsonValue
 
 
-def write_example_tool_output(tmp_path: Path, *, tool: str, counterexamples: list[dict[str, Any]]) -> dict[str, Any]:
+def write_example_tool_output(tmp_path: Path, *, tool: str, counterexamples: list[JsonObject]) -> JsonObject:
     return write_native_counterexample_run(
         tool=tool,
         status="failure" if counterexamples else "success",
@@ -17,11 +16,11 @@ def write_example_tool_output(tmp_path: Path, *, tool: str, counterexamples: lis
     )
 
 
-def read_json(path: Path) -> Any:
+def read_json(path: Path) -> JsonValue:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def assert_common_output(run_dir: Path, result: dict[str, Any], *, expected_count: int) -> dict[str, Any]:
+def assert_common_output(run_dir: Path, result: JsonObject, *, expected_count: int) -> JsonObject:
     assert result["output_dir"] == run_dir.as_posix()
     assert result["summary_path"] == "summary.json"
     assert result["summary_md_path"] == "summary.md"

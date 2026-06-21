@@ -1,20 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-
 from fastmcp import FastMCP
 
 from pyrunir_mcp.artifacts import fresh_output_dir
 from pyrunir_mcp.config import ServerConfig
-from pyrunir_mcp.kr.ps.ext.execute.service import ExecutePolicyOptions, execute_policy
+from pyrunir_mcp.kr.ps.ext.execute.service import ExecutePolicyOptions, ExecutePolicyResult, execute_policy
 from pyrunir_mcp.paths import server_output_dir
 from pyrunir_mcp.results import execute_result
 
 TOOL_NAME = "runir.ps.ext.execute_module_program"
 
 
-def _result_payload(result: object, output_dir: Path) -> dict[str, Any]:
+def _result_payload(result: ExecutePolicyResult, output_dir: Path) -> dict:
     return execute_result(tool=TOOL_NAME, result=result, output_dir=output_dir)
 
 
@@ -45,7 +43,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         classifier_max_states: int = 10_000,
         include_policy_metadata: bool = False,
         replay_trace: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict:
         """Execute an extended Runir module program and write traces/manifests."""
         resolved_output_dir = fresh_output_dir(server_output_dir(config.output_root, output_dir))
         result = execute_policy(

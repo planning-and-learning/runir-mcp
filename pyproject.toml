@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyrunir-mcp"
-version = "0.0.9"
+version = "0.0.10"
 description = "MCP server exposing pyrunir tools for planning-and-learning agents"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -13,7 +13,7 @@ authors = [
 ]
 dependencies = [
     "fastmcp>=2",
-    "pyrunir>=0.0.10,<0.1",
+    "pyrunir>=0.0.11,<0.1",
 ]
 
 [project.optional-dependencies]

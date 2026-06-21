@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+from typing import TypeAlias
+
 from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions as GroundPolicySearchOptions, ModuleProgram as Policy, ModuleProgramProofStatus as PolicyProofStatus, find_ground_solution, prove_ground_solution
+from pytyr.planning import SearchStatus
+
 from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext
 from pyrunir_mcp.kr.ps.ext.core.features import PolicyProofCounterexample, ExecutionFailure
 
 
-def is_success_status(status: object) -> bool:
+PolicyStatus: TypeAlias = PolicyProofStatus | SearchStatus
+
+
+def is_success_status(status: PolicyStatus) -> bool:
     return getattr(status, "name", str(status)) in {"SOLVED", "SUCCESS"}
 
 
-def failure_category_from_status(status: object) -> str | None:
+def failure_category_from_status(status: PolicyStatus) -> str | None:
     name = getattr(status, "name", str(status))
     return None if name in {"SOLVED", "SUCCESS"} else name.lower()
 

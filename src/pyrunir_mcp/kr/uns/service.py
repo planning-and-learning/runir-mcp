@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from pyrunir_mcp.json_types import JsonObject
 
 from pypddl.formalism import ParserOptions
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
@@ -16,7 +16,7 @@ from pyrunir.kr.uns import RepositoryFactory, classify
 from pyrunir.kr.uns.dl import parse_classifier
 from pyyggdrasil.execution import ExecutionContext
 from pytyr.formalism.planning import Parser
-from pytyr.planning.ground import ConjunctiveGoalStrategy
+from pytyr.planning.ground import ConjunctiveGoalStrategy, State
 
 from pyrunir_mcp.artifacts import write_native_counterexample_run
 from pyrunir_mcp.kr.uns.schemas import ProveClassifierOptions
@@ -34,7 +34,7 @@ class ResourceLimit(RuntimeError):
 @dataclass
 class StateSpace:
     problem_path: Path
-    states: dict[int, object]
+    states: dict[int, State]
     edges: list[tuple[int, int]]
     goals: set[int]
     solvable: set[int] = field(default_factory=set)
@@ -52,7 +52,7 @@ def _expand(domain_path: Path, problem_path: Path, max_num_states: int, ctx: Exe
     initial = succ.get_initial_node()
     init_state = initial.get_state()
     init_id = int(init_state.get_index())
-    states: dict[int, object] = {init_id: init_state}
+    states: dict[int, State] = {init_id: init_state}
     edges: list[tuple[int, int]] = []
     goals: set[int] = set()
     seen = {init_id}
@@ -102,7 +102,7 @@ def _repositories(domain_path: Path):
     return planning_domain, classifier_repository
 
 
-def prove_classifier(options: ProveClassifierOptions) -> dict[str, Any]:
+def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
     # Full enumeration is currently state-bounded; keep max_time_seconds in the
     # options schema for API consistency, but do not mutate frozen options.
     domain_path = Path(options.domain).resolve()
@@ -118,8 +118,8 @@ def prove_classifier(options: ProveClassifierOptions) -> dict[str, Any]:
     denotations = DenotationRepositoryFactory().create()
     ctx = ExecutionContext(1)
 
-    counterexamples: list[dict[str, Any]] = []
-    per_task: list[dict[str, Any]] = []
+    counterexamples: list[JsonObject] = []
+    per_task: list[JsonObject] = []
     for problem_path in get_problem_paths(train_path):
         try:
             space = _expand(domain_path, problem_path, options.max_num_states, ctx)
