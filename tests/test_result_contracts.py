@@ -270,15 +270,20 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
     assert persisted["tasks"][0]["trace_file"] == trace.as_posix()
 
 
-def test_execute_result_writes_failure_item_for_each_failing_task(tmp_path):
+def test_execute_result_promotes_only_representative_failures(tmp_path):
     class Result:
         failure = object()
         replay_errors = []
 
     output_dir = tmp_path / "execute"
     output_dir.mkdir()
-    for index in (1, 2):
-        (output_dir / f"task-{index:03d}_seed-0_trace.json").write_text("{}\n", encoding="utf-8")
+    for name in (
+        "task-001_seed-0_trace.json",
+        "task-002_seed-1_trace.json",
+        "task-003_seed-0_trace.json",
+        "task-004_seed-0_trace.json",
+    ):
+        (output_dir / name).write_text("{}\n", encoding="utf-8")
     manifest = {
         "tasks": [
             {
@@ -289,11 +294,25 @@ def test_execute_result_writes_failure_item_for_each_failing_task(tmp_path):
                 "trace_file": "task-001_seed-0_trace.json",
             },
             {
+                "problem": "p1.pddl",
+                "status": "FAILED",
+                "failure_category": "open_state",
+                "seed": 1,
+                "trace_file": "task-002_seed-1_trace.json",
+            },
+            {
+                "problem": "p1.pddl",
+                "status": "FAILED",
+                "failure_category": "cycle",
+                "seed": 0,
+                "trace_file": "task-003_seed-0_trace.json",
+            },
+            {
                 "problem": "p2.pddl",
                 "status": "FAILED",
                 "failure_category": "open_state",
                 "seed": 0,
-                "trace_file": "task-002_seed-0_trace.json",
+                "trace_file": "task-004_seed-0_trace.json",
             },
         ],
         "distinct_failures": [
@@ -302,25 +321,45 @@ def test_execute_result_writes_failure_item_for_each_failing_task(tmp_path):
                 "failure_category": "open_state",
                 "seed": 0,
                 "trace_file": "task-001_seed-0_trace.json",
-                "fingerprint": "same",
-            }
+                "fingerprint": "p1-open",
+            },
+            {
+                "problem": "p1.pddl",
+                "failure_category": "cycle",
+                "seed": 0,
+                "trace_file": "task-003_seed-0_trace.json",
+                "fingerprint": "p1-cycle",
+            },
+            {
+                "problem": "p2.pddl",
+                "failure_category": "open_state",
+                "seed": 0,
+                "trace_file": "task-004_seed-0_trace.json",
+                "fingerprint": "p2-open",
+            },
         ],
     }
     (output_dir / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
 
     result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
 
-    assert [item["task"] for item in result["items"]] == ["p1.pddl", "p2.pddl"]
+    assert [(item["task"], item["failure_category"]) for item in result["items"]] == [
+        ("p1.pddl", "open_state"),
+        ("p1.pddl", "cycle"),
+        ("p2.pddl", "open_state"),
+    ]
     assert [item["path"] for item in result["items"]] == [
         "counterexamples/open_state/open_state-001.json",
-        "counterexamples/open_state/open_state-002.json",
+        "counterexamples/cycle/cycle-002.json",
+        "counterexamples/open_state/open_state-003.json",
     ]
     assert [item["trace_path"] for item in result["items"]] == [
         "traces/open_state/open_state-001.json",
-        "traces/open_state/open_state-002.json",
+        "traces/cycle/cycle-002.json",
+        "traces/open_state/open_state-003.json",
     ]
-    assert result["primary"]["failure_count"] == 2
-    assert result["prompt_summary"]["counts"]["failures"] == 2
+    assert result["primary"]["failure_count"] == 3
+    assert result["prompt_summary"]["counts"]["failures"] == 3
 
 
 def test_execute_result_omits_absolute_trace_paths_outside_output_dir(tmp_path):
@@ -376,6 +415,7 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
 
     def fake_execute(options):
         seen.update({
+            "max_arity": options.max_arity,
             "dump_max_steps": options.dump_max_steps,
             "dump_max_compatible_actions": options.dump_max_compatible_actions,
             "dump_max_states": options.dump_max_states,
@@ -400,6 +440,7 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
         "problem_dir": str(tmp_path / "problems"),
         "policy_file": str(tmp_path / "sketch.txt"),
         "output_dir": str(tmp_path / "execute"),
+        "max_arity": 1,
         "dump_max_steps": 7,
         "dump_max_compatible_actions": 11,
         "dump_max_states": 13,
@@ -411,6 +452,7 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
     })
 
     assert seen == {
+        "max_arity": 1,
         "dump_max_steps": 7,
         "dump_max_compatible_actions": 11,
         "dump_max_states": 13,
@@ -433,6 +475,7 @@ def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
     seen = {}
 
     def fake_execute(options):
+        seen["max_arity"] = options.max_arity
         seen["max_num_states"] = options.max_num_states
         seen["max_time"] = options.max_time
         seen["include_policy_metadata"] = options.include_policy_metadata
@@ -451,10 +494,11 @@ def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
         "problem_dir": str(tmp_path / "problems"),
         "module_program_file": str(tmp_path / "module_program.txt"),
         "output_dir": str(tmp_path / "execute"),
+        "max_arity": 2,
         "max_num_states": 123,
         "max_time": 4.5,
         "include_policy_metadata": True,
     })
 
-    assert seen == {"max_num_states": 123, "max_time": 4.5, "include_policy_metadata": True}
+    assert seen == {"max_arity": 2, "max_num_states": 123, "max_time": 4.5, "include_policy_metadata": True}
     assert result["primary"]["successful"] is True

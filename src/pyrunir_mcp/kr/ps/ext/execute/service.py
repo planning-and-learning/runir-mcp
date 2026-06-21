@@ -13,6 +13,7 @@ from pyrunir.kr.ps.ext import (
     GroundModuleProgramSearchOptions as GroundPolicySearchOptions,
     ModuleProgram as Policy,
     find_ground_solution,
+    prove_ground_solution,
 )
 from pytyr.planning import ExecutionContext
 from pytyr.planning import SearchStatus
@@ -38,6 +39,7 @@ class ExecutePolicyOptions:
     random_seed_start: int = 0
     num_rollouts: int = 1
     shuffle_labeled_succ_nodes: bool = True
+    max_arity: int = 0
     # Per-subgoal greedy sub-search budget. None => library default.
     max_num_states: int | None = None
     max_time: float | None = None
@@ -151,6 +153,35 @@ def _state_facts(state: object, mode: str) -> dict[str, object]:
         data["static_atoms"] = [str(atom) for atom in state.static_atoms()]
         data["fluent_facts"] = [str(fact) for fact in state.fluent_facts()]
         data["derived_atoms"] = [str(atom) for atom in state.derived_atoms()]
+    return data
+
+
+def _named_view_name(view: object) -> str:
+    get_name = getattr(view, "get_name", None)
+    if callable(get_name):
+        return str(get_name())
+    return str(view)
+
+
+def _memory_state_metadata(memory_state: object) -> dict[str, object]:
+    value = getattr(memory_state, "value", memory_state)
+    kind = type(memory_state).__name__
+    if kind.endswith("MemoryState"):
+        kind = kind[: -len("MemoryState")].lower()
+    return {
+        "memory": _named_view_name(value),
+        "memory_kind": kind,
+    }
+
+
+def _module_vertex_metadata(label: object) -> dict[str, object]:
+    data: dict[str, object] = {}
+    module = getattr(label, "module_", None)
+    if module is not None:
+        data["module"] = _named_view_name(module)
+    memory_state = getattr(label, "memory_state", None)
+    if memory_state is not None:
+        data.update(_memory_state_metadata(memory_state))
     return data
 
 
@@ -289,8 +320,12 @@ def _compatible_successors(
     return compatible
 
 
+def _label_from_vertex(graph: GroundModuleProgramProofGraph, vertex: int) -> object:
+    return graph.get_vertex_property(vertex)
+
+
 def _state_from_vertex(graph: GroundModuleProgramProofGraph, vertex: int) -> object:
-    return graph.get_vertex_property(vertex).state
+    return _label_from_vertex(graph, vertex).state
 
 
 def _native_failure_items(result: GroundModuleProgramProofResults) -> list[tuple[str, object]]:
@@ -317,6 +352,16 @@ def _native_failure_vertices(graph: GroundModuleProgramProofGraph, failure_items
 
 def _native_counterexamples(failure_items: list[tuple[str, object]]) -> list[dict[str, object]]:
     return [{"failure_category": failure_category, "failure": item} for failure_category, item in failure_items]
+
+
+def _native_cycle_description(result: GroundModuleProgramProofResults, graph: GroundModuleProgramProofGraph | None) -> dict[str, object] | None:
+    if not result.cycle:
+        return None
+    cycle_vertex_ids = [int(vertex) for vertex in result.cycle]
+    data: dict[str, object] = {"cycle_vertex_ids": cycle_vertex_ids}
+    if graph is not None:
+        data["cycle_state_ids"] = [int(_state_from_vertex(graph, vertex).get_index()) for vertex in cycle_vertex_ids]
+    return data
 
 
 def _policy_metadata(policy: Policy, include_metadata: bool) -> tuple[list[str], list[dict[str, object]]]:
@@ -352,6 +397,7 @@ def _dump_options(options: ExecutePolicyOptions) -> dict[str, object]:
         "random_seed_start": options.random_seed_start,
         "num_rollouts": options.num_rollouts,
         "shuffle_labeled_succ_nodes": options.shuffle_labeled_succ_nodes,
+        "max_arity": options.max_arity,
         "max_num_states": options.max_num_states,
         "max_time": options.max_time,
         "dump_state_mode": options.dump_state_mode,
@@ -369,21 +415,31 @@ def _dump_options(options: ExecutePolicyOptions) -> dict[str, object]:
 
 
 def _add_state(
-    states: dict[int, dict[str, object]],
+    states: dict[object, dict[str, object]],
     state: object,
     features: list[object],
     mode: str,
     max_states: int | None,
+    vertex_label: object | None = None,
+    graph_vertex: int | None = None,
 ) -> None:
     state_id = int(state.get_index())
-    if state_id in states:
+    state_key: object = state_id if graph_vertex is None else ("graph", graph_vertex)
+    if state_key in states:
         return
     if max_states is not None and len(states) >= max_states:
-        states[state_id] = {"id": state_id, "truncated": True}
+        data: dict[str, object] = {"id": state_id, "truncated": True}
+        if graph_vertex is not None:
+            data["graph_vertex"] = graph_vertex
+        states[state_key] = data
         return
     data = _state_facts(state, mode)
+    if graph_vertex is not None:
+        data["graph_vertex"] = graph_vertex
+    if vertex_label is not None:
+        data.update(_module_vertex_metadata(vertex_label))
     data["feature_values"] = _feature_values(state, features)
-    states[state_id] = data
+    states[state_key] = data
 
 
 def _cycle_description(start_state_id: int | None, transitions: list[dict[str, object]]) -> dict[str, object] | None:
@@ -418,7 +474,7 @@ def _trace_from_result(
 ) -> dict[str, object]:
     features = _collect_features(policy)
     feature_names, rules = _policy_metadata(policy, options.include_policy_metadata)
-    states: dict[int, dict[str, object]] = {}
+    states: dict[object, dict[str, object]] = {}
     transitions: list[dict[str, object]] = []
     start_state_id: int | None = None
     plan = getattr(result, "plan", None)
@@ -433,10 +489,11 @@ def _trace_from_result(
         native_counterexamples = _native_counterexamples(failure_items)
         if graph is not None and failure_items:
             for vertex in _native_failure_vertices(graph, failure_items):
-                _add_state(states, _state_from_vertex(graph, vertex), features, options.dump_state_mode, options.dump_max_states)
-        else:
+                label = _label_from_vertex(graph, vertex)
+                _add_state(states, label.state, features, options.dump_state_mode, options.dump_max_states, label, int(vertex))
+        elif failure_items:
             _add_state(states, node.get_state(), features, options.dump_state_mode, options.dump_max_states)
-        if options.audit_compatible_successors:
+        if options.audit_compatible_successors and failure_items:
             initial_compatible_successors = _compatible_successors(
                 policy,
                 task.search_context.successor_generator,
@@ -498,8 +555,8 @@ def _trace_from_result(
     if native_counterexamples:
         native_failure_category = str(native_counterexamples[0].get("failure_category"))
     failure_category = native_failure_category or status_failure_category
-    cycle_info = _cycle_description(start_state_id, transitions) if status == "CYCLE" else None
-    if cycle_info is not None and options.classify_compatible_successors:
+    cycle_info = _native_cycle_description(result, graph) or (_cycle_description(start_state_id, transitions) if status == "CYCLE" else None)
+    if cycle_info is not None and options.classify_compatible_successors and "cycle_state_ids" in cycle_info:
         cycle_state_ids = set(cycle_info["cycle_state_ids"])
         for transition in transitions:
             if "compatible_successors" not in transition:
@@ -554,6 +611,17 @@ def _failure_fingerprint(trace: dict[str, object]) -> str | None:
     return f"{category}|{json.dumps(feature_values, sort_keys=True)}"
 
 
+def _failure_representatives(traces: list[dict[str, object]]) -> dict[tuple[str, str], dict[str, object]]:
+    representatives: dict[tuple[str, str], dict[str, object]] = {}
+    for trace in traces:
+        category = trace.get("failure_category")
+        if category is None:
+            continue
+        problem = str(trace.get("problem") or trace.get("task_index") or "<unknown-task>")
+        representatives.setdefault((problem, str(category)), trace)
+    return representatives
+
+
 def _write_summary(dump_dir: Path, traces: list[dict[str, object]]) -> None:
     counts: dict[str, int] = {}
     rollout_counts: dict[str, int] = {}
@@ -567,16 +635,12 @@ def _write_summary(dump_dir: Path, traces: list[dict[str, object]]) -> None:
         lines.append("")
         lines.append("## Rollouts")
         lines.extend(f"- {key}: {count} task(s)" for key, count in sorted(rollout_counts.items()))
-    failures = [trace for trace in traces if trace["failure_category"] is not None]
-    if failures:
+    representatives = _failure_representatives(traces)
+    if representatives:
         lines.append("")
-        lines.append("## First distinct failures")
-        seen = set()
-        for trace in failures:
+        lines.append("## First failure per task/category")
+        for trace in representatives.values():
             fingerprint = trace.get("failure_fingerprint") or _failure_fingerprint(trace)
-            if fingerprint in seen:
-                continue
-            seen.add(fingerprint)
             lines.append(
                 f"- {trace['failure_category']}: {trace['problem']} "
                 f"seed {trace['options']['random_seed']} fingerprint `{fingerprint}`"
@@ -607,20 +671,21 @@ def _execute_single_rollout(
     for index, task in enumerate(tasks, start=1):
         result = find_ground_solution(task.search_context, policy, search_options)
         print(f"[seed {random_seed}] [{index}/{num_tasks}] {task.problem_path.name}: {result.status.name}", flush=True)
+        trace_result = result
+        trace_source = "find_ground_solution"
+        if not is_success_status(result.status):
+            trace_result = prove_ground_solution(task.search_context, policy, search_options)
+            trace_source = "prove_ground_solution_after_execute_failure"
         if dump_dir is not None:
-            trace = _trace_from_result(options=rollout_options, policy=policy, task=task, result=result, task_index=index)
+            trace = _trace_from_result(options=rollout_options, policy=policy, task=task, result=trace_result, task_index=index)
+            trace["execute_status"] = result.status.name
+            trace["counterexample_source"] = trace_source
             trace["failure_fingerprint"] = _failure_fingerprint(trace)
             traces.append(trace)
             trace_name = f"task-{index:03d}_seed-{random_seed}_trace.json"
             _write_dump_json(dump_dir / trace_name, trace)
-        if not is_success_status(result.status):
-            if failure is None:
-                failure = ExecutionFailure(task=task, result=result)
-            if dump_dir is not None and traces:
-                trace = traces[-1]
-                failure_name = f"{trace['failure_category']}_{index:03d}_seed-{random_seed}.json"
-                failure_path = dump_dir / "failures" / failure_name
-                _write_dump_json(failure_path, trace)
+        if not is_success_status(result.status) and failure is None:
+            failure = ExecutionFailure(task=task, result=trace_result)
     return failure, traces
 
 
@@ -653,11 +718,10 @@ def _execute_policy_with_dumps(
         )
         if failure is not None and first_failure is None:
             first_failure = failure
-    distinct_failures = {}
-    for trace in all_traces:
-        fingerprint = trace.get("failure_fingerprint")
-        if fingerprint is not None:
-            distinct_failures.setdefault(str(fingerprint), trace)
+    distinct_failures = _failure_representatives(all_traces)
+    for trace in distinct_failures.values():
+        failure_name = f"{trace['failure_category']}_{trace['task_index']:03d}_seed-{trace['options']['random_seed']}.json"
+        _write_dump_json(dump_dir / "failures" / failure_name, trace)
     manifest = {
         "artifact_version": ARTIFACT_VERSION,
         "tool": "execute_policy",
@@ -678,13 +742,13 @@ def _execute_policy_with_dumps(
         "rollouts": rollouts,
         "distinct_failures": [
             {
-                "fingerprint": fingerprint,
+                "fingerprint": trace.get("failure_fingerprint") or _failure_fingerprint(trace),
                 "failure_category": trace["failure_category"],
                 "problem": trace["problem"],
                 "seed": trace["options"]["random_seed"],
                 "trace_file": f"task-{trace['task_index']:03d}_seed-{trace['options']['random_seed']}_trace.json",
             }
-            for fingerprint, trace in distinct_failures.items()
+            for trace in distinct_failures.values()
         ],
         "tasks": [
             {
@@ -706,6 +770,7 @@ def create_policy_search_options(options: ExecutePolicyOptions, random_seed: int
     search_options = GroundPolicySearchOptions()
     search_options.brfs_options.random_seed = options.random_seed if random_seed is None else random_seed
     search_options.brfs_options.shuffle_labeled_succ_nodes = options.shuffle_labeled_succ_nodes
+    search_options.max_arity = options.max_arity
     if options.max_num_states is not None:
         search_options.brfs_options.max_num_states = options.max_num_states
     if options.max_time is not None:
@@ -792,6 +857,7 @@ def _validate_replay_trace(
         options,
         random_seed=int(trace_options.get("random_seed", options.random_seed)),
         shuffle_labeled_succ_nodes=bool(trace_options.get("shuffle_labeled_succ_nodes", options.shuffle_labeled_succ_nodes)),
+        max_arity=int(trace_options.get("max_arity", options.max_arity)),
         max_num_states=None if trace_options.get("max_num_states") is None else int(trace_options.get("max_num_states")),
         max_time=None if trace_options.get("max_time") is None else float(trace_options.get("max_time")),
         dump_state_mode=str(trace_options.get("dump_state_mode", options.dump_state_mode)),

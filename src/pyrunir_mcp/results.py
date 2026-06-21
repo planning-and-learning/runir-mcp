@@ -140,12 +140,13 @@ def execute_result(*, tool: str, result: object, output_dir: Path) -> dict[str, 
         if item.get("failure_category") is not None
         or item.get("status") not in (None, "SOLVED", "SUCCESS")
     ]
-    for index, item in enumerate(failing_tasks, start=1):
+    failure_sources = distinct_failures if distinct_failures else failing_tasks
+    for index, item in enumerate(failure_sources, start=1):
         category = _slug(item.get("failure_category") or item.get("status"), "failure")
         failure_id = f"{category}-{index:03d}"
         problem = item.get("problem")
-        task = item.get("name")
-        source_trace_path = item.get("trace_path")
+        task = item.get("task") or item.get("name") or (Path(str(problem)).name if problem else f"task-{index:03d}")
+        source_trace_path = _result_path(item.get("trace_file") or item.get("trace_path"), output_dir)
         trace_path = None
         trace_available = False
         if source_trace_path and source_trace_path != "<omitted: outside output_dir>":
