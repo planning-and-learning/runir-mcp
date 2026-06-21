@@ -6,7 +6,7 @@ from typing import Literal
 
 from pyrunir.kr.ps.ext import parse_module, parse_module_program
 
-from pyrunir_mcp.kr.ps.ext.core.features import create_france_dl_feature_generator
+from pyrunir_mcp.kr.ps.ext.core.features import create_module_program_context
 
 PolicyKind = Literal["auto", "module-program", "module"]
 
@@ -36,12 +36,12 @@ def _detect_kind(description: str) -> Literal["module-program", "module"]:
 def reformat_policy(options: ReformatPolicyOptions) -> ReformatPolicyResult:
     description = options.policy_file.read_text(encoding="utf-8")
     kind = _detect_kind(description) if options.kind == "auto" else options.kind
-    feature_generator = create_france_dl_feature_generator(options.domain_path)
+    context = create_module_program_context(options.domain_path)
 
     if kind == "module-program":
-        parsed = parse_module_program(description, feature_generator.planning_domain, feature_generator.policy_repository)
+        parsed = parse_module_program(description, context.planning_domain, context.policy_repository)
     elif kind == "module":
-        parsed = parse_module(description, feature_generator.planning_domain, feature_generator.policy_repository)
+        parsed = parse_module(description, context.planning_domain, context.policy_repository)
     else:
         raise ValueError(f"Unsupported policy kind: {kind}")
 

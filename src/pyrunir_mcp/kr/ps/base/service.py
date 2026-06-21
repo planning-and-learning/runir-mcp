@@ -3,71 +3,35 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pypddl.formalism import ParserOptions
-from pyrunir.kr.dl.base.cnf_grammar import ConstructorRepositoryFactory as CNFRepositoryFactory
-from pyrunir.kr.dl.base.cnf_grammar import translate
-from pyrunir.kr.dl.base.grammar import (
-    ConstructorRepositoryFactory as GrammarRepositoryFactory,
-    GrammarFactory,
-    GrammarSpecification,
-)
-from pyrunir.kr.dl.base.semantics import ConstructorRepositoryFactory as SemanticsRepositoryFactory
-from pyrunir.kr.ps.base import GroundSketchSearchOptions, RepositoryFactory, prove_ground_solution
-from pyrunir.kr.ps.base.dl import SketchFactory, parse_sketch
-from pytyr.formalism.planning import Parser
+from pyrunir.kr.ps.base import GroundSketchSearchOptions, prove_ground_solution
 
 from pyrunir_mcp.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.kr.ps.base.core.features import create_base_policy_context
+from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description
 from pyrunir_mcp.kr.ps.base.schemas import ProveSketchPolicyOptions
 from pyrunir_mcp.proof import make_search_options, prove_tasks, write_proof_run
 
 TOOL_NAME = "runir.ps.base.prove_sketch_policy"
 
 
-def _repositories(domain_path: Path):
-    planning_domain = Parser(domain_path, ParserOptions()).get_domain()
-    domain = planning_domain.get_domain()
-    grammar_repository = GrammarRepositoryFactory().create(planning_domain)
-    source_grammar = GrammarFactory.create(
-        GrammarSpecification.FRANCE_ET_AL_AAAI2021,
-        domain,
-        grammar_repository,
-    )
-    cnf_repository = CNFRepositoryFactory().create(planning_domain)
-    translate(source_grammar, cnf_repository)
-    semantics_repository = SemanticsRepositoryFactory().create(planning_domain)
-    policy_repository = RepositoryFactory().create(semantics_repository)
-    return planning_domain, policy_repository
-
-
-def _variant_feature(variant: object) -> object | None:
-    concrete = variant
-    for _ in range(2):
-        get_variant = getattr(concrete, "get_variant", None)
-        if not callable(get_variant):
-            break
-        concrete = get_variant()
-    get_feature = getattr(concrete, "get_feature", None)
-    return get_feature() if callable(get_feature) else None
-
 
 def collect_features(policy: object) -> list[object]:
-    get_features = getattr(policy, "get_features", None)
-    if not callable(get_features):
-        return []
     features_by_key: dict[str, object] = {}
-    for feature in get_features():
-        features_by_key.setdefault(feature_key(feature), feature)
+    for getter_name in ("get_boolean_features", "get_numerical_features"):
+        get_features = getattr(policy, getter_name, None)
+        if not callable(get_features):
+            continue
+        for feature in get_features():
+            features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
 
 
 def prove_sketch_policy(options: ProveSketchPolicyOptions) -> dict[str, Any]:
     domain_path = Path(options.domain).resolve()
     train_path = Path(options.train_dir).resolve()
-    planning_domain, repository = _repositories(domain_path)
-    if options.policy_file is None:
-        policy = SketchFactory.create_empty(repository)
-    else:
-        policy = parse_sketch(Path(options.policy_file).read_text(encoding="utf-8"), planning_domain, repository)
+    context = create_base_policy_context(domain_path)
+    description = None if options.policy_file is None else Path(options.policy_file).read_text(encoding="utf-8")
+    policy = parse_policy_description(context, description)
     features = collect_features(policy)
     search_options = make_search_options(
         GroundSketchSearchOptions(),

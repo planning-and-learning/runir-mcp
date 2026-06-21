@@ -128,7 +128,15 @@ def _base_execute(args: dict[str, Any]) -> dict[str, Any]:
             max_time=args.get("max_time"),
             dump_dir=output_dir,
             dump_state_mode=args.get("dump_state_mode", "summary"),
+            dump_max_steps=args.get("dump_max_steps"),
+            dump_max_compatible_actions=args.get("dump_max_compatible_actions"),
+            dump_max_states=args.get("dump_max_states"),
             audit_compatible_successors=bool(args.get("audit_compatible_successors", False)),
+            classify_compatible_successors=bool(args.get("classify_compatible_successors", False)),
+            classifier=args.get("classifier", "astar"),
+            classifier_max_time=float(args.get("classifier_max_time", 1.0)),
+            classifier_max_states=int(args.get("classifier_max_states", 10_000)),
+            include_policy_metadata=bool(args.get("include_policy_metadata", False)),
             replay_trace=None if args.get("replay_trace") is None else Path(args["replay_trace"]).resolve(),
         )
     )
@@ -151,7 +159,15 @@ def _ext_execute(args: dict[str, Any]) -> dict[str, Any]:
             max_time=args.get("max_time"),
             dump_dir=output_dir,
             dump_state_mode=args.get("dump_state_mode", "summary"),
+            dump_max_steps=args.get("dump_max_steps"),
+            dump_max_compatible_actions=args.get("dump_max_compatible_actions"),
+            dump_max_states=args.get("dump_max_states"),
             audit_compatible_successors=bool(args.get("audit_compatible_successors", False)),
+            classify_compatible_successors=bool(args.get("classify_compatible_successors", False)),
+            classifier=args.get("classifier", "astar"),
+            classifier_max_time=float(args.get("classifier_max_time", 1.0)),
+            classifier_max_states=int(args.get("classifier_max_states", 10_000)),
+            include_policy_metadata=bool(args.get("include_policy_metadata", False)),
             replay_trace=None if args.get("replay_trace") is None else Path(args["replay_trace"]).resolve(),
         )
     )

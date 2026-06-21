@@ -22,7 +22,7 @@ from pytyr.planning.ground import GoalCountHeuristic, astar_eager
 
 from pyrunir_mcp.feature_evidence import evaluate_features
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext, load_grounded_search_contexts
-from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, create_france_dl_feature_generator
+from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, create_base_policy_context
 from pyrunir_mcp.kr.ps.base.core.policy_evaluation import execute_policy_on_tasks, failure_category_from_status, is_success_status
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description, read_policy_description
 
@@ -83,12 +83,13 @@ def _feature_key(feature: object) -> str:
 
 
 def _collect_features(policy: Policy) -> list[object]:
-    get_features = getattr(policy, "get_features", None)
-    if not callable(get_features):
-        return []
     features_by_key: dict[str, object] = {}
-    for feature in get_features():
-        features_by_key.setdefault(_feature_key(feature), feature)
+    for getter_name in ("get_boolean_features", "get_numerical_features"):
+        get_features = getattr(policy, getter_name, None)
+        if not callable(get_features):
+            continue
+        for feature in get_features():
+            features_by_key.setdefault(_feature_key(feature), feature)
     return list(features_by_key.values())
 
 
@@ -775,8 +776,8 @@ def _validate_replay_trace(
 
 def execute_policy(options: ExecutePolicyOptions) -> ExecutePolicyResult:
     execution_context = ExecutionContext(options.num_threads)
-    feature_generator = create_france_dl_feature_generator(options.domain_path)
-    policy = parse_policy_description(feature_generator, read_policy_description(options.policy_file))
+    context = create_base_policy_context(options.domain_path)
+    policy = parse_policy_description(context, read_policy_description(options.policy_file))
     tasks = load_grounded_search_contexts(options.domain_path, options.problem_dir, execution_context)
     if options.replay_trace is not None:
         replay_errors = _validate_replay_trace(options, policy, tasks)

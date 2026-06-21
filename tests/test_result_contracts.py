@@ -365,6 +365,64 @@ def test_execute_result_omits_absolute_trace_paths_outside_output_dir(tmp_path):
     assert result["manifest"]["distinct_failures"][0]["trace_file"] == "<omitted: outside output_dir>"
 
 
+def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
+    from pyrunir_mcp import invoke
+
+    class Result:
+        failure = None
+        replay_errors = []
+
+    seen = {}
+
+    def fake_execute(options):
+        seen.update({
+            "dump_max_steps": options.dump_max_steps,
+            "dump_max_compatible_actions": options.dump_max_compatible_actions,
+            "dump_max_states": options.dump_max_states,
+            "classify_compatible_successors": options.classify_compatible_successors,
+            "classifier": options.classifier,
+            "classifier_max_time": options.classifier_max_time,
+            "classifier_max_states": options.classifier_max_states,
+            "include_policy_metadata": options.include_policy_metadata,
+        })
+        dump_dir = Path(options.dump_dir)
+        dump_dir.mkdir(parents=True, exist_ok=True)
+        (dump_dir / "manifest.json").write_text(
+            '{"tasks": [], "distinct_failures": []}\n',
+            encoding="utf-8",
+        )
+        (dump_dir / "summary.md").write_text("# summary\n", encoding="utf-8")
+        return Result()
+
+    monkeypatch.setattr(invoke, "execute_base_policy", fake_execute)
+    result = invoke._base_execute({
+        "domain": str(tmp_path / "domain.pddl"),
+        "problem_dir": str(tmp_path / "problems"),
+        "policy_file": str(tmp_path / "sketch.txt"),
+        "output_dir": str(tmp_path / "execute"),
+        "dump_max_steps": 7,
+        "dump_max_compatible_actions": 11,
+        "dump_max_states": 13,
+        "classify_compatible_successors": True,
+        "classifier": "cheap",
+        "classifier_max_time": 2.5,
+        "classifier_max_states": 17,
+        "include_policy_metadata": True,
+    })
+
+    assert seen == {
+        "dump_max_steps": 7,
+        "dump_max_compatible_actions": 11,
+        "dump_max_states": 13,
+        "classify_compatible_successors": True,
+        "classifier": "cheap",
+        "classifier_max_time": 2.5,
+        "classifier_max_states": 17,
+        "include_policy_metadata": True,
+    }
+    assert result["primary"]["successful"] is True
+
+
 def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
     from pyrunir_mcp import invoke
 
@@ -377,6 +435,7 @@ def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
     def fake_execute(options):
         seen["max_num_states"] = options.max_num_states
         seen["max_time"] = options.max_time
+        seen["include_policy_metadata"] = options.include_policy_metadata
         dump_dir = Path(options.dump_dir)
         dump_dir.mkdir(parents=True, exist_ok=True)
         (dump_dir / "manifest.json").write_text(
@@ -394,7 +453,8 @@ def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
         "output_dir": str(tmp_path / "execute"),
         "max_num_states": 123,
         "max_time": 4.5,
+        "include_policy_metadata": True,
     })
 
-    assert seen == {"max_num_states": 123, "max_time": 4.5}
+    assert seen == {"max_num_states": 123, "max_time": 4.5, "include_policy_metadata": True}
     assert result["primary"]["successful"] is True

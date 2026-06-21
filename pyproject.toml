@@ -13,7 +13,7 @@ authors = [
 ]
 dependencies = [
     "fastmcp>=2",
-    "pyrunir>=0.0.9,<0.1",
+    "pyrunir>=0.0.10,<0.1",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +25,9 @@ dev = [
 [project.scripts]
 pyrunir-mcp-invoke = "pyrunir_mcp.invoke:main"
 pyrunir-mcp = "pyrunir_mcp.server:main"
+
+[tool.uv.sources]
+pyrunir = { path = "../runir", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyrunir_mcp"]

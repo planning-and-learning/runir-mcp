@@ -14,7 +14,7 @@ from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext
 
 
 @dataclass(frozen=True)
-class FranceDLFeatureGenerator:
+class ModuleProgramContext:
     planning_domain: PlanningDomain
     module_output_repository: ExtDLConstructorRepository
     policy_repository: PolicyRepository
@@ -32,11 +32,11 @@ class ExecutionFailure:
     result: GroundPolicyProofResults
 
 
-def create_france_dl_feature_generator(domain_path: Path) -> FranceDLFeatureGenerator:
+def create_module_program_context(domain_path: Path) -> ModuleProgramContext:
     planning_domain = Parser(domain_path, ParserOptions()).get_domain()
     module_output_repository = ExtDLConstructorRepositoryFactory().create(planning_domain)
     policy_repository = PolicyRepositoryFactory().create(module_output_repository)
-    return FranceDLFeatureGenerator(
+    return ModuleProgramContext(
         planning_domain=planning_domain,
         module_output_repository=module_output_repository,
         policy_repository=policy_repository,

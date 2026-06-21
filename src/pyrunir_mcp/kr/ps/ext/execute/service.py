@@ -20,7 +20,7 @@ from pytyr.planning.ground import GoalCountHeuristic, astar_eager
 
 from pyrunir_mcp.feature_evidence import evaluate_features
 from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext, load_grounded_search_contexts
-from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure, create_france_dl_feature_generator
+from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure, create_module_program_context
 from pyrunir_mcp.kr.ps.ext.core.policy_evaluation import execute_policy_on_tasks, failure_category_from_status, is_success_status
 from pyrunir_mcp.kr.ps.ext.core.policy_io import parse_module_program_description, read_module_program_description
 
@@ -832,8 +832,8 @@ def _validate_replay_trace(
 
 def execute_policy(options: ExecutePolicyOptions) -> ExecutePolicyResult:
     execution_context = ExecutionContext(options.num_threads)
-    feature_generator = create_france_dl_feature_generator(options.domain_path)
-    policy = parse_module_program_description(feature_generator, read_module_program_description(options.module_program_file))
+    context = create_module_program_context(options.domain_path)
+    policy = parse_module_program_description(context, read_module_program_description(options.module_program_file))
     tasks = load_grounded_search_contexts(options.domain_path, options.problem_dir, execution_context)
     if options.replay_trace is not None:
         replay_errors = _validate_replay_trace(options, policy, tasks)
