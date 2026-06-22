@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
+
 import pytest
 
 from pyrunir_mcp.config import ServerConfig
@@ -119,8 +121,9 @@ def test_registered_base_reformat_constrains_sketch_file(monkeypatch, tmp_path):
         sketch_file="scratch/sketch.txt",
     )
 
-    assert result["sketch_file"] == "sketch.txt"
-    assert captured["sketch_file"] == (output_root / "scratch" / "sketch.txt").resolve()
+    expected = (output_root / "scratch" / "sketch.txt").resolve()
+    assert Path(result["sketch_file"]) == expected
+    assert captured["sketch_file"] == expected
 
 
 def test_registered_ext_reformat_rejects_module_program_file_escape(tmp_path):
@@ -167,8 +170,9 @@ def test_registered_uns_reformat_constrains_classifier_file(monkeypatch, tmp_pat
         classifier_file="scratch/classifier.txt",
     )
 
-    assert result["classifier_file"] == "classifier.txt"
-    assert captured["classifier_file"] == (output_root / "scratch" / "classifier.txt").resolve()
+    expected = (output_root / "scratch" / "classifier.txt").resolve()
+    assert Path(result["classifier_file"]) == expected
+    assert captured["classifier_file"] == expected
 
 
 def test_registered_base_create_empty_constrains_sketch_file(monkeypatch, tmp_path):
@@ -189,8 +193,9 @@ def test_registered_base_create_empty_constrains_sketch_file(monkeypatch, tmp_pa
         sketch_file="scratch/sketch.txt",
     )
 
-    assert result["sketch_file"] == "sketch.txt"
-    assert captured["sketch_file"] == (output_root / "scratch" / "sketch.txt").resolve()
+    expected = (output_root / "scratch" / "sketch.txt").resolve()
+    assert Path(result["sketch_file"]) == expected
+    assert captured["sketch_file"] == expected
 
 
 def test_registered_ext_create_empty_constrains_module_program_file(monkeypatch, tmp_path):
@@ -210,8 +215,9 @@ def test_registered_ext_create_empty_constrains_module_program_file(monkeypatch,
         module_program_file="scratch/module_program.txt",
     )
 
-    assert result["module_program_file"] == "module_program.txt"
-    assert captured["module_program_file"] == (output_root / "scratch" / "module_program.txt").resolve()
+    expected = (output_root / "scratch" / "module_program.txt").resolve()
+    assert Path(result["module_program_file"]) == expected
+    assert captured["module_program_file"] == expected
 
 
 def test_registered_uns_create_empty_constrains_classifier_file(monkeypatch, tmp_path):
@@ -229,5 +235,6 @@ def test_registered_uns_create_empty_constrains_classifier_file(monkeypatch, tmp
 
     result = mcp.tools[uns_reformat_tools.CREATE_EMPTY_TOOL_NAME](classifier_file="scratch/classifier.txt")
 
-    assert result["classifier_file"] == "classifier.txt"
-    assert captured["classifier_file"] == (output_root / "scratch" / "classifier.txt").resolve()
+    expected = (output_root / "scratch" / "classifier.txt").resolve()
+    assert Path(result["classifier_file"]) == expected
+    assert captured["classifier_file"] == expected

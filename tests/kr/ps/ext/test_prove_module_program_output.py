@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from tests.support.artifacts import assert_common_output, read_json, write_example_tool_output
 
 
@@ -35,12 +37,12 @@ def test_prove_module_program_writes_category_directories_and_feature_values(tmp
     summary = assert_common_output(run_dir, result, expected_count=1)
     item = summary["by_category"]["deadend_transition"]["items"][0]
     assert item["task"] == "p-002.pddl"
-    assert item["path"] == "counterexamples/deadend_transition/deadend_transition-001.json"
-    assert item["trace_path"] == "traces/deadend_transition/deadend_transition-001.json"
+    assert Path(item["path"]).relative_to(run_dir).as_posix() == "counterexamples/deadend_transition/deadend_transition-001.json"
+    assert Path(item["trace_path"]).relative_to(run_dir).as_posix() == "traces/deadend_transition/deadend_transition-001.json"
     assert item["trace_available"] is True
 
-    counterexample = read_json(run_dir / item["path"])
-    trace = read_json(run_dir / item["trace_path"])
+    counterexample = read_json(Path(item["path"]))
+    trace = read_json(Path(item["trace_path"]))
     assert counterexample["trace_path"] == item["trace_path"]
     assert trace["states"][1]["memory_state"] == "m1"
     assert trace["states"][1]["feature_values"] == {"holding": True}
