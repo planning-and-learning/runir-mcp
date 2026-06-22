@@ -9,8 +9,6 @@ from pathlib import Path
 from pyrunir_mcp.counterexample_payloads import counterexample_and_trace_payloads
 from pyrunir_mcp.json_types import JsonObject, JsonValue
 
-from pyrunir_mcp.paths import relative_to
-
 @dataclass(frozen=True)
 class CommandResult:
     args: list[str]
@@ -107,7 +105,7 @@ def _write_counterexample_and_trace(
         trace_data.setdefault("id", counterexample_id)
         trace_data.setdefault("category", category_slug)
         _write_json(trace_target, trace_data)
-        trace_path = relative_to(trace_target, output_dir)
+        trace_path = trace_target.resolve().as_posix()
         trace_available = True
 
     target = output_dir / "counterexamples" / category_slug / f"{counterexample_id}.json"
@@ -140,7 +138,7 @@ def _prompt_summary(
         "tool": tool,
         "status": status,
         "successful": status == "success",
-        "output_dir": output_dir.as_posix(),
+        "output_dir": output_dir.resolve().as_posix(),
         "summary_json": artifacts.get("summary_json"),
         "summary_md": artifacts.get("summary_md"),
         "counts": counts,
@@ -231,11 +229,11 @@ def write_summary(
         task_statuses = [(task["name"], "counterexample") for task in summary["tasks"]]
     category_counts = {category: data["count"] for category, data in by_category.items()}
     artifacts = {
-        "summary_json": relative_to(output_dir / "summary.json", output_dir),
-        "summary_md": relative_to(output_dir / "summary.md", output_dir),
-        "raw_stdout": "raw/stdout.txt",
-        "raw_stderr": "raw/stderr.txt",
-        "output_dir": output_dir.as_posix(),
+        "summary_json": (output_dir / "summary.json").resolve().as_posix(),
+        "summary_md": (output_dir / "summary.md").resolve().as_posix(),
+        "raw_stdout": (output_dir / "raw" / "stdout.txt").resolve().as_posix(),
+        "raw_stderr": (output_dir / "raw" / "stderr.txt").resolve().as_posix(),
+        "output_dir": output_dir.resolve().as_posix(),
     }
     prompt_summary = _prompt_summary(
         tool=tool,
@@ -283,7 +281,7 @@ def write_summary(
         "tasks": summary["tasks"],
         "summary_path": artifacts["summary_json"],
         "summary_md_path": artifacts["summary_md"],
-        "output_dir": output_dir.as_posix(),
+        "output_dir": output_dir.resolve().as_posix(),
         "counts": summary["counts"],
         "by_category": by_category,
     }
@@ -343,7 +341,7 @@ def write_native_counterexample_run(
                 id=counterexample_id,
                 category=category,
                 task=data.get("task"),
-                path=relative_to(target, output_dir),
+                path=target.resolve().as_posix(),
                 trace_path=trace_path,
                 trace_available=trace_available,
             )

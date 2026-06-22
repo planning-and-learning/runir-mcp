@@ -603,7 +603,7 @@ def _write_failure_index(dump_dir: Path, failure_id: str, failure_category: str,
         "status": trace.get("status"),
         "execute_status": trace.get("execute_status"),
         "counterexample_source": trace.get("counterexample_source"),
-        "counterexample_path": counterexample_path.relative_to(dump_dir).as_posix(),
+        "counterexample_path": counterexample_path.resolve().as_posix(),
         "trace_available": trace_available,
     }
     if trace_path is not None:

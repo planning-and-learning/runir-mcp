@@ -6,8 +6,6 @@ from typing import Protocol
 
 from pyrunir_mcp.json_types import JsonObject, JsonValue
 
-from pyrunir_mcp.paths import relative_to
-
 
 class ExecuteResultLike(Protocol):
     failure: object | None
@@ -19,12 +17,9 @@ def _result_path(value: JsonValue, output_dir: Path) -> str | None:
     if value is None:
         return None
     path = Path(str(value))
-    if not path.is_absolute():
-        return path.as_posix()
-    try:
-        return path.relative_to(output_dir).as_posix()
-    except ValueError:
-        return "<omitted: outside output_dir>"
+    if path.is_absolute():
+        return path.resolve().as_posix()
+    return (output_dir / path).resolve().as_posix()
 
 def _manifest_item(item: JsonValue, output_dir: Path) -> JsonValue:
     if not isinstance(item, dict):
@@ -62,7 +57,7 @@ def _reformat_prompt_summary(
     }
 
 def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: JsonValue) -> JsonObject:
-    artifact_path = path.name
+    artifact_path = path.resolve().as_posix()
     prompt_summary = _reformat_prompt_summary(
         tool=tool,
         path_key=path_key,
@@ -153,15 +148,15 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
 
     task_statuses = [(item["name"], item.get("status")) for item in task_items]
     artifacts = {
-        "output_dir": output_dir.as_posix(),
-        "manifest_json": relative_to(manifest_path, output_dir) if manifest_path.exists() else None,
-        "summary_md": relative_to(summary_md_path, output_dir) if summary_md_path.exists() else None,
+        "output_dir": output_dir.resolve().as_posix(),
+        "manifest_json": manifest_path.resolve().as_posix() if manifest_path.exists() else None,
+        "summary_md": summary_md_path.resolve().as_posix() if summary_md_path.exists() else None,
     }
     prompt_summary = {
         "tool": tool,
         "status": status,
         "successful": status == "success",
-        "output_dir": output_dir.as_posix(),
+        "output_dir": output_dir.resolve().as_posix(),
         "manifest_json": artifacts.get("manifest_json"),
         "summary_md": artifacts.get("summary_md"),
         "counts": {

@@ -27,7 +27,7 @@ Uses the shared counterexample summary format. Nontermination witnesses are stru
   "items": [
     {
       "category": "structural_termination",
-      "path": "counterexamples/structural_termination/structural_termination-001.json",
+      "path": "<output-dir>/counterexamples/structural_termination/structural_termination-001.json",
       "trace_available": false
     }
   ]

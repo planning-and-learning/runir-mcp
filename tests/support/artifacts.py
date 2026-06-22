@@ -22,12 +22,12 @@ def read_json(path: Path) -> JsonValue:
 
 def assert_common_output(run_dir: Path, result: JsonObject, *, expected_count: int) -> JsonObject:
     assert result["output_dir"] == run_dir.as_posix()
-    assert result["summary_path"] == "summary.json"
-    assert result["summary_md_path"] == "summary.md"
-    assert result["artifacts"]["summary_json"] == "summary.json"
-    assert result["artifacts"]["summary_md"] == "summary.md"
-    assert result["artifacts"]["raw_stdout"] == "raw/stdout.txt"
-    assert result["artifacts"]["raw_stderr"] == "raw/stderr.txt"
+    assert result["summary_path"] == (run_dir / "summary.json").as_posix()
+    assert result["summary_md_path"] == (run_dir / "summary.md").as_posix()
+    assert result["artifacts"]["summary_json"] == (run_dir / "summary.json").as_posix()
+    assert result["artifacts"]["summary_md"] == (run_dir / "summary.md").as_posix()
+    assert result["artifacts"]["raw_stdout"] == (run_dir / "raw" / "stdout.txt").as_posix()
+    assert result["artifacts"]["raw_stderr"] == (run_dir / "raw" / "stderr.txt").as_posix()
     assert (run_dir / "summary.json").is_file()
     assert (run_dir / "summary.md").is_file()
     assert (run_dir / "raw" / "stdout.txt").is_file()
@@ -45,8 +45,8 @@ def assert_common_output(run_dir: Path, result: JsonObject, *, expected_count: i
     prompt_summary = result["prompt_summary"]
     assert result["primary"]["prompt_summary"] == prompt_summary
     assert prompt_summary["output_dir"] == run_dir.as_posix()
-    assert prompt_summary["summary_json"] == "summary.json"
-    assert prompt_summary["summary_md"] == "summary.md"
+    assert prompt_summary["summary_json"] == (run_dir / "summary.json").as_posix()
+    assert prompt_summary["summary_md"] == (run_dir / "summary.md").as_posix()
     assert prompt_summary["counts"] == summary["counts"]
     assert "items" not in prompt_summary
     assert "tasks" not in prompt_summary

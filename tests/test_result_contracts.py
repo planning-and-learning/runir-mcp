@@ -35,13 +35,14 @@ def test_counterexample_result_exposes_primary_category_counts(tmp_path):
         "false_negative": "false on an unsolvable state",
     }
     assert "items" not in result["prompt_summary"]
-    assert [item["path"] for item in result["items"]] == [
+    assert [Path(item["path"]).relative_to(tmp_path / "run").as_posix() for item in result["items"]] == [
         "counterexamples/false_positive/false_positive-001.json",
         "counterexamples/false_positive/false_positive-002.json",
         "counterexamples/false_negative/false_negative-003.json",
     ]
     for item in result["items"]:
-        assert (tmp_path / "run" / item["path"]).is_file()
+        assert Path(item["path"]).is_absolute()
+        assert Path(item["path"]).is_file()
 
 
 def test_write_summary_refuses_existing_summary_json(tmp_path):
@@ -78,19 +79,19 @@ def test_reformat_result_uses_layered_contract(tmp_path):
 
     assert result["status"] == "success"
     assert result["primary"]["successful"] is True
-    assert result["primary"]["sketch_file"] == "sketch.txt"
+    assert result["primary"]["sketch_file"] == policy.as_posix()
     assert result["primary"]["kind"] == "sketch"
     assert result["primary"]["prompt_summary"] == result["prompt_summary"]
     assert result["prompt_summary"] == {
         "tool": "runir.ps.base.reformat_policy",
         "status": "success",
         "successful": True,
-        "artifacts": {"sketch_file": "sketch.txt"},
+        "artifacts": {"sketch_file": policy.as_posix()},
         "kind": "sketch",
     }
     assert result["summary"]["tool"] == "runir.ps.base.reformat_policy"
-    assert result["artifacts"]["sketch_file"] == "sketch.txt"
-    assert result["sketch_file"] == "sketch.txt"
+    assert result["artifacts"]["sketch_file"] == policy.as_posix()
+    assert result["sketch_file"] == policy.as_posix()
     assert result["items"] == []
 
 
@@ -102,8 +103,8 @@ def test_counterexample_category_slug_removes_path_segments(tmp_path):
     )
 
     assert result["items"][0]["category"] == "bad_name"
-    assert result["items"][0]["path"] == "counterexamples/bad_name/bad_name-001.json"
-    assert (tmp_path / "run" / "counterexamples" / "bad_name" / "bad_name-001.json").is_file()
+    assert Path(result["items"][0]["path"]).relative_to(tmp_path / "run").as_posix() == "counterexamples/bad_name/bad_name-001.json"
+    assert Path(result["items"][0]["path"]).is_file()
     assert not (tmp_path / "bad").exists()
 
 
@@ -282,8 +283,8 @@ def test_execute_result_reuses_service_written_failure_artifacts(tmp_path):
             "problem_file": "p1.pddl",
             "task": "p1.pddl",
             "seed": 0,
-            "path": "counterexamples/open_state/open_state-001.json",
-            "trace_path": "traces/open_state/open_state-001.json",
+            "path": counterexample_path.as_posix(),
+            "trace_path": trace_path.as_posix(),
             "trace_available": True,
         }
     ]

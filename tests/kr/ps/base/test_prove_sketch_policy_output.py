@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from tests.support.artifacts import assert_common_output, read_json, write_example_tool_output
 
 
@@ -27,8 +28,8 @@ def test_prove_sketch_policy_writes_hierarchical_counterexample_summary(tmp_path
     run_dir = tmp_path / "run"
     summary = assert_common_output(run_dir, result, expected_count=1)
     item = summary["by_category"]["open_state"]["items"][0]
-    assert item["path"] == "counterexamples/open_state/open_state-001.json"
-    assert item["trace_path"] == "traces/open_state/open_state-001.json"
+    assert Path(item["path"]).relative_to(run_dir).as_posix() == "counterexamples/open_state/open_state-001.json"
+    assert Path(item["trace_path"]).relative_to(run_dir).as_posix() == "traces/open_state/open_state-001.json"
     assert item["trace_available"] is True
 
     counterexample = read_json(run_dir / item["path"])
