@@ -210,9 +210,9 @@ def test_execute_cli_reused_output_allocates_child_run(monkeypatch, tmp_path):
     monkeypatch.setattr(invoke, "execute_base_policy", fake_execute)
     output_dir = tmp_path / "execute"
     args = {
-        "domain": str(tmp_path / "domain.pddl"),
-        "problem_dir": str(tmp_path / "problems"),
-        "policy_file": str(tmp_path / "sketch.txt"),
+        "domain_file": str(tmp_path / "domain.pddl"),
+        "problem_file": str(tmp_path / "problem.pddl"),
+        "sketch_file": str(tmp_path / "sketch.txt"),
         "output_dir": str(output_dir),
     }
 
@@ -234,11 +234,11 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
     output_dir = tmp_path / "execute" / "run-002"
     output_dir.mkdir(parents=True)
     trace = output_dir / "task-001_seed-0_trace.json"
-    trace.write_text("{}\n", encoding="utf-8")
+    trace.write_text(json.dumps({"states": [{"id": 1, "feature_values": {"n": 1}}], "transitions": []}) + "\n", encoding="utf-8")
     manifest = {
         "tasks": [
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "status": "FAILED",
                 "failure_category": "open_state",
                 "seed": 0,
@@ -247,7 +247,7 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
         ],
         "distinct_failures": [
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "failure_category": "open_state",
                 "seed": 0,
                 "trace_file": trace.as_posix(),
@@ -260,10 +260,11 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
 
     assert result["tasks"][0]["trace_path"] == "task-001_seed-0_trace.json"
     assert result["items"][0]["path"] == "counterexamples/open_state/open_state-001.json"
-    assert result["items"][0]["trace_path"] == "traces/open_state/open_state-001.json"
-    assert result["items"][0]["trace_available"] is True
+    assert result["items"][0]["trace_path"] is None
+    assert result["items"][0]["trace_available"] is False
     assert (output_dir / result["items"][0]["path"]).is_file()
-    assert (output_dir / result["items"][0]["trace_path"]).is_file()
+    counterexample = json.loads((output_dir / result["items"][0]["path"]).read_text(encoding="utf-8"))
+    assert counterexample["state"]["feature_values"] == {"n": 1}
     assert result["manifest"]["tasks"][0]["trace_file"] == "task-001_seed-0_trace.json"
     assert result["manifest"]["distinct_failures"][0]["trace_file"] == "task-001_seed-0_trace.json"
     persisted = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -277,38 +278,51 @@ def test_execute_result_promotes_only_representative_failures(tmp_path):
 
     output_dir = tmp_path / "execute"
     output_dir.mkdir()
-    for name in (
-        "task-001_seed-0_trace.json",
-        "task-002_seed-1_trace.json",
-        "task-003_seed-0_trace.json",
-        "task-004_seed-0_trace.json",
-    ):
-        (output_dir / name).write_text("{}\n", encoding="utf-8")
+    (output_dir / "task-001_seed-0_trace.json").write_text(
+        json.dumps({"states": [{"id": 1, "feature_values": {"n": 1}}], "transitions": []}) + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "task-002_seed-1_trace.json").write_text("{}\n", encoding="utf-8")
+    (output_dir / "task-003_seed-0_trace.json").write_text(
+        json.dumps({
+            "states": [{"id": 1}, {"id": 2}, {"id": 1}],
+            "transitions": [
+                {"step": 0, "source_state": 1, "target_state": 2, "action": "a"},
+                {"step": 1, "source_state": 2, "target_state": 1, "action": "b"},
+            ],
+            "cycle": {"prefix_state_ids": [], "cycle_state_ids": [1, 2, 1], "prefix_transition_steps": [], "cycle_transition_steps": [0, 1]},
+        }) + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "task-004_seed-0_trace.json").write_text(
+        json.dumps({"states": [{"id": 4, "feature_values": {"n": 4}}], "transitions": []}) + "\n",
+        encoding="utf-8",
+    )
     manifest = {
         "tasks": [
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "status": "FAILED",
                 "failure_category": "open_state",
                 "seed": 0,
                 "trace_file": "task-001_seed-0_trace.json",
             },
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "status": "FAILED",
                 "failure_category": "open_state",
                 "seed": 1,
                 "trace_file": "task-002_seed-1_trace.json",
             },
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "status": "FAILED",
                 "failure_category": "cycle",
                 "seed": 0,
                 "trace_file": "task-003_seed-0_trace.json",
             },
             {
-                "problem": "p2.pddl",
+                "problem_file": "p2.pddl",
                 "status": "FAILED",
                 "failure_category": "open_state",
                 "seed": 0,
@@ -317,21 +331,21 @@ def test_execute_result_promotes_only_representative_failures(tmp_path):
         ],
         "distinct_failures": [
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "failure_category": "open_state",
                 "seed": 0,
                 "trace_file": "task-001_seed-0_trace.json",
                 "fingerprint": "p1-open",
             },
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "failure_category": "cycle",
                 "seed": 0,
                 "trace_file": "task-003_seed-0_trace.json",
                 "fingerprint": "p1-cycle",
             },
             {
-                "problem": "p2.pddl",
+                "problem_file": "p2.pddl",
                 "failure_category": "open_state",
                 "seed": 0,
                 "trace_file": "task-004_seed-0_trace.json",
@@ -354,10 +368,15 @@ def test_execute_result_promotes_only_representative_failures(tmp_path):
         "counterexamples/open_state/open_state-003.json",
     ]
     assert [item["trace_path"] for item in result["items"]] == [
-        "traces/open_state/open_state-001.json",
+        None,
         "traces/cycle/cycle-002.json",
-        "traces/open_state/open_state-003.json",
+        None,
     ]
+    cycle_counterexample = json.loads((output_dir / result["items"][1]["path"]).read_text(encoding="utf-8"))
+    cycle_trace = json.loads((output_dir / result["items"][1]["trace_path"]).read_text(encoding="utf-8"))
+    assert cycle_counterexample["cycle"]["cycle_state_ids"] == [1, 2, 1]
+    assert [transition["action"] for transition in cycle_counterexample["transitions"]] == ["a", "b"]
+    assert [transition["action"] for transition in cycle_trace["transitions"]] == []
     assert result["primary"]["failure_count"] == 3
     assert result["prompt_summary"]["counts"]["failures"] == 3
 
@@ -375,7 +394,7 @@ def test_execute_result_omits_absolute_trace_paths_outside_output_dir(tmp_path):
     manifest = {
         "tasks": [
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "status": "FAILED",
                 "failure_category": "open_state",
                 "seed": 0,
@@ -384,7 +403,7 @@ def test_execute_result_omits_absolute_trace_paths_outside_output_dir(tmp_path):
         ],
         "distinct_failures": [
             {
-                "problem": "p1.pddl",
+                "problem_file": "p1.pddl",
                 "failure_category": "open_state",
                 "seed": 0,
                 "trace_file": trace.as_posix(),
@@ -417,13 +436,7 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
         seen.update({
             "max_arity": options.max_arity,
             "dump_max_steps": options.dump_max_steps,
-            "dump_max_compatible_actions": options.dump_max_compatible_actions,
             "dump_max_states": options.dump_max_states,
-            "classify_compatible_successors": options.classify_compatible_successors,
-            "classifier": options.classifier,
-            "classifier_max_time": options.classifier_max_time,
-            "classifier_max_states": options.classifier_max_states,
-            "include_policy_metadata": options.include_policy_metadata,
         })
         dump_dir = Path(options.dump_dir)
         dump_dir.mkdir(parents=True, exist_ok=True)
@@ -436,31 +449,19 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
 
     monkeypatch.setattr(invoke, "execute_base_policy", fake_execute)
     result = invoke._base_execute({
-        "domain": str(tmp_path / "domain.pddl"),
-        "problem_dir": str(tmp_path / "problems"),
-        "policy_file": str(tmp_path / "sketch.txt"),
+        "domain_file": str(tmp_path / "domain.pddl"),
+        "problem_file": str(tmp_path / "problem.pddl"),
+        "sketch_file": str(tmp_path / "sketch.txt"),
         "output_dir": str(tmp_path / "execute"),
         "max_arity": 1,
         "dump_max_steps": 7,
-        "dump_max_compatible_actions": 11,
         "dump_max_states": 13,
-        "classify_compatible_successors": True,
-        "classifier": "cheap",
-        "classifier_max_time": 2.5,
-        "classifier_max_states": 17,
-        "include_policy_metadata": True,
     })
 
     assert seen == {
         "max_arity": 1,
         "dump_max_steps": 7,
-        "dump_max_compatible_actions": 11,
         "dump_max_states": 13,
-        "classify_compatible_successors": True,
-        "classifier": "cheap",
-        "classifier_max_time": 2.5,
-        "classifier_max_states": 17,
-        "include_policy_metadata": True,
     }
     assert result["primary"]["successful"] is True
 
@@ -478,7 +479,6 @@ def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
         seen["max_arity"] = options.max_arity
         seen["max_num_states"] = options.max_num_states
         seen["max_time"] = options.max_time
-        seen["include_policy_metadata"] = options.include_policy_metadata
         dump_dir = Path(options.dump_dir)
         dump_dir.mkdir(parents=True, exist_ok=True)
         (dump_dir / "manifest.json").write_text(
@@ -490,15 +490,14 @@ def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
 
     monkeypatch.setattr(invoke, "execute_ext_policy", fake_execute)
     result = invoke._ext_execute({
-        "domain": str(tmp_path / "domain.pddl"),
-        "problem_dir": str(tmp_path / "problems"),
+        "domain_file": str(tmp_path / "domain.pddl"),
+        "problem_file": str(tmp_path / "problem.pddl"),
         "module_program_file": str(tmp_path / "module_program.txt"),
         "output_dir": str(tmp_path / "execute"),
         "max_arity": 2,
         "max_num_states": 123,
         "max_time": 4.5,
-        "include_policy_metadata": True,
     })
 
-    assert seen == {"max_arity": 2, "max_num_states": 123, "max_time": 4.5, "include_policy_metadata": True}
+    assert seen == {"max_arity": 2, "max_num_states": 123, "max_time": 4.5}
     assert result["primary"]["successful"] is True

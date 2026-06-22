@@ -64,7 +64,6 @@ def evaluate_features(state: State, features: list[Feature]) -> JsonObject:
 def state_facts(state: State) -> JsonObject:
     data: JsonObject = {}
     try:
-        data["static_atoms"] = [str(atom) for atom in state.static_atoms()]
         data["fluent_facts"] = [str(fact) for fact in state.fluent_facts()]
         data["derived_atoms"] = [str(atom) for atom in state.derived_atoms()]
     except Exception:  # noqa: BLE001

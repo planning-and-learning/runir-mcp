@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import json
 import re
-import shutil
 from pathlib import Path
 from pyrunir_mcp.json_types import JsonObject, JsonValue
 
@@ -49,6 +48,141 @@ def _manifest_result(manifest: JsonValue, output_dir: Path) -> JsonValue:
             if isinstance(item, dict) and "trace_file" in item:
                 item["trace_file"] = _result_path(item.get("trace_file"), output_dir)
     return data
+
+
+def _state_id(state: JsonObject) -> int | None:
+    value = state.get("id", state.get("state_id"))
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _states_by_id(states: list[JsonObject]) -> dict[int, JsonObject]:
+    result: dict[int, JsonObject] = {}
+    for state in states:
+        state_id = _state_id(state)
+        if state_id is not None:
+            result.setdefault(state_id, state)
+    return result
+
+
+def _transition_source(transition: JsonObject) -> int | None:
+    value = transition.get("source_state", transition.get("source"))
+    return value if isinstance(value, int) else None
+
+
+def _transition_target(transition: JsonObject) -> int | None:
+    value = transition.get("target_state", transition.get("target"))
+    return value if isinstance(value, int) else None
+
+
+def _transition_state_path(transitions: list[JsonObject]) -> list[int]:
+    if not transitions:
+        return []
+    first = _transition_source(transitions[0])
+    if first is None:
+        return []
+    state_ids = [first]
+    for transition in transitions:
+        target = _transition_target(transition)
+        if target is None:
+            return state_ids
+        state_ids.append(target)
+    return state_ids
+
+
+def _ordered_states_for_path(source: JsonObject, state_ids: list[int]) -> list[JsonObject]:
+    by_id = _states_by_id([state for state in source.get("states", []) if isinstance(state, dict)])
+    return [copy.deepcopy(by_id[state_id]) for state_id in state_ids if state_id in by_id]
+
+
+def _path_trace_from_source(source: JsonObject, witness_state_id: int | None) -> JsonObject | None:
+    transitions = [t for t in source.get("transitions", []) if isinstance(t, dict)]
+    if not transitions:
+        return None
+    state_path = _transition_state_path(transitions)
+    if not state_path:
+        return None
+    if witness_state_id is not None and witness_state_id in state_path:
+        stop = state_path.index(witness_state_id)
+        transitions = transitions[:stop]
+        state_path = state_path[: stop + 1]
+    trace = {
+        key: copy.deepcopy(source[key])
+        for key in (
+            "artifact_version",
+            "tool",
+            "domain_file",
+            "problem_file",
+            "sketch_file",
+            "sketch_sha256",
+            "module_program_file",
+            "module_program_sha256",
+            "options",
+            "status",
+            "failure_category",
+            "task_index",
+            "features",
+        )
+        if key in source
+    }
+    trace.update(
+        {
+            "states": _ordered_states_for_path(source, state_path),
+            "transitions": copy.deepcopy(transitions),
+            "chosen_actions": [transition.get("action") for transition in transitions if transition.get("action") is not None],
+            "trace_available": True,
+        }
+    )
+    return trace
+
+
+def _cycle_counterexample_from_source(source: JsonObject) -> JsonObject | None:
+    cycle = source.get("cycle")
+    if not isinstance(cycle, dict):
+        return None
+    cycle_state_ids = [state_id for state_id in cycle.get("cycle_state_ids", []) if isinstance(state_id, int)]
+    cycle_steps = [step for step in cycle.get("cycle_transition_steps", []) if isinstance(step, int)]
+    transitions = [t for t in source.get("transitions", []) if isinstance(t, dict)]
+    cycle_transitions = [copy.deepcopy(transitions[step]) for step in cycle_steps if 0 <= step < len(transitions)]
+    data = {
+        "cycle": copy.deepcopy(cycle),
+        "states": _ordered_states_for_path(source, cycle_state_ids),
+        "transitions": cycle_transitions,
+        "chosen_actions": [transition.get("action") for transition in cycle_transitions if transition.get("action") is not None],
+    }
+    return data
+
+
+def _witness_state_from_source(source: JsonObject) -> JsonObject | None:
+    states = [state for state in source.get("states", []) if isinstance(state, dict)]
+    if not states:
+        return None
+    transitions = [t for t in source.get("transitions", []) if isinstance(t, dict)]
+    if transitions:
+        target = _transition_target(transitions[-1])
+        if target is not None:
+            by_id = _states_by_id(states)
+            if target in by_id:
+                return copy.deepcopy(by_id[target])
+    return copy.deepcopy(states[0])
+
+
+def _counterexample_payload_from_source(source: JsonObject, category: str) -> tuple[JsonObject, JsonObject | None]:
+    if category == "cycle" or isinstance(source.get("cycle"), dict):
+        cycle_payload = _cycle_counterexample_from_source(source)
+        if cycle_payload is not None:
+            witness_state_id = None
+            cycle = cycle_payload.get("cycle")
+            if isinstance(cycle, dict):
+                cycle_states = cycle.get("cycle_state_ids", [])
+                if cycle_states and isinstance(cycle_states[0], int):
+                    witness_state_id = cycle_states[0]
+            return cycle_payload, _path_trace_from_source(source, witness_state_id)
+    state = _witness_state_from_source(source)
+    payload: JsonObject = {"state": state} if state is not None else {}
+    witness_state_id = _state_id(state) if isinstance(state, dict) else None
+    return payload, _path_trace_from_source(source, witness_state_id)
 
 
 def _reformat_prompt_summary(
@@ -111,14 +245,14 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
     failing_status = None
     failure_category = None
     for index, task in enumerate(tasks, start=1):
-        problem = task.get("problem")
+        problem = task.get("problem_file")
         name = Path(str(problem)).name if problem else f"task-{index:03d}"
         trace_file = _result_path(task.get("trace_file"), output_dir)
         item = {
             "kind": "task",
             "id": f"task-{index:03d}",
             "name": name,
-            "problem": problem,
+            "problem_file": problem,
             "status": task.get("status"),
             "failure_category": task.get("failure_category"),
             "seed": task.get("seed"),
@@ -144,19 +278,26 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
     for index, item in enumerate(failure_sources, start=1):
         category = _slug(item.get("failure_category") or item.get("status"), "failure")
         failure_id = f"{category}-{index:03d}"
-        problem = item.get("problem")
+        problem = item.get("problem_file")
         task = item.get("task") or item.get("name") or (Path(str(problem)).name if problem else f"task-{index:03d}")
         source_trace_path = _result_path(item.get("trace_file") or item.get("trace_path"), output_dir)
         trace_path = None
         trace_available = False
+        counterexample_payload: JsonObject = {}
         if source_trace_path and source_trace_path != "<omitted: outside output_dir>":
             source = output_dir / str(source_trace_path)
             if source.is_file():
-                trace_target = output_dir / "traces" / category / f"{failure_id}.json"
-                trace_target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, trace_target)
-                trace_path = trace_target.relative_to(output_dir).as_posix()
-                trace_available = True
+                source_data = _read_json(source)
+                if isinstance(source_data, dict):
+                    counterexample_payload, trace_data = _counterexample_payload_from_source(source_data, category)
+                    if trace_data is not None:
+                        trace_target = output_dir / "traces" / category / f"{failure_id}.json"
+                        trace_data.setdefault("schema_version", 1)
+                        trace_data.setdefault("id", failure_id)
+                        trace_data.setdefault("category", category)
+                        _write_json(trace_target, trace_data)
+                        trace_path = trace_target.relative_to(output_dir).as_posix()
+                        trace_available = True
         counterexample_path = output_dir / "counterexamples" / category / f"{failure_id}.json"
         counterexample = {
             "schema_version": 1,
@@ -164,11 +305,12 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
             "category": category,
             "kind": "failure",
             "failure_category": item.get("failure_category"),
-            "problem": problem,
+            "problem_file": problem,
             "task": task,
             "seed": item.get("seed"),
             "source_trace_path": source_trace_path,
             "trace_available": trace_available,
+            **counterexample_payload,
         }
         if trace_path is not None:
             counterexample["trace_path"] = trace_path
@@ -178,7 +320,7 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
             "id": failure_id,
             "category": category,
             "failure_category": item.get("failure_category"),
-            "problem": problem,
+            "problem_file": problem,
             "task": task,
             "seed": item.get("seed"),
             "path": counterexample_path.relative_to(output_dir).as_posix(),

@@ -45,7 +45,7 @@ from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.artifacts import write_native_counterexample_run
 from pyrunir_mcp.json_types import JsonObject
-from pyrunir_mcp.planning import LoadedSearchContext, load_grounded_search_contexts
+from pyrunir_mcp.planning import LoadedSearchContext, load_grounded_search_context
 
 
 @dataclass(frozen=True)
@@ -392,22 +392,21 @@ def counterexample_data(
 def prove_tasks(
     *,
     domain_path: Path,
-    train_dir: Path,
+    problem_path: Path,
     num_threads: int,
     prove_one: Callable[[LoadedSearchContext], ProofResult],
     evidence: StateEvidence | None = None,
 ) -> ProofRunResult:
     execution_context = ExecutionContext(num_threads)
-    tasks = load_grounded_search_contexts(domain_path, train_dir, execution_context)
+    task = load_grounded_search_context(domain_path, problem_path, execution_context)
+    result = prove_one(task)
     counterexamples: list[JsonObject] = []
-    for task in tasks:
-        result = prove_one(task)
-        if not result.is_successful():
-            for category, witness in failure_items(result):
-                counterexamples.append(counterexample_data(task, result, category, witness, evidence))
+    if not result.is_successful():
+        for category, witness in failure_items(result):
+            counterexamples.append(counterexample_data(task, result, category, witness, evidence))
     return ProofRunResult(
         status="success" if not counterexamples else "failure",
-        num_tasks=len(tasks),
+        num_tasks=1,
         counterexamples=counterexamples,
     )
 

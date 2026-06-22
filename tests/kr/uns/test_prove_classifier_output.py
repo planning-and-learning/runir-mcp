@@ -37,18 +37,14 @@ def test_prove_classifier_writes_all_classifier_counterexamples_separately(tmp_p
 
     fp_item = summary["by_category"]["false_positive"]["items"][0]
     fn_item = summary["by_category"]["false_negative"]["items"][0]
-    assert fp_item["trace_path"] == "traces/false_positive/false_positive-001.json"
-    assert fn_item["trace_path"] == "traces/false_negative/false_negative-002.json"
-    assert fp_item["trace_available"] is True
-    assert fn_item["trace_available"] is True
+    assert fp_item["trace_path"] is None
+    assert fn_item["trace_path"] is None
+    assert fp_item["trace_available"] is False
+    assert fn_item["trace_available"] is False
     fp = read_json(run_dir / fp_item["path"])
     fn = read_json(run_dir / fn_item["path"])
-    fp_trace = read_json(run_dir / fp_item["trace_path"])
-    fn_trace = read_json(run_dir / fn_item["trace_path"])
-    assert fp["trace_path"] == fp_item["trace_path"]
-    assert fn["trace_path"] == fn_item["trace_path"]
-    assert fp_trace["feature_values"] == {"deadend_like": True}
-    assert fn_trace["feature_values"] == {"deadend_like": False}
+    assert fp["feature_values"] == {"deadend_like": True}
+    assert fn["feature_values"] == {"deadend_like": False}
 
 
 def test_prove_classifier_accepts_frozen_options(monkeypatch, tmp_path):
@@ -69,12 +65,12 @@ def test_prove_classifier_accepts_frozen_options(monkeypatch, tmp_path):
 
     monkeypatch.setattr(service, "_repositories", lambda _domain: (object(), object()))
     monkeypatch.setattr(service, "parse_classifier", fake_parse)
-    monkeypatch.setattr(service, "get_problem_paths", lambda _train: [])
+    monkeypatch.setattr(service, "_expand", lambda *_args, **_kwargs: service.StateSpace(problem_path=train / "p1.pddl", states={}, edges=[], goals=set()))
 
     result = service.prove_classifier(
         ProveClassifierOptions(
-            domain=str(domain),
-            train_dir=str(train),
+            domain_file=str(domain),
+            problem_file=str(train / "p1.pddl"),
             output_dir=str(output),
             classifier_file=None,
             max_time_seconds=0.01,
@@ -86,35 +82,14 @@ def test_prove_classifier_accepts_frozen_options(monkeypatch, tmp_path):
     assert result["primary"]["successful"] is True
 
 
-def test_reformat_classifier_can_create_empty_classifier(monkeypatch, tmp_path):
+def test_create_empty_classifier_writes_empty_classifier(tmp_path):
     from pyrunir_mcp.kr.uns.reformat import service
-    from pyrunir_mcp.kr.uns.reformat.service import ReformatClassifierOptions
+    from pyrunir_mcp.kr.uns.reformat.service import CreateEmptyClassifierOptions
 
-    domain = tmp_path / "domain.pddl"
     classifier = tmp_path / "classifier.txt"
-    domain.write_text("(define (domain d))\n", encoding="utf-8")
 
-    class Parsed:
-        def get_features(self):
-            return []
-
-        def __str__(self):
-            return service.EMPTY_CLASSIFIER
-
-    descriptions = []
-
-    def fake_parse(description, _domain, _repo):
-        descriptions.append(description)
-        return Parsed()
-
-    monkeypatch.setattr(service, "_repositories", lambda _domain: (object(), object()))
-    monkeypatch.setattr(service, "parse_classifier", fake_parse)
-
-    result = service.reformat_classifier(
-        ReformatClassifierOptions(domain_path=domain, classifier_file=classifier, create_empty=True)
-    )
+    result = service.create_empty_classifier(CreateEmptyClassifierOptions(classifier_file=classifier))
 
     assert result.classifier_file == classifier
     assert result.num_features == 0
-    assert descriptions == [service.EMPTY_CLASSIFIER + "\n"]
     assert classifier.read_text(encoding="utf-8") == service.EMPTY_CLASSIFIER + "\n"

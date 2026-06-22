@@ -41,15 +41,23 @@ def build_ground_search_context(
     return GroundTaskSearchContext(grounded.task, execution_context)
 
 
+def load_grounded_search_context(
+    domain_path: Path,
+    problem_path: Path,
+    execution_context: ExecutionContext,
+) -> LoadedSearchContext:
+    return LoadedSearchContext(
+        problem_path=problem_path,
+        search_context=build_ground_search_context(domain_path, problem_path, execution_context),
+    )
+
+
 def load_grounded_search_contexts(
     domain_path: Path,
     problem_dir: Path,
     execution_context: ExecutionContext,
 ) -> list[LoadedSearchContext]:
     return [
-        LoadedSearchContext(
-            problem_path=problem_path,
-            search_context=build_ground_search_context(domain_path, problem_path, execution_context),
-        )
+        load_grounded_search_context(domain_path, problem_path, execution_context)
         for problem_path in get_problem_paths(problem_dir)
     ]

@@ -17,7 +17,11 @@ EMPTY_CLASSIFIER = '(:classifier (:symbol c0) (:description "") (:features) (:ex
 class ReformatClassifierOptions:
     domain_path: Path
     classifier_file: Path
-    create_empty: bool = False
+
+
+@dataclass(frozen=True)
+class CreateEmptyClassifierOptions:
+    classifier_file: Path
 
 
 @dataclass(frozen=True)
@@ -33,12 +37,14 @@ def _repositories(domain_path: Path):
     return planning_domain, classifier_repository
 
 
+def create_empty_classifier(options: CreateEmptyClassifierOptions) -> ReformatClassifierResult:
+    options.classifier_file.parent.mkdir(parents=True, exist_ok=True)
+    options.classifier_file.write_text(EMPTY_CLASSIFIER + "\n", encoding="utf-8")
+    return ReformatClassifierResult(classifier_file=options.classifier_file, num_features=0)
+
+
 def reformat_classifier(options: ReformatClassifierOptions) -> ReformatClassifierResult:
     planning_domain, repository = _repositories(options.domain_path)
-    if options.create_empty and not options.classifier_file.exists():
-        options.classifier_file.parent.mkdir(parents=True, exist_ok=True)
-        with options.classifier_file.open("x", encoding="utf-8") as fh:
-            fh.write(EMPTY_CLASSIFIER + "\n")
     text = options.classifier_file.read_text(encoding="utf-8")
     classifier = parse_classifier(text, planning_domain, repository)
     options.classifier_file.write_text(f"{classifier}\n", encoding="utf-8")

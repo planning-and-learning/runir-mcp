@@ -66,7 +66,7 @@ def test_invoke_formats_offset_error_with_source_pointer(tmp_path) -> None:
 
     result, stderr = _format_tool_error(
         "runir.ps.ext.reformat_module_program",
-        {"policy_file": str(policy)},
+        {"module_program_file": str(policy)},
         RuntimeError(f"Rule entry section :memory is not valid. at offset {offset}."),
     )
 
@@ -101,7 +101,7 @@ def test_invoke_main_writes_error_json_without_traceback(monkeypatch, tmp_path, 
             "pyrunir-mcp-invoke",
             "runir.ps.ext.reformat_module_program",
             "--args-json",
-            json.dumps({"policy_file": str(policy)}),
+            json.dumps({"module_program_file": str(policy)}),
             "--result-json",
             str(result_json),
         ],

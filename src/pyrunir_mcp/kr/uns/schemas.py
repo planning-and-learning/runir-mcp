@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ProveClassifierOptions:
-    domain: str
-    train_dir: str
+    domain_file: str
+    problem_file: str
     output_dir: str
     classifier_file: str | None = None
     max_num_states: int = 1_000_000

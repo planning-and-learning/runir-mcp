@@ -5,6 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ProveTerminationOptions:
-    domain: str
+    domain_file: str
     module_program_file: str
     output_dir: str

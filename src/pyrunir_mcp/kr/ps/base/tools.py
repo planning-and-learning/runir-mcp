@@ -12,25 +12,23 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
 
     @mcp.tool(name=TOOL_NAME)
     def prove_sketch_policy(
-        domain: str,
-        train_dir: str,
+        domain_file: str,
+        problem_file: str,
+        sketch_file: str,
         output_dir: str,
-        policy_file: str | None = None,
         num_threads: int = 1,
         max_num_states: int = 100_000,
         max_time_seconds: float = 5.0,
-        dump_state_mode: str = "summary",
     ) -> dict:
         """Prove a Runir sketch policy and write every counterexample separately."""
         return run_prove_sketch_policy(
             ProveSketchPolicyOptions(
-                domain=domain,
-                train_dir=train_dir,
+                domain_file=domain_file,
+                problem_file=problem_file,
+                sketch_file=sketch_file,
                 output_dir=server_output_dir(config.output_root, output_dir).as_posix(),
-                policy_file=policy_file,
                 num_threads=num_threads,
                 max_num_states=max_num_states,
                 max_time_seconds=max_time_seconds,
-                dump_state_mode=dump_state_mode,
             )
         )

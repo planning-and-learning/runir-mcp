@@ -99,8 +99,8 @@ def collect_features(program: ModuleProgram) -> list[Feature]:
 
 
 def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
-    domain_path = Path(options.domain).resolve()
-    train_path = Path(options.train_dir).resolve()
+    domain_path = Path(options.domain_file).resolve()
+    problem_path = Path(options.problem_file).resolve()
     planning_domain, repository = _repositories(domain_path)
     program = parse_module_program(
         Path(options.module_program_file).read_text(encoding="utf-8"),
@@ -117,23 +117,22 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
 
     result = prove_tasks(
         domain_path=domain_path,
-        train_dir=train_path,
+        problem_path=problem_path,
         num_threads=options.num_threads,
         prove_one=lambda task: prove_ground_solution(task.search_context, program, search_options),
-        evidence=state_evidence(features, include_facts=options.dump_state_mode in {"facts", "full"}),
+        evidence=state_evidence(features, include_facts=True),
     )
     return write_proof_run(
         tool=TOOL_NAME,
         output_dir=Path(options.output_dir).resolve(),
         metadata={
-            "domain": domain_path.as_posix(),
-            "train_dir": train_path.as_posix(),
+            "domain_file": domain_path.as_posix(),
+            "problem_file": problem_path.as_posix(),
             "module_program_file": options.module_program_file,
             "num_threads": options.num_threads,
             "max_num_states": options.max_num_states,
             "max_time_seconds": options.max_time_seconds,
             "max_arity": options.max_arity,
-            "dump_state_mode": options.dump_state_mode,
             "features": [feature_key(feature) for feature in features],
         },
         result=result,

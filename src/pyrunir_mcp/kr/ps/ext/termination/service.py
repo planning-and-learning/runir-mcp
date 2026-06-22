@@ -38,7 +38,7 @@ def _module_result_metadata(module_name: str, module_result: ModuleStructuralTer
 
 
 def prove_termination(options: ProveTerminationOptions) -> JsonObject:
-    domain_path = Path(options.domain).resolve()
+    domain_path = Path(options.domain_file).resolve()
     module_program_file = Path(options.module_program_file).resolve()
     planning_domain, repository = _repositories(domain_path)
     program = parse_module_program(module_program_file.read_text(encoding="utf-8"), planning_domain, repository)
@@ -73,7 +73,7 @@ def prove_termination(options: ProveTerminationOptions) -> JsonObject:
         status="success" if program_result.is_terminating() else "failure",
         output_dir=Path(options.output_dir).resolve(),
         metadata={
-            "domain": domain_path.as_posix(),
+            "domain_file": domain_path.as_posix(),
             "module_program_file": module_program_file.as_posix(),
             "program_status": status_name(program_result.status),
             "terminating": bool(program_result.is_terminating()),

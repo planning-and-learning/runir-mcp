@@ -112,3 +112,59 @@ def test_module_program_load_edge_summary_uses_rule_symbol_without_action():
         "target": 2,
         "module_rule": "load",
     }
+
+
+def test_module_execute_matched_rules_recovers_rule_symbol_from_graph_edge():
+    from pyrunir_mcp.kr.ps.ext.execute.service import _matched_rules
+
+    class State:
+        def __init__(self, index):
+            self._index = index
+
+        def get_index(self):
+            return self._index
+
+    class Label:
+        def __init__(self, state_id):
+            self.state = State(state_id)
+
+    rule = SimpleNamespace(get_symbol=lambda: "advance")
+    graph = SimpleNamespace(
+        get_vertex_indices=lambda: [0, 1],
+        get_out_edge_indices=lambda vertex: [3] if vertex == 0 else [],
+        get_source=lambda edge: 0,
+        get_target=lambda edge: 1,
+        get_vertex_property=lambda vertex: Label(10 if vertex == 0 else 11),
+        get_edge_property=lambda edge: SimpleNamespace(rule=rule, state_transition=None),
+    )
+
+    assert _matched_rules(graph, State(10), State(11)) == [{"edge": 3, "symbol": "advance"}]
+
+
+
+
+def test_base_execute_matched_rules_recovers_rule_symbol_from_graph_edge():
+    from pyrunir_mcp.kr.ps.base.execute.service import _matched_rules
+
+    class State:
+        def __init__(self, index):
+            self._index = index
+
+        def get_index(self):
+            return self._index
+
+    class Label:
+        def __init__(self, state_id):
+            self.state = State(state_id)
+
+    rule = SimpleNamespace(get_symbol=lambda: "advance")
+    graph = SimpleNamespace(
+        get_vertex_indices=lambda: [0, 1],
+        get_out_edge_indices=lambda vertex: [3] if vertex == 0 else [],
+        get_source=lambda edge: 0,
+        get_target=lambda edge: 1,
+        get_vertex_property=lambda vertex: Label(10 if vertex == 0 else 11),
+        get_edge_property=lambda edge: SimpleNamespace(rule=rule, transition=None),
+    )
+
+    assert _matched_rules(graph, State(10), State(11)) == [{"edge": 3, "symbol": "advance"}]

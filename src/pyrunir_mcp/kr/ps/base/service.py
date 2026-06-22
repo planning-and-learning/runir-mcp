@@ -27,10 +27,10 @@ def collect_features(policy: Sketch) -> list[Feature]:
 
 
 def prove_sketch_policy(options: ProveSketchPolicyOptions) -> JsonObject:
-    domain_path = Path(options.domain).resolve()
-    train_path = Path(options.train_dir).resolve()
+    domain_path = Path(options.domain_file).resolve()
+    problem_path = Path(options.problem_file).resolve()
     context = create_base_policy_context(domain_path)
-    description = None if options.policy_file is None else Path(options.policy_file).read_text(encoding="utf-8")
+    description = Path(options.sketch_file).read_text(encoding="utf-8")
     policy = parse_policy_description(context, description)
     features = collect_features(policy)
     search_options = make_search_options(
@@ -41,22 +41,21 @@ def prove_sketch_policy(options: ProveSketchPolicyOptions) -> JsonObject:
 
     result = prove_tasks(
         domain_path=domain_path,
-        train_dir=train_path,
+        problem_path=problem_path,
         num_threads=options.num_threads,
         prove_one=lambda task: prove_ground_solution(task.search_context, policy, search_options),
-        evidence=state_evidence(features, include_facts=options.dump_state_mode in {"facts", "full"}),
+        evidence=state_evidence(features, include_facts=True),
     )
     return write_proof_run(
         tool=TOOL_NAME,
         output_dir=Path(options.output_dir).resolve(),
         metadata={
-            "domain": domain_path.as_posix(),
-            "train_dir": train_path.as_posix(),
-            "policy_file": options.policy_file,
+            "domain_file": domain_path.as_posix(),
+            "problem_file": problem_path.as_posix(),
+            "sketch_file": options.sketch_file,
             "num_threads": options.num_threads,
             "max_num_states": options.max_num_states,
             "max_time_seconds": options.max_time_seconds,
-            "dump_state_mode": options.dump_state_mode,
             "features": [feature_key(feature) for feature in features],
         },
         result=result,

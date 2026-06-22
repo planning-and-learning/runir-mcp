@@ -4,11 +4,10 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Literal, TypeAlias
 
-from pyrunir.datasets import GroundTaskSearchContext
-from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
 from pyrunir.kr.ps.base import (
     GroundSketchProofGraph,
     GroundSketchProofResults,
@@ -17,14 +16,13 @@ from pyrunir.kr.ps.base import (
     find_ground_solution,
     prove_ground_solution,
 )
-from pyrunir.kr.ps.base.dl import GroundEvaluationContext as PolicyGroundEvaluationContext
 from pyyggdrasil.execution import ExecutionContext
-from pytyr.planning import SearchStatus
-from pytyr.planning.ground import GoalCountHeuristic, LabeledNode, Node, State, SuccessorGenerator, astar_eager
+from pytyr.planning.ground import State
 
 from pyrunir_mcp.feature_evidence import Feature, evaluate_features, feature_key
 from pyrunir_mcp.json_types import JsonDictList, JsonObject
-from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext, load_grounded_search_contexts
+from pyrunir_mcp.proof import edge_summary
+from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext, load_grounded_search_context
 from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, create_base_policy_context
 from pyrunir_mcp.kr.ps.base.core.policy_evaluation import execute_policy_on_tasks, failure_category_from_status, is_success_status
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description, read_policy_description
@@ -36,9 +34,9 @@ ARTIFACT_VERSION = 1
 
 @dataclass(frozen=True)
 class ExecutePolicyOptions:
-    domain_path: Path
-    problem_dir: Path
-    policy_file: Path
+    domain_file: Path
+    problem_file: Path
+    sketch_file: Path
     num_threads: int = 1
     random_seed: int = 0
     random_seed_start: int = 0
@@ -49,16 +47,8 @@ class ExecutePolicyOptions:
     max_num_states: int | None = None
     max_time: float | None = None   # seconds (wall bound on the sub-search)
     dump_dir: Path | None = None
-    dump_state_mode: Literal["summary", "facts", "full"] = "summary"
     dump_max_steps: int | None = None
-    dump_max_compatible_actions: int | None = None
     dump_max_states: int | None = None
-    audit_compatible_successors: bool = False
-    classify_compatible_successors: bool = False
-    classifier: Literal["cheap", "astar"] = "astar"
-    classifier_max_time: float = 1.0
-    classifier_max_states: int = 10_000
-    include_policy_metadata: bool = False
     replay_trace: Path | None = None
 
 
@@ -75,10 +65,8 @@ class ExecutePolicyResult:
         return self.failure is None and not self.replay_errors
 
 
-def _policy_sha256(policy_file: Path) -> str | None:
-    if str(policy_file) == "-":
-        return None
-    return hashlib.sha256(policy_file.read_bytes()).hexdigest()
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _collect_features(policy: Policy) -> list[Feature]:
@@ -92,15 +80,12 @@ def _collect_features(policy: Policy) -> list[Feature]:
     return list(features_by_key.values())
 
 
-def _state_facts(state: State, mode: str) -> JsonObject:
-    data: JsonObject = {"id": int(state.get_index())}
-    if mode == "full":
-        data["raw"] = str(state)
-    if mode in {"facts", "full"}:
-        data["static_atoms"] = [str(atom) for atom in state.static_atoms()]
-        data["fluent_facts"] = [str(fact) for fact in state.fluent_facts()]
-        data["derived_atoms"] = [str(atom) for atom in state.derived_atoms()]
-    return data
+def _state_facts(state: State) -> JsonObject:
+    return {
+        "id": int(state.get_index()),
+        "fluent_facts": [str(fact) for fact in state.fluent_facts()],
+        "derived_atoms": [str(atom) for atom in state.derived_atoms()],
+    }
 
 
 def _feature_values(state: State, features: list[Feature]) -> JsonObject:
@@ -115,131 +100,51 @@ def _feature_delta(before: JsonObject, after: JsonObject) -> dict[str, JsonObjec
     }
 
 
+def _rule_symbol(rule, index: int) -> str:
+    get_symbol = getattr(rule, "get_symbol", None)
+    if callable(get_symbol):
+        return str(get_symbol()).strip()
+    match = re.search(r"\(:symbol\s+([^\s)]+)", str(rule))
+    if match is not None:
+        return match.group(1)
+    return f"rule_{index}"
+
+
+def _graph_vertex_indices(graph: GroundSketchProofGraph) -> list[int]:
+    get_vertex_indices = getattr(graph, "get_vertex_indices", None)
+    if callable(get_vertex_indices):
+        return [int(vertex) for vertex in get_vertex_indices()]
+    return list(range(int(graph.get_num_vertices())))
+
+
+def _graph_out_edge_indices(graph: GroundSketchProofGraph, vertex: int) -> list[int]:
+    get_out_edge_indices = getattr(graph, "get_out_edge_indices", None)
+    if callable(get_out_edge_indices):
+        return [int(edge) for edge in get_out_edge_indices(int(vertex))]
+    return [edge for edge in range(int(graph.get_num_edges())) if int(graph.get_source(edge)) == int(vertex)]
+
+
 def _matched_rules(
-    policy: Policy,
+    graph: GroundSketchProofGraph | None,
     source_state: State,
     target_state: State,
-    include_rule_text: bool,
 ) -> JsonDictList:
-    context = PolicyGroundEvaluationContext(source_state, target_state, Builder(), DenotationRepositoryFactory().create())
-    matches: JsonDictList = []
-    for index, rule in enumerate(policy.get_rules()):
-        if rule.is_compatible_with(context):
-            match: JsonObject = {"index": index}
-            if include_rule_text:
-                match["rule"] = str(rule).strip()
-            matches.append(match)
-    return matches
-
-
-
-def _has_compatible_successor(policy: Policy, successor_generator: SuccessorGenerator, node: Node) -> bool:
-    source_state = node.get_state()
-    for labeled in successor_generator.get_labeled_successor_nodes(node):
-        if _matched_rules(policy, source_state, labeled.node.get_state(), False):
-            return True
-    return False
-
-
-def _successor_classification(
-    *,
-    policy: Policy,
-    search_context: GroundTaskSearchContext | None,
-    successor_generator: SuccessorGenerator,
-    labeled: LabeledNode,
-    chosen_target_state: int | None,
-    cycle_state_ids: set[int] | None,
-    classifier: str,
-    classifier_max_time: float,
-    classifier_max_states: int,
-) -> JsonObject:
-    target_state_id = int(labeled.node.get_state().get_index())
-    metadata: JsonObject = {
-        "classifier": classifier,
-        "classifier_max_time": classifier_max_time,
-        "classifier_max_states": classifier_max_states,
-    }
-    if chosen_target_state is not None and target_state_id == chosen_target_state:
-        metadata["chosen"] = True
-    if cycle_state_ids is not None and target_state_id in cycle_state_ids:
-        return {"label": "cycle", **metadata}
-
-    if classifier == "astar" and search_context is not None:
-        try:
-            options = astar_eager.Options()
-            options.start_node = labeled.node
-            options.max_num_states = classifier_max_states
-            options.max_time = timedelta(seconds=classifier_max_time)
-            result = astar_eager.find_solution(
-                search_context.task,
-                search_context.successor_generator,
-                GoalCountHeuristic(search_context.task),
-                options,
-            )
-            status = result.status
-            metadata["search_status"] = status.name
-            if status == SearchStatus.SOLVED:
-                return {"label": "succeeds", **metadata}
-            if status in {SearchStatus.UNSOLVABLE, SearchStatus.EXHAUSTED, SearchStatus.FAILED}:
-                return {"label": "known_deadend", **metadata}
-            return {"label": "classifier_failure", **metadata}
-        except Exception as error:
-            return {"label": "classifier_failure", "reason": str(error), **metadata}
-
-    try:
-        if not _has_compatible_successor(policy, successor_generator, labeled.node):
-            return {"label": "known_deadend", "reason": "no compatible policy successor", **metadata}
-    except Exception as error:
-        return {"label": "classifier_failure", "reason": str(error), **metadata}
-    return {"label": "unknown", **metadata}
-
-
-def _compatible_successors(
-    policy: Policy,
-    successor_generator: SuccessorGenerator,
-    node: Node,
-    features: list[Feature],
-    max_actions: int | None,
-    include_rule_text: bool,
-    classify: bool = False,
-    classifier: str = "astar",
-    chosen_target_state: int | None = None,
-    cycle_state_ids: set[int] | None = None,
-    search_context: GroundTaskSearchContext | None = None,
-    classifier_max_time: float = 1.0,
-    classifier_max_states: int = 10_000,
-) -> JsonDictList:
-    source_state = node.get_state()
-    source_values = _feature_values(source_state, features)
-    compatible: JsonDictList = []
-    for labeled in successor_generator.get_labeled_successor_nodes(node):
-        target_state = labeled.node.get_state()
-        matches = _matched_rules(policy, source_state, target_state, include_rule_text)
-        if not matches:
+    if graph is None:
+        return []
+    source_state_id = int(source_state.get_index())
+    target_state_id = int(target_state.get_index())
+    for vertex in _graph_vertex_indices(graph):
+        if int(_state_from_vertex(graph, vertex).get_index()) != source_state_id:
             continue
-        target_values = _feature_values(target_state, features)
-        item = {
-            "action": str(labeled.label).strip(),
-            "target_state": int(target_state.get_index()),
-            "matched_rules": matches,
-            "feature_delta": _feature_delta(source_values, target_values),
-        }
-        if classify:
-            item["classification"] = _successor_classification(
-                policy=policy,
-                search_context=search_context,
-                successor_generator=successor_generator,
-                labeled=labeled,
-                chosen_target_state=chosen_target_state,
-                cycle_state_ids=cycle_state_ids,
-                classifier=classifier,
-                classifier_max_time=classifier_max_time,
-                classifier_max_states=classifier_max_states,
-            )
-        compatible.append(item)
-        if max_actions is not None and len(compatible) >= max_actions:
-            break
-    return compatible
+        for edge in _graph_out_edge_indices(graph, vertex):
+            target_vertex = int(graph.get_target(edge))
+            if int(_state_from_vertex(graph, target_vertex).get_index()) != target_state_id:
+                continue
+            summary = edge_summary(graph, edge)
+            symbol = summary.get("module_rule")
+            if isinstance(symbol, str) and symbol:
+                return [{"edge": edge, "symbol": symbol}]
+    return []
 
 
 def _state_id(state: State) -> int:
@@ -286,11 +191,9 @@ def _native_cycle_description(result: GroundSketchProofResults, graph: GroundSke
     return data
 
 
-def _policy_metadata(policy: Policy, include_metadata: bool) -> tuple[list[str], JsonDictList]:
+def _policy_metadata(policy: Policy) -> tuple[list[str], JsonDictList]:
     features = [feature_key(feature) for feature in _collect_features(policy)]
-    if not include_metadata:
-        return features, []
-    rules = [{"index": index, "rule": str(rule).strip()} for index, rule in enumerate(policy.get_rules())]
+    rules = [{"index": index, "symbol": _rule_symbol(rule, index)} for index, rule in enumerate(policy.get_rules())]
     return features, rules
 
 
@@ -304,16 +207,8 @@ def _dump_options(options: ExecutePolicyOptions) -> JsonObject:
         "max_arity": options.max_arity,
         "max_num_states": options.max_num_states,
         "max_time": options.max_time,
-        "dump_state_mode": options.dump_state_mode,
         "dump_max_steps": options.dump_max_steps,
-        "dump_max_compatible_actions": options.dump_max_compatible_actions,
         "dump_max_states": options.dump_max_states,
-        "audit_compatible_successors": options.audit_compatible_successors,
-        "classify_compatible_successors": options.classify_compatible_successors,
-        "classifier": options.classifier,
-        "classifier_max_time": options.classifier_max_time,
-        "classifier_max_states": options.classifier_max_states,
-        "include_policy_metadata": options.include_policy_metadata,
         "replay_trace": None if options.replay_trace is None else str(options.replay_trace),
     }
 
@@ -322,7 +217,6 @@ def _add_state(
     states: dict[int, JsonObject],
     state: State,
     features: list[Feature],
-    mode: str,
     max_states: int | None,
 ) -> None:
     state_id = int(state.get_index())
@@ -331,7 +225,7 @@ def _add_state(
     if max_states is not None and len(states) >= max_states:
         states[state_id] = {"id": state_id, "truncated": True}
         return
-    data = _state_facts(state, mode)
+    data = _state_facts(state)
     data["feature_values"] = _feature_values(state, features)
     states[state_id] = data
 
@@ -367,7 +261,7 @@ def _trace_from_result(
     task_index: int,
 ) -> JsonObject:
     features = _collect_features(policy)
-    feature_names, rules = _policy_metadata(policy, options.include_policy_metadata)
+    feature_names, rules = _policy_metadata(policy)
     states: dict[int, JsonObject] = {}
     transitions: JsonDictList = []
     start_state_id: int | None = None
@@ -384,31 +278,14 @@ def _trace_from_result(
 
         if graph is not None and failure_items:
             for vertex in _native_failure_vertices(graph, failure_items):
-                _add_state(states, _state_from_vertex(graph, vertex), features, options.dump_state_mode, options.dump_max_states)
+                _add_state(states, _state_from_vertex(graph, vertex), features, options.dump_max_states)
         elif failure_items:
-            _add_state(states, node.get_state(), features, options.dump_state_mode, options.dump_max_states)
+            _add_state(states, node.get_state(), features, options.dump_max_states)
 
-        if options.audit_compatible_successors and failure_items:
-            initial_compatible_successors = _compatible_successors(
-                policy,
-                task.search_context.successor_generator,
-                task.search_context.successor_generator.get_initial_node(),
-                features,
-                options.dump_max_compatible_actions,
-                options.include_policy_metadata,
-                options.classify_compatible_successors,
-                options.classifier,
-                search_context=task.search_context,
-                classifier_max_time=options.classifier_max_time,
-                classifier_max_states=options.classifier_max_states,
-            )
-        else:
-            initial_compatible_successors = []
     else:
-        initial_compatible_successors = []
         node = plan.get_start_node()
         start_state_id = int(node.get_state().get_index())
-        _add_state(states, node.get_state(), features, options.dump_state_mode, options.dump_max_states)
+        _add_state(states, node.get_state(), features, options.dump_max_states)
         for step, labeled in enumerate(plan.get_labeled_succ_nodes()):
             if options.dump_max_steps is not None and step >= options.dump_max_steps:
                 break
@@ -421,28 +298,12 @@ def _trace_from_result(
                 "source_state": int(source_state.get_index()),
                 "target_state": int(target_state.get_index()),
                 "action": str(labeled.label).strip(),
-                "matched_rules": _matched_rules(policy, source_state, target_state, options.include_policy_metadata),
+                "matched_rules": _matched_rules(graph, source_state, target_state),
                 "feature_delta": _feature_delta(source_values, target_values),
             }
-            if options.audit_compatible_successors:
-                transition["compatible_successors"] = _compatible_successors(
-                    policy,
-                    task.search_context.successor_generator,
-                    node,
-                    features,
-                    options.dump_max_compatible_actions,
-                    options.include_policy_metadata,
-                    options.classify_compatible_successors,
-                    options.classifier,
-                    int(target_state.get_index()),
-                    None,
-                    task.search_context,
-                    options.classifier_max_time,
-                    options.classifier_max_states,
-                )
             transitions.append(transition)
             node = labeled.node
-            _add_state(states, target_state, features, options.dump_state_mode, options.dump_max_states)
+            _add_state(states, target_state, features, options.dump_max_states)
 
     status = result.status.name
     status_failure_category = failure_category_from_status(result.status)
@@ -451,23 +312,13 @@ def _trace_from_result(
         native_failure_category = str(native_counterexamples[0].get("failure_category"))
     failure_category = native_failure_category or status_failure_category
     cycle_info = _native_cycle_description(result, graph) or (_cycle_description(start_state_id, transitions) if status == "CYCLE" else None)
-    if cycle_info is not None and options.classify_compatible_successors and "cycle_state_ids" in cycle_info:
-        cycle_state_ids = set(cycle_info["cycle_state_ids"])
-        for transition in transitions:
-            if "compatible_successors" not in transition:
-                continue
-            for successor in transition["compatible_successors"]:
-                target_state_id = successor.get("target_state")
-                if isinstance(target_state_id, int) and target_state_id in cycle_state_ids:
-                    classification = successor.setdefault("classification", {"classifier": options.classifier})
-                    classification["label"] = "cycle"
     return {
         "artifact_version": ARTIFACT_VERSION,
         "tool": "execute_policy",
-        "domain": str(options.domain_path),
-        "problem": str(task.problem_path),
-        "policy_file": str(options.policy_file),
-        "policy_sha256": _policy_sha256(options.policy_file),
+        "domain_file": str(options.domain_file),
+        "problem_file": str(task.problem_path),
+        "sketch_file": str(options.sketch_file),
+        "sketch_sha256": _file_sha256(options.sketch_file),
         "options": _dump_options(options),
         "status": status,
         "failure_category": failure_category,
@@ -480,8 +331,6 @@ def _trace_from_result(
         "rules": rules,
         "trace_available": plan is not None,
         "native_counterexamples": native_counterexamples,
-        "initial_compatible_successors_are_audit_only": True,
-        "initial_compatible_successors": initial_compatible_successors,
     }
 
 
@@ -512,7 +361,7 @@ def _failure_representatives(traces: JsonDictList) -> dict[tuple[str, str], Json
         category = trace.get("failure_category")
         if category is None:
             continue
-        problem = str(trace.get("problem") or trace.get("task_index") or "<unknown-task>")
+        problem = str(trace.get("problem_file") or trace.get("task_index") or "<unknown-task>")
         representatives.setdefault((problem, str(category)), trace)
     return representatives
 
@@ -537,7 +386,7 @@ def _write_summary(dump_dir: Path, traces: JsonDictList) -> None:
         for trace in representatives.values():
             fingerprint = trace.get("failure_fingerprint") or _failure_fingerprint(trace)
             lines.append(
-                f"- {trace['failure_category']}: {trace['problem']} "
+                f"- {trace['failure_category']}: {trace['problem_file']} "
                 f"seed {trace['options']['random_seed']} fingerprint `{fingerprint}`"
             )
     with dump_dir.joinpath("summary.md").open("x", encoding="utf-8") as fh:
@@ -620,10 +469,10 @@ def _execute_policy_with_dumps(
     manifest = {
         "artifact_version": ARTIFACT_VERSION,
         "tool": "execute_policy",
-        "domain": str(options.domain_path),
-        "problem": str(options.problem_dir),
-        "policy_file": str(options.policy_file),
-        "policy_sha256": _policy_sha256(options.policy_file),
+        "domain_file": str(options.domain_file),
+        "problem_file": str(options.problem_file),
+        "sketch_file": str(options.sketch_file),
+        "sketch_sha256": _file_sha256(options.sketch_file),
         "options": _dump_options(options),
         "status": "SUCCESS" if first_failure is None else "FAILURE",
         "failure_category": None if first_failure is None else next(
@@ -639,7 +488,7 @@ def _execute_policy_with_dumps(
             {
                 "fingerprint": trace.get("failure_fingerprint") or _failure_fingerprint(trace),
                 "failure_category": trace["failure_category"],
-                "problem": trace["problem"],
+                "problem_file": trace["problem_file"],
                 "seed": trace["options"]["random_seed"],
                 "trace_file": f"task-{trace['task_index']:03d}_seed-{trace['options']['random_seed']}_trace.json",
             }
@@ -647,7 +496,7 @@ def _execute_policy_with_dumps(
         ],
         "tasks": [
             {
-                "problem": trace["problem"],
+                "problem_file": trace["problem_file"],
                 "status": trace["status"],
                 "failure_category": trace["failure_category"],
                 "seed": trace["options"]["random_seed"],
@@ -698,7 +547,7 @@ def _load_trace(path: Path) -> JsonObject:
 
 
 def _trace_task(trace: JsonObject, tasks: list[LoadedSearchContext]) -> LoadedSearchContext | None:
-    problem = trace.get("problem")
+    problem = trace.get("problem_file")
     if not isinstance(problem, str):
         return None
     problem_path = Path(problem)
@@ -741,12 +590,12 @@ def _validate_replay_trace(
     errors: list[str] = []
     if trace.get("tool") != "execute_policy":
         errors.append(f"tool mismatch: expected execute_policy, got {trace.get('tool')}")
-    expected_policy_hash = _policy_sha256(options.policy_file)
-    if trace.get("policy_sha256") != expected_policy_hash:
-        errors.append("policy_sha256 mismatch")
+    expected_sketch_hash = _file_sha256(options.sketch_file)
+    if trace.get("sketch_sha256") != expected_sketch_hash:
+        errors.append("sketch_sha256 mismatch")
     task = _trace_task(trace, tasks)
     if task is None:
-        errors.append(f"problem not found in --problem_dir: {trace.get('problem')}")
+        errors.append(f"problem does not match problem_file: {trace.get('problem_file')}")
         return errors
 
     trace_options = trace.get("options") if isinstance(trace.get("options"), dict) else {}
@@ -757,16 +606,8 @@ def _validate_replay_trace(
         max_arity=int(trace_options.get("max_arity", options.max_arity)),
         max_num_states=None if trace_options.get("max_num_states") is None else int(trace_options.get("max_num_states")),
         max_time=None if trace_options.get("max_time") is None else float(trace_options.get("max_time")),
-        dump_state_mode=str(trace_options.get("dump_state_mode", options.dump_state_mode)),
         dump_max_steps=len(trace.get("transitions", [])),
-        dump_max_compatible_actions=trace_options.get("dump_max_compatible_actions", options.dump_max_compatible_actions),
         dump_max_states=None,
-        audit_compatible_successors=False,
-        classify_compatible_successors=False,
-        classifier=str(trace_options.get("classifier", options.classifier)),
-        classifier_max_time=float(trace_options.get("classifier_max_time", options.classifier_max_time)),
-        classifier_max_states=int(trace_options.get("classifier_max_states", options.classifier_max_states)),
-        include_policy_metadata=bool(trace_options.get("include_policy_metadata", options.include_policy_metadata)),
         dump_dir=None,
         num_rollouts=1,
         replay_trace=None,
@@ -795,9 +636,9 @@ def _validate_replay_trace(
 
 def execute_policy(options: ExecutePolicyOptions) -> ExecutePolicyResult:
     execution_context = ExecutionContext(options.num_threads)
-    context = create_base_policy_context(options.domain_path)
-    policy = parse_policy_description(context, read_policy_description(options.policy_file))
-    tasks = load_grounded_search_contexts(options.domain_path, options.problem_dir, execution_context)
+    context = create_base_policy_context(options.domain_file)
+    policy = parse_policy_description(context, read_policy_description(options.sketch_file))
+    tasks = [load_grounded_search_context(options.domain_file, options.problem_file, execution_context)]
     if options.replay_trace is not None:
         replay_errors = _validate_replay_trace(options, policy, tasks)
         return ExecutePolicyResult(policy=policy, tasks=tasks, failure=None, dump_dir=options.dump_dir, replay_errors=replay_errors)

@@ -96,21 +96,126 @@ def _write_json(path: Path, data: JsonValue) -> None:
         fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def _extract_trace_data(data: JsonObject) -> JsonObject | None:
+def _state_id(state: JsonObject) -> int | None:
+    for key in ("id", "state_id", "vertex"):
+        value = state.get(key)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _states_by_id(states: list[JsonObject]) -> dict[int, JsonObject]:
+    result: dict[int, JsonObject] = {}
+    for state in states:
+        for key in ("id", "state_id", "vertex"):
+            value = state.get(key)
+            if isinstance(value, int):
+                result.setdefault(value, state)
+    return result
+
+
+def _transition_source(transition: JsonObject) -> int | None:
+    value = transition.get("source_state", transition.get("source"))
+    return value if isinstance(value, int) else None
+
+
+def _transition_target(transition: JsonObject) -> int | None:
+    value = transition.get("target_state", transition.get("target"))
+    return value if isinstance(value, int) else None
+
+
+def _transition_state_path(transitions: list[JsonObject]) -> list[int]:
+    if not transitions:
+        return []
+    first = _transition_source(transitions[0])
+    if first is None:
+        return []
+    state_ids = [first]
+    for transition in transitions:
+        target = _transition_target(transition)
+        if target is None:
+            return state_ids
+        state_ids.append(target)
+    return state_ids
+
+
+def _ordered_states_for_path(data: JsonObject, state_ids: list[int]) -> list[JsonObject]:
+    states = [state for state in data.get("states", []) if isinstance(state, dict)]
+    by_id = _states_by_id(states)
+    return [dict(by_id[state_id]) for state_id in state_ids if state_id in by_id]
+
+
+def _path_trace_from_data(data: JsonObject, witness_state_id: int | None) -> JsonObject | None:
     trace = data.get("trace")
     if isinstance(trace, dict):
         return dict(trace)
-    detail_keys = (
-        "states",
-        "transitions",
-        "counterexample",
-        "fluent_facts",
-        "feature_values",
-        "native_counterexamples",
+    transitions = [transition for transition in data.get("transitions", []) if isinstance(transition, dict)]
+    if not transitions:
+        return None
+    state_path = _transition_state_path(transitions)
+    if state_path and witness_state_id is not None and witness_state_id in state_path:
+        stop = state_path.index(witness_state_id)
+        transitions = transitions[:stop]
+        state_path = state_path[: stop + 1]
+    trace_data = {
+        key: data[key]
+        for key in ("tool", "task", "problem", "category", "failure_category", "proof_status", "status")
+        if key in data
+    }
+    trace_data.update(
+        {
+            "states": _ordered_states_for_path(data, state_path) if state_path else [state for state in data.get("states", []) if isinstance(state, dict)],
+            "transitions": [dict(transition) for transition in transitions],
+            "chosen_actions": [transition.get("action") for transition in transitions if transition.get("action") is not None],
+            "trace_available": True,
+        }
     )
-    if any(key in data for key in detail_keys):
-        return dict(data)
-    return None
+    return trace_data
+
+
+def _cycle_payload_from_data(data: JsonObject) -> JsonObject | None:
+    cycle = data.get("cycle")
+    if not isinstance(cycle, dict):
+        return None
+    cycle_state_ids = [state_id for state_id in cycle.get("cycle_state_ids", []) if isinstance(state_id, int)]
+    cycle_steps = [step for step in cycle.get("cycle_transition_steps", []) if isinstance(step, int)]
+    transitions = [transition for transition in data.get("transitions", []) if isinstance(transition, dict)]
+    return {
+        "cycle": dict(cycle),
+        "states": _ordered_states_for_path(data, cycle_state_ids),
+        "transitions": [dict(transitions[step]) for step in cycle_steps if 0 <= step < len(transitions)],
+    }
+
+
+def _witness_state_from_data(data: JsonObject) -> JsonObject | None:
+    states = [state for state in data.get("states", []) if isinstance(state, dict)]
+    if not states:
+        return None
+    transitions = [transition for transition in data.get("transitions", []) if isinstance(transition, dict)]
+    if transitions:
+        target = _transition_target(transitions[-1])
+        if target is not None:
+            by_id = _states_by_id(states)
+            if target in by_id:
+                return dict(by_id[target])
+    return dict(states[0])
+
+
+def _counterexample_and_trace_payloads(data: JsonObject, category_slug: str) -> tuple[JsonObject, JsonObject | None]:
+    if category_slug == "cycle" or isinstance(data.get("cycle"), dict):
+        cycle_payload = _cycle_payload_from_data(data)
+        if cycle_payload is not None:
+            witness_state_id = None
+            cycle = cycle_payload.get("cycle")
+            if isinstance(cycle, dict):
+                cycle_states = cycle.get("cycle_state_ids", [])
+                if cycle_states and isinstance(cycle_states[0], int):
+                    witness_state_id = cycle_states[0]
+            return cycle_payload, _path_trace_from_data(data, witness_state_id)
+    state = _witness_state_from_data(data)
+    payload = {"state": state} if state is not None else {}
+    witness_state_id = _state_id(state) if isinstance(state, dict) else None
+    return payload, _path_trace_from_data(data, witness_state_id)
 
 
 def _write_counterexample_and_trace(
@@ -120,7 +225,7 @@ def _write_counterexample_and_trace(
     category_slug: str,
     data: JsonObject,
 ) -> tuple[Path, str | None, bool]:
-    trace_data = _extract_trace_data(data)
+    counterexample_payload, trace_data = _counterexample_and_trace_payloads(data, category_slug)
     trace_path: str | None = None
     trace_available = False
     if trace_data is not None:
@@ -133,7 +238,12 @@ def _write_counterexample_and_trace(
         trace_available = True
 
     target = output_dir / "counterexamples" / category_slug / f"{counterexample_id}.json"
-    stored = dict(data)
+    stored = {
+        key: value
+        for key, value in data.items()
+        if key not in {"states", "transitions", "trace"}
+    }
+    stored.update(counterexample_payload)
     stored.setdefault("schema_version", 1)
     stored.setdefault("id", counterexample_id)
     stored.setdefault("category", category_slug)

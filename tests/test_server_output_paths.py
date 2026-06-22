@@ -60,8 +60,9 @@ def test_registered_base_tool_constrains_output_dir(monkeypatch, tmp_path):
     base_tools.register_tools(mcp, config)
 
     result = mcp.tools[base_tools.TOOL_NAME](
-        domain="domain.pddl",
-        train_dir="train",
+        domain_file="domain.pddl",
+        problem_file="problem.pddl",
+        sketch_file="sketch.txt",
         output_dir="base/run",
     )
 
@@ -77,8 +78,9 @@ def test_registered_base_tool_rejects_output_dir_escape(tmp_path):
 
     with pytest.raises(ValueError):
         mcp.tools[base_tools.TOOL_NAME](
-            domain="domain.pddl",
-            train_dir="train",
+            domain_file="domain.pddl",
+            problem_file="problem.pddl",
+            sketch_file="sketch.txt",
             output_dir="../outside",
         )
 
@@ -113,7 +115,7 @@ def test_registered_base_reformat_constrains_policy_file(monkeypatch, tmp_path):
     base_reformat_tools.register_tools(mcp, config)
 
     result = mcp.tools[base_reformat_tools.TOOL_NAME](
-        domain="domain.pddl",
+        domain_file="domain.pddl",
         policy_file="scratch/sketch.txt",
     )
 
@@ -121,16 +123,29 @@ def test_registered_base_reformat_constrains_policy_file(monkeypatch, tmp_path):
     assert captured["policy_file"] == (output_root / "scratch" / "sketch.txt").resolve()
 
 
-def test_registered_ext_reformat_rejects_policy_file_escape(tmp_path):
+def test_registered_ext_reformat_rejects_module_program_file_escape(tmp_path):
     output_root = tmp_path / "mcp-output"
     config = ServerConfig(workspace_root=tmp_path, output_root=output_root)
     mcp = FakeMCP()
     ext_reformat_tools.register_tools(mcp, config)
 
     with pytest.raises(ValueError):
-        mcp.tools[ext_reformat_tools.TOOL_NAME](
-            domain="domain.pddl",
-            policy_file="../module_program.txt",
+        mcp.tools[ext_reformat_tools.MODULE_PROGRAM_TOOL_NAME](
+            domain_file="domain.pddl",
+            module_program_file="../module_program.txt",
+        )
+
+
+def test_registered_ext_reformat_rejects_module_file_escape(tmp_path):
+    output_root = tmp_path / "mcp-output"
+    config = ServerConfig(workspace_root=tmp_path, output_root=output_root)
+    mcp = FakeMCP()
+    ext_reformat_tools.register_tools(mcp, config)
+
+    with pytest.raises(ValueError):
+        mcp.tools[ext_reformat_tools.MODULE_TOOL_NAME](
+            domain_file="domain.pddl",
+            module_file="../module.txt",
         )
 
 
@@ -148,9 +163,71 @@ def test_registered_uns_reformat_constrains_classifier_file(monkeypatch, tmp_pat
     uns_reformat_tools.register_tools(mcp, config)
 
     result = mcp.tools[uns_reformat_tools.TOOL_NAME](
-        domain="domain.pddl",
+        domain_file="domain.pddl",
         classifier_file="scratch/classifier.txt",
     )
+
+    assert result["classifier_file"] == "classifier.txt"
+    assert captured["classifier_file"] == (output_root / "scratch" / "classifier.txt").resolve()
+
+
+def test_registered_base_create_empty_constrains_policy_file(monkeypatch, tmp_path):
+    output_root = tmp_path / "mcp-output"
+    config = ServerConfig(workspace_root=tmp_path, output_root=output_root)
+    mcp = FakeMCP()
+    captured = {}
+
+    def fake_create(options):
+        captured["policy_file"] = options.policy_file
+        return SimpleNamespace(policy_file=options.policy_file, kind="sketch")
+
+    monkeypatch.setattr(base_reformat_tools, "create_empty_policy", fake_create)
+    base_reformat_tools.register_tools(mcp, config)
+
+    result = mcp.tools[base_reformat_tools.CREATE_EMPTY_TOOL_NAME](
+        domain_file="domain.pddl",
+        policy_file="scratch/sketch.txt",
+    )
+
+    assert result["policy_file"] == "sketch.txt"
+    assert captured["policy_file"] == (output_root / "scratch" / "sketch.txt").resolve()
+
+
+def test_registered_ext_create_empty_constrains_policy_file(monkeypatch, tmp_path):
+    output_root = tmp_path / "mcp-output"
+    config = ServerConfig(workspace_root=tmp_path, output_root=output_root)
+    mcp = FakeMCP()
+    captured = {}
+
+    def fake_create(options):
+        captured["module_program_file"] = options.module_program_file
+        return SimpleNamespace(path=options.module_program_file, kind="module-program")
+
+    monkeypatch.setattr(ext_reformat_tools, "create_empty_policy", fake_create)
+    ext_reformat_tools.register_tools(mcp, config)
+
+    result = mcp.tools[ext_reformat_tools.CREATE_EMPTY_TOOL_NAME](
+        module_program_file="scratch/module_program.txt",
+    )
+
+    assert result["module_program_file"] == "module_program.txt"
+    assert captured["module_program_file"] == (output_root / "scratch" / "module_program.txt").resolve()
+
+
+def test_registered_uns_create_empty_constrains_classifier_file(monkeypatch, tmp_path):
+    output_root = tmp_path / "mcp-output"
+    config = ServerConfig(workspace_root=tmp_path, output_root=output_root)
+    mcp = FakeMCP()
+    captured = {}
+
+    def fake_create(options):
+        captured["classifier_file"] = options.classifier_file
+        return SimpleNamespace(classifier_file=options.classifier_file, num_features=0)
+
+    monkeypatch.setattr(uns_reformat_tools, "create_empty_classifier", fake_create)
+    uns_reformat_tools.register_tools(mcp, config)
+
+    result = mcp.tools[uns_reformat_tools.CREATE_EMPTY_TOOL_NAME](classifier_file="scratch/classifier.txt")
 
     assert result["classifier_file"] == "classifier.txt"
     assert captured["classifier_file"] == (output_root / "scratch" / "classifier.txt").resolve()

@@ -13,14 +13,14 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
 
     @mcp.tool(name=TOOL_NAME)
     def prove_termination(
-        domain: str,
+        domain_file: str,
         module_program_file: str,
         output_dir: str,
     ) -> dict:
         """Prove structural termination for an extended Runir module program."""
         return run_prove_termination(
             ProveTerminationOptions(
-                domain=domain,
+                domain_file=domain_file,
                 module_program_file=module_program_file,
                 output_dir=server_output_dir(config.output_root, output_dir).as_posix(),
             )

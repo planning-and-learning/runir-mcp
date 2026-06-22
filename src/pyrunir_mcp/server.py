@@ -15,7 +15,7 @@ from pyrunir_mcp.kr.ps.ext.tools import TOOL_NAME as PROVE_MODULE_TOOL
 from pyrunir_mcp.kr.ps.ext.tools import register_tools as register_ps_ext_tools
 from pyrunir_mcp.kr.ps.ext.execute.tools import TOOL_NAME as EXECUTE_MODULE_TOOL
 from pyrunir_mcp.kr.ps.ext.execute.tools import register_tools as register_ext_execute_tools
-from pyrunir_mcp.kr.ps.ext.reformat.tools import TOOL_NAME as REFORMAT_MODULE_TOOL
+from pyrunir_mcp.kr.ps.ext.reformat.tools import MODULE_PROGRAM_TOOL_NAME as REFORMAT_MODULE_PROGRAM_TOOL
 from pyrunir_mcp.kr.ps.ext.reformat.tools import register_tools as register_ext_reformat_tools
 from pyrunir_mcp.kr.ps.ext.termination.tools import TOOL_NAME as PROVE_TERMINATION_TOOL
 from pyrunir_mcp.kr.ps.ext.termination.tools import register_tools as register_termination_tools
@@ -38,7 +38,7 @@ REGISTRARS: dict[str, Registrar] = {
     REFORMAT_BASE_TOOL: register_base_reformat_tools,
     PROVE_MODULE_TOOL: register_ps_ext_tools,
     EXECUTE_MODULE_TOOL: register_ext_execute_tools,
-    REFORMAT_MODULE_TOOL: register_ext_reformat_tools,
+    REFORMAT_MODULE_PROGRAM_TOOL: register_ext_reformat_tools,
     PROVE_TERMINATION_TOOL: register_termination_tools,
     PROVE_CLASSIFIER_TOOL: register_uns_tools,
     REFORMAT_CLASSIFIER_TOOL: register_uns_reformat_tools,

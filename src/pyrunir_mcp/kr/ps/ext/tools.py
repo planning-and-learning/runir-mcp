@@ -12,27 +12,25 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
 
     @mcp.tool(name=TOOL_NAME)
     def prove_module_program(
-        domain: str,
-        train_dir: str,
+        domain_file: str,
+        problem_file: str,
         module_program_file: str,
         output_dir: str,
         num_threads: int = 1,
         max_num_states: int = 100_000,
         max_time_seconds: float = 5.0,
         max_arity: int = 0,
-        dump_state_mode: str = "summary",
     ) -> dict:
         """Prove an extended Runir module program and write every counterexample separately."""
         return run_prove_module_program(
             ProveModuleProgramOptions(
-                domain=domain,
-                train_dir=train_dir,
+                domain_file=domain_file,
+                problem_file=problem_file,
                 module_program_file=module_program_file,
                 output_dir=server_output_dir(config.output_root, output_dir).as_posix(),
                 num_threads=num_threads,
                 max_num_states=max_num_states,
                 max_time_seconds=max_time_seconds,
                 max_arity=max_arity,
-                dump_state_mode=dump_state_mode,
             )
         )

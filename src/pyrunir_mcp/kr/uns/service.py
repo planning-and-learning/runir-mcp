@@ -18,7 +18,7 @@ from pytyr.planning.ground import ConjunctiveGoalStrategy, State
 from pyrunir_mcp.artifacts import write_native_counterexample_run
 from pyrunir_mcp.kr.uns.schemas import ProveClassifierOptions
 from pyrunir_mcp.kr.uns.serialize import feature_values, fluent_facts
-from pyrunir_mcp.planning import build_ground_search_context, get_problem_paths
+from pyrunir_mcp.planning import build_ground_search_context
 
 TOOL_NAME = "runir.uns.prove_classifier"
 EMPTY_CLASSIFIER = '(:classifier (:symbol c0) (:description "") (:features) (:expression (or)))'
@@ -102,8 +102,8 @@ def _repositories(domain_path: Path):
 def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
     # Full enumeration is currently state-bounded; keep max_time_seconds in the
     # options schema for API consistency, but do not mutate frozen options.
-    domain_path = Path(options.domain).resolve()
-    train_path = Path(options.train_dir).resolve()
+    domain_path = Path(options.domain_file).resolve()
+    problem_path = Path(options.problem_file).resolve()
     planning_domain, repository = _repositories(domain_path)
     description = (
         Path(options.classifier_file).read_text(encoding="utf-8")
@@ -116,21 +116,19 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
     ctx = ExecutionContext(1)
 
     counterexamples: list[JsonObject] = []
-    per_task: list[JsonObject] = []
-    for problem_path in get_problem_paths(train_path):
-        try:
-            space = _expand(domain_path, problem_path, options.max_num_states, ctx)
-        except ResourceLimit as exc:
-            per_task.append({"task": problem_path.name, "status": "resource_limit", "reason": str(exc)})
-            counterexamples.append(
-                {
-                    "task": problem_path.name,
-                    "problem_path": problem_path.as_posix(),
-                    "category": "resource_limit",
-                    "reason": str(exc),
-                }
-            )
-            continue
+    try:
+        space = _expand(domain_path, problem_path, options.max_num_states, ctx)
+    except ResourceLimit as exc:
+        counterexamples.append(
+            {
+                "task": problem_path.name,
+                "problem_file": problem_path.as_posix(),
+                "category": "resource_limit",
+                "reason": str(exc),
+            }
+        )
+        per_task = {"task": problem_path.name, "status": "resource_limit", "reason": str(exc)}
+    else:
         task_counterexamples = 0
         for state_id, state in sorted(space.states.items()):
             eval_context = GroundEvaluationContext(state, builder, denotations)
@@ -146,7 +144,7 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
             counterexamples.append(
                 {
                     "task": problem_path.name,
-                    "problem_path": problem_path.as_posix(),
+                    "problem_file": problem_path.as_posix(),
                     "category": category,
                     "state_id": int(state_id),
                     "predicted_unsolvable": predicted_unsolvable,
@@ -155,15 +153,13 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
                     "fluent_facts": fluent_facts(state),
                 }
             )
-        per_task.append(
-            {
-                "task": problem_path.name,
-                "status": "correct" if task_counterexamples == 0 else "counterexample",
-                "states": len(space.states),
-                "unsolvable": len(space.unsolvable),
-                "counterexamples": task_counterexamples,
-            }
-        )
+        per_task = {
+            "task": problem_path.name,
+            "status": "correct" if task_counterexamples == 0 else "counterexample",
+            "states": len(space.states),
+            "unsolvable": len(space.unsolvable),
+            "counterexamples": task_counterexamples,
+        }
 
     status = "success" if not counterexamples else "failure"
     return write_native_counterexample_run(
@@ -171,8 +167,8 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
         status=status,
         output_dir=Path(options.output_dir).resolve(),
         metadata={
-            "domain": domain_path.as_posix(),
-            "train_dir": train_path.as_posix(),
+            "domain_file": domain_path.as_posix(),
+            "problem_file": problem_path.as_posix(),
             "classifier_file": options.classifier_file,
             "max_num_states": options.max_num_states,
             "per_task": per_task,
