@@ -97,7 +97,7 @@ def _write_counterexample_and_trace(
     counterexample_payload, trace_data = counterexample_and_trace_payloads(
         data,
         category_slug,
-        trace_metadata_keys=("tool", "task", "problem", "category", "failure_category", "proof_status", "status"),
+        trace_metadata_keys=("tool", "task", "problem", "problem_file", "domain_file", "sketch_file", "module_program_file", "category", "failure_category", "proof_status", "status", "execute_status", "counterexample_source", "failure_fingerprint", "task_index"),
     )
     trace_path: str | None = None
     trace_available = False

@@ -82,7 +82,22 @@ def _path_trace_from_source(
         return copy.deepcopy(trace)
     transitions = [transition for transition in source.get("transitions", []) if isinstance(transition, dict)]
     if not transitions:
-        return None
+        if witness_state_index is None:
+            return None
+        trace_data = {
+            key: copy.deepcopy(source[key])
+            for key in trace_metadata_keys
+            if key in source
+        }
+        trace_data.update(
+            {
+                "states": _ordered_states_for_indices(source, [witness_state_index]),
+                "transitions": [],
+                "chosen_actions": [],
+                "trace_available": True,
+            }
+        )
+        return trace_data
     state_path = _transition_index_path(transitions)
     if not state_path:
         return None

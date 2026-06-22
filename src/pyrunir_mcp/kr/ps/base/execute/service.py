@@ -21,6 +21,7 @@ from pytyr.planning.ground import State
 
 from pyrunir_mcp.feature_evidence import Feature, evaluate_features, feature_key
 from pyrunir_mcp.json_types import JsonDictList, JsonObject
+from pyrunir_mcp.artifacts import _write_counterexample_and_trace
 from pyrunir_mcp.proof import edge_summary
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext, load_grounded_search_context
 from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, create_base_policy_context
@@ -382,10 +383,11 @@ def _write_summary(dump_dir: Path, traces: JsonDictList) -> None:
         for trace in representatives.values():
             fingerprint = trace.get("failure_fingerprint") or _failure_fingerprint(trace)
             failure_id = trace.get("id") or str(trace["failure_category"])
-            trace_file = trace.get("trace_file")
+            trace_path = trace.get("trace_path") or "(no path trace)"
+            counterexample_path = trace.get("counterexample_path") or "(no counterexample path)"
             lines.append(
                 f"- {failure_id}: {trace['problem_file']} seed {trace['options']['random_seed']} "
-                f"trace `{trace_file}` fingerprint `{fingerprint}`"
+                f"counterexample `{counterexample_path}` trace `{trace_path}` fingerprint `{fingerprint}`"
             )
     with dump_dir.joinpath("summary.md").open("x", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
@@ -395,10 +397,6 @@ def _rollout_seeds(options: ExecutePolicyOptions) -> list[int]:
     if options.num_rollouts == 1:
         return [options.random_seed]
     return [options.random_seed_start + offset for offset in range(options.num_rollouts)]
-
-
-def _trace_file_name(random_seed: int) -> str:
-    return f"trace_seed-{random_seed}.json"
 
 
 def _execute_single_rollout(
@@ -427,13 +425,37 @@ def _execute_single_rollout(
             trace["execute_status"] = result.status.name
             trace["counterexample_source"] = trace_source
             trace["failure_fingerprint"] = _failure_fingerprint(trace)
-            trace_name = _trace_file_name(random_seed)
-            trace["trace_file"] = trace_name
             traces.append(trace)
-            _write_dump_json(dump_dir / trace_name, trace)
         if not is_success_status(result.status) and failure is None:
             failure = ExecutionFailure(task=task, result=trace_result)
     return failure, traces
+
+
+def _write_failure_index(dump_dir: Path, failure_id: str, failure_category: str, trace: JsonObject) -> tuple[str, str | None, bool]:
+    counterexample_path, trace_path, trace_available = _write_counterexample_and_trace(
+        output_dir=dump_dir,
+        counterexample_id=failure_id,
+        category_slug=failure_category,
+        data=trace,
+    )
+    failure_record: JsonObject = {
+        "artifact_version": ARTIFACT_VERSION,
+        "id": failure_id,
+        "category": failure_category,
+        "failure_category": failure_category,
+        "fingerprint": trace.get("failure_fingerprint") or _failure_fingerprint(trace),
+        "problem_file": trace.get("problem_file"),
+        "seed": (trace.get("options") or {}).get("random_seed") if isinstance(trace.get("options"), dict) else None,
+        "status": trace.get("status"),
+        "execute_status": trace.get("execute_status"),
+        "counterexample_source": trace.get("counterexample_source"),
+        "counterexample_path": counterexample_path.relative_to(dump_dir).as_posix(),
+        "trace_available": trace_available,
+    }
+    if trace_path is not None:
+        failure_record["trace_path"] = trace_path
+    _write_dump_json(dump_dir / "failures" / failure_category / f"{failure_id}.json", failure_record)
+    return failure_record["counterexample_path"], trace_path, trace_available
 
 
 def _execute_policy_with_dumps(
@@ -470,7 +492,10 @@ def _execute_policy_with_dumps(
         failure_category = str(trace["failure_category"])
         failure_id = f"{failure_category}-{failure_index:03d}"
         trace["id"] = failure_id
-        _write_dump_json(dump_dir / "failures" / failure_category / f"{failure_id}.json", trace)
+        counterexample_path, trace_path, trace_available = _write_failure_index(dump_dir, failure_id, failure_category, trace)
+        trace["counterexample_path"] = counterexample_path
+        trace["trace_path"] = trace_path
+        trace["trace_available"] = trace_available
     manifest = {
         "artifact_version": ARTIFACT_VERSION,
         "tool": "execute_policy",
@@ -496,7 +521,9 @@ def _execute_policy_with_dumps(
                 "failure_category": trace["failure_category"],
                 "problem_file": trace["problem_file"],
                 "seed": trace["options"]["random_seed"],
-                "trace_file": trace["trace_file"],
+                "counterexample_path": trace.get("counterexample_path"),
+                "trace_path": trace.get("trace_path"),
+                "trace_available": trace.get("trace_available", False),
             }
             for trace in distinct_failures.values()
         ],
@@ -506,7 +533,9 @@ def _execute_policy_with_dumps(
                 "status": trace["status"],
                 "failure_category": trace["failure_category"],
                 "seed": trace["options"]["random_seed"],
-                "trace_file": trace["trace_file"],
+                "counterexample_path": trace.get("counterexample_path"),
+                "trace_path": trace.get("trace_path"),
+                "trace_available": trace.get("trace_available", False),
             }
             for trace in all_traces
         ],

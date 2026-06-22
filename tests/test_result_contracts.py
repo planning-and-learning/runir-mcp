@@ -258,8 +258,8 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
 
     assert result["tasks"][0]["trace_path"] == "trace_seed-0.json"
     assert result["items"][0]["path"] == "counterexamples/open_state/open_state-001.json"
-    assert result["items"][0]["trace_path"] is None
-    assert result["items"][0]["trace_available"] is False
+    assert result["items"][0]["trace_path"] == "traces/open_state/open_state-001.json"
+    assert result["items"][0]["trace_available"] is True
     assert (output_dir / result["items"][0]["path"]).is_file()
     counterexample = json.loads((output_dir / result["items"][0]["path"]).read_text(encoding="utf-8"))
     assert counterexample["state"]["feature_values"] == {"n": 1}
@@ -365,9 +365,9 @@ def test_execute_result_promotes_only_representative_failures(tmp_path):
         "counterexamples/open_state/open_state-003.json",
     ]
     assert [item["trace_path"] for item in result["items"]] == [
-        None,
+        "traces/open_state/open_state-001.json",
         "traces/cycle/cycle-002.json",
-        None,
+        "traces/open_state/open_state-003.json",
     ]
     cycle_counterexample = json.loads((output_dir / result["items"][1]["path"]).read_text(encoding="utf-8"))
     cycle_trace = json.loads((output_dir / result["items"][1]["trace_path"]).read_text(encoding="utf-8"))

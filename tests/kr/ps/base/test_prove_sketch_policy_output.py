@@ -28,10 +28,14 @@ def test_prove_sketch_policy_writes_hierarchical_counterexample_summary(tmp_path
     summary = assert_common_output(run_dir, result, expected_count=1)
     item = summary["by_category"]["open_state"]["items"][0]
     assert item["path"] == "counterexamples/open_state/open_state-001.json"
-    assert item["trace_path"] is None
-    assert item["trace_available"] is False
+    assert item["trace_path"] == "traces/open_state/open_state-001.json"
+    assert item["trace_available"] is True
 
     counterexample = read_json(run_dir / item["path"])
     assert counterexample["id"] == "open_state-001"
-    assert counterexample["trace_available"] is False
+    assert counterexample["trace_available"] is True
     assert counterexample["state"]["feature_values"] == {"b0": False, "n0": 2}
+    trace = read_json(run_dir / item["trace_path"])
+    assert trace["trace_available"] is True
+    assert trace["transitions"] == []
+    assert trace["states"][0]["feature_values"] == {"b0": False, "n0": 2}

@@ -22,10 +22,9 @@ Same normalized structure as `runir.ps.base.execute_policy`, with `tool: "runir.
 output_dir/
   summary.md
   manifest.json
-  trace_seed-<seed>.json
-  failures/<category>/<id>.json
-  counterexamples/<category>/<id>.json
-  traces/<category>/<id>.json
+  failures/<category>/<id>.json       # lightweight index to the normalized witness
+  counterexamples/<category>/<id>.json # witness state or cycle
+  traces/<category>/<id>.json          # path to witness, present when a path exists
 ```
 
-Counterexample files hold the witness. Trace files, when present, hold only the path to that witness.
+Counterexample files hold the witness state or cycle. Trace files, when present, hold only the path to that witness. Failure files are lightweight indices and do not duplicate states or transitions.
