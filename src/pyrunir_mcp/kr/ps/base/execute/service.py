@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, replace
 from datetime import timedelta
 import hashlib
 import json
-import re
 from pathlib import Path
 from typing import Literal, TypeAlias
 
@@ -14,7 +14,6 @@ from pyrunir.kr.ps.base import (
     GroundSketchSearchOptions as GroundPolicySearchOptions,
     Sketch as Policy,
     find_ground_solution,
-    prove_ground_solution,
 )
 from pyyggdrasil.execution import ExecutionContext
 from pytyr.planning.ground import State
@@ -69,12 +68,10 @@ def _file_sha256(path: Path) -> str:
 
 def _collect_features(policy: Policy) -> list[Feature]:
     features_by_key: dict[str, Feature] = {}
-    for getter_name in ("get_boolean_features", "get_numerical_features"):
-        get_features = getattr(policy, getter_name, None)
-        if not callable(get_features):
-            continue
-        for feature in get_features():
-            features_by_key.setdefault(feature_key(feature), feature)
+    for feature in policy.get_boolean_features():
+        features_by_key.setdefault(feature_key(feature), feature)
+    for feature in policy.get_numerical_features():
+        features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
 
 
@@ -99,27 +96,16 @@ def _feature_delta(before: JsonObject, after: JsonObject) -> dict[str, JsonObjec
 
 
 def _rule_symbol(rule, index: int) -> str:
-    get_symbol = getattr(rule, "get_symbol", None)
-    if callable(get_symbol):
-        return str(get_symbol()).strip()
-    match = re.search(r"\(:symbol\s+([^\s)]+)", str(rule))
-    if match is not None:
-        return match.group(1)
-    return f"rule_{index}"
+    symbol = str(rule.get_symbol()).strip()
+    return symbol or f"rule_{index}"
 
 
 def _graph_vertex_indices(graph: GroundSketchProofGraph) -> list[int]:
-    get_vertex_indices = getattr(graph, "get_vertex_indices", None)
-    if callable(get_vertex_indices):
-        return [int(vertex) for vertex in get_vertex_indices()]
-    return list(range(int(graph.get_num_vertices())))
+    return [int(vertex) for vertex in graph.get_vertex_indices()]
 
 
 def _graph_out_edge_indices(graph: GroundSketchProofGraph, vertex: int) -> list[int]:
-    get_out_edge_indices = getattr(graph, "get_out_edge_indices", None)
-    if callable(get_out_edge_indices):
-        return [int(edge) for edge in get_out_edge_indices(int(vertex))]
-    return [edge for edge in range(int(graph.get_num_edges())) if int(graph.get_source(edge)) == int(vertex)]
+    return [int(edge) for edge in graph.get_out_edge_indices(int(vertex))]
 
 
 def _matched_rules(
@@ -177,6 +163,116 @@ def _native_failure_vertices(graph: GroundSketchProofGraph, failure_items: list[
 
 def _native_counterexamples(failure_items: list[NativeFailureItem]) -> JsonDictList:
     return [{"failure_category": failure_category, "failure": item} for failure_category, item in failure_items]
+
+
+def _initial_vertices(graph: GroundSketchProofGraph) -> list[int]:
+    vertices = _graph_vertex_indices(graph)
+    found = [vertex for vertex in vertices if bool(graph.get_vertex_property(int(vertex)).is_initial)]
+    return found or ([vertices[0]] if vertices else [])
+
+
+def _path_edges_to(graph: GroundSketchProofGraph, target: int) -> list[int] | None:
+    target = int(target)
+    starts = _initial_vertices(graph)
+    if target in starts:
+        return []
+    queue: deque[int] = deque(starts)
+    seen = set(starts)
+    predecessor: dict[int, tuple[int, int]] = {}
+    while queue:
+        source = queue.popleft()
+        for edge in _graph_out_edge_indices(graph, source):
+            successor = int(graph.get_target(edge))
+            if successor in seen:
+                continue
+            seen.add(successor)
+            predecessor[successor] = (source, int(edge))
+            if successor == target:
+                path: list[int] = []
+                cursor = target
+                while cursor not in starts:
+                    prev, via = predecessor[cursor]
+                    path.append(via)
+                    cursor = prev
+                path.reverse()
+                return path
+            queue.append(successor)
+    return None
+
+
+def _cycle_edges(graph: GroundSketchProofGraph, vertices: list[int]) -> list[int]:
+    if len(vertices) < 2:
+        return []
+    edges: list[int] = []
+    for source, target in zip(vertices, vertices[1:] + vertices[:1]):
+        for edge in _graph_out_edge_indices(graph, int(source)):
+            if int(graph.get_target(edge)) == int(target):
+                edges.append(int(edge))
+                break
+    return edges
+
+
+def _transition_from_graph_edge(
+    graph: GroundSketchProofGraph,
+    edge: int,
+    step: int,
+    features: list[Feature],
+) -> JsonObject:
+    source_vertex = int(graph.get_source(int(edge)))
+    target_vertex = int(graph.get_target(int(edge)))
+    source_state = _state_from_vertex(graph, source_vertex)
+    target_state = _state_from_vertex(graph, target_vertex)
+    source_values = _feature_values(source_state, features)
+    target_values = _feature_values(target_state, features)
+    transition = edge_summary(graph, int(edge))
+    transition.update(
+        {
+            "step": step,
+            "source_state_index": int(source_state.get_index()),
+            "target_state_index": int(target_state.get_index()),
+            "feature_delta": _feature_delta(source_values, target_values),
+        }
+    )
+    symbol = transition.get("module_rule")
+    transition["matched_rules"] = [{"edge": int(edge), "symbol": symbol}] if isinstance(symbol, str) and symbol else []
+    return transition
+
+
+def _add_graph_path(
+    *,
+    graph: GroundSketchProofGraph,
+    failure_items: list[NativeFailureItem],
+    states: dict[int, JsonObject],
+    transitions: JsonDictList,
+    features: list[Feature],
+    max_states: int | None,
+) -> None:
+    edge_ids: list[int] = []
+    for category, item in failure_items:
+        if category == "open_state":
+            path = _path_edges_to(graph, int(item))
+            if path is not None:
+                edge_ids.extend(path)
+        elif category == "deadend_transition":
+            edge = int(item)
+            path = _path_edges_to(graph, int(graph.get_source(edge)))
+            if path is not None:
+                edge_ids.extend(path + [edge])
+        elif category == "cycle":
+            vertices = [int(vertex) for vertex in item]
+            path = _path_edges_to(graph, vertices[0]) if vertices else None
+            if path is not None:
+                edge_ids.extend(path)
+            edge_ids.extend(_cycle_edges(graph, vertices))
+    edge_ids = list(dict.fromkeys(edge_ids))
+    if edge_ids:
+        _add_state(states, _state_from_vertex(graph, int(graph.get_source(edge_ids[0]))), features, max_states)
+    for edge in edge_ids:
+        source_vertex = int(graph.get_source(edge))
+        target_vertex = int(graph.get_target(edge))
+        _add_state(states, _state_from_vertex(graph, source_vertex), features, max_states)
+        _add_state(states, _state_from_vertex(graph, target_vertex), features, max_states)
+        transitions.append(_transition_from_graph_edge(graph, edge, len(transitions), features))
 
 
 def _native_cycle_description(result: GroundSketchProofResults, graph: GroundSketchProofGraph | None) -> JsonObject | None:
@@ -262,45 +358,28 @@ def _trace_from_result(
     states: dict[int, JsonObject] = {}
     transitions: JsonDictList = []
     start_state_index: int | None = None
-    plan = getattr(result, "plan", None)
-
     native_counterexamples: JsonDictList = []
-    graph = getattr(result, "graph", None)
+    graph = result.graph
 
-    if plan is None:
-        node = task.search_context.successor_generator.get_initial_node()
-        start_state_index = int(node.get_state().get_index())
-        failure_items = _native_failure_items(result)
-        native_counterexamples = _native_counterexamples(failure_items)
+    node = task.search_context.successor_generator.get_initial_node()
+    start_state_index = int(node.get_state().get_index())
+    failure_items = _native_failure_items(result)
+    native_counterexamples = _native_counterexamples(failure_items)
 
-        if graph is not None and failure_items:
-            for vertex in _native_failure_vertices(graph, failure_items):
-                _add_state(states, _state_from_vertex(graph, vertex), features, options.dump_max_states)
-        elif failure_items:
-            _add_state(states, node.get_state(), features, options.dump_max_states)
-
+    if failure_items:
+        primary_failure_items = [failure_items[0]]
+        _add_graph_path(
+            graph=graph,
+            failure_items=primary_failure_items,
+            states=states,
+            transitions=transitions,
+            features=features,
+            max_states=options.dump_max_states,
+        )
+        for vertex in _native_failure_vertices(graph, primary_failure_items):
+            _add_state(states, _state_from_vertex(graph, vertex), features, options.dump_max_states)
     else:
-        node = plan.get_start_node()
-        start_state_index = int(node.get_state().get_index())
         _add_state(states, node.get_state(), features, options.dump_max_states)
-        for step, labeled in enumerate(plan.get_labeled_succ_nodes()):
-            if options.dump_max_steps is not None and step >= options.dump_max_steps:
-                break
-            source_state = node.get_state()
-            target_state = labeled.node.get_state()
-            source_values = _feature_values(source_state, features)
-            target_values = _feature_values(target_state, features)
-            transition: JsonObject = {
-                "step": step,
-                "source_state_index": int(source_state.get_index()),
-                "target_state_index": int(target_state.get_index()),
-                "action": str(labeled.label).strip(),
-                "matched_rules": _matched_rules(graph, source_state, target_state),
-                "feature_delta": _feature_delta(source_values, target_values),
-            }
-            transitions.append(transition)
-            node = labeled.node
-            _add_state(states, target_state, features, options.dump_max_states)
 
     status = result.status.name
     status_failure_category = failure_category_from_status(result.status)
@@ -322,11 +401,11 @@ def _trace_from_result(
         "task_index": task_index,
         "states": list(states.values()),
         "transitions": transitions,
-        "chosen_actions": [transition["action"] for transition in transitions],
+        "chosen_actions": [transition["action"] for transition in transitions if transition.get("action") is not None],
         "cycle": cycle_info,
         "features": feature_names,
         "rules": rules,
-        "trace_available": plan is not None,
+        "trace_available": bool(transitions),
         "native_counterexamples": native_counterexamples,
     }
 
@@ -415,19 +494,14 @@ def _execute_single_rollout(
     for index, task in enumerate(tasks, start=1):
         result = find_ground_solution(task.search_context, policy, search_options)
         print(f"[seed {random_seed}] [{index}/{num_tasks}] {task.problem_path.name}: {result.status.name}", flush=True)
-        trace_result = result
-        trace_source = "find_ground_solution"
-        if not is_success_status(result.status):
-            trace_result = prove_ground_solution(task.search_context, policy, search_options)
-            trace_source = "prove_ground_solution_after_execute_failure"
         if dump_dir is not None:
-            trace = _trace_from_result(options=rollout_options, policy=policy, task=task, result=trace_result, task_index=index)
+            trace = _trace_from_result(options=rollout_options, policy=policy, task=task, result=result, task_index=index)
             trace["execute_status"] = result.status.name
-            trace["counterexample_source"] = trace_source
+            trace["counterexample_source"] = "find_ground_solution"
             trace["failure_fingerprint"] = _failure_fingerprint(trace)
             traces.append(trace)
         if not is_success_status(result.status) and failure is None:
-            failure = ExecutionFailure(task=task, result=trace_result)
+            failure = ExecutionFailure(task=task, result=result)
     return failure, traces
 
 

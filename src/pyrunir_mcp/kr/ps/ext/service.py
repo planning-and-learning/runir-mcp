@@ -7,11 +7,7 @@ from pypddl.formalism import ParserOptions
 from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtRepositoryFactory
 from pyrunir.kr.ps.ext import (
     CallRule,
-    ConditionVariant,
-    ConditionVariantData,
     DoRule,
-    EffectVariant,
-    EffectVariantData,
     GroundModuleProgramSearchOptions,
     LoadRule,
     Module,
@@ -33,36 +29,6 @@ TOOL_NAME = "runir.ps.ext.prove_module_program"
 
 
 ModuleRule: TypeAlias = LoadRule | SketchRule | DoRule | CallRule
-RuleFeatureVariant: TypeAlias = ConditionVariant | EffectVariant | ConditionVariantData | EffectVariantData
-
-
-def _repositories(domain_path: Path) -> tuple[PlanningDomain, Repository]:
-    planning_domain = Parser(domain_path, ParserOptions()).get_domain()
-    dl_repository = ExtRepositoryFactory().create(planning_domain)
-    program_repository = RepositoryFactory().create(dl_repository)
-    return planning_domain, program_repository
-
-
-def _rule_feature_variants(rule: ModuleRule) -> list[RuleFeatureVariant]:
-    variants: list[RuleFeatureVariant] = []
-    get_conditions = getattr(rule, "get_conditions", None)
-    if callable(get_conditions):
-        variants.extend(get_conditions())
-    get_effects = getattr(rule, "get_effects", None)
-    if callable(get_effects):
-        variants.extend(get_effects())
-    return variants
-
-
-def _variant_feature(variant: RuleFeatureVariant) -> Feature | None:
-    concrete = variant
-    for _ in range(2):
-        get_variant = getattr(concrete, "get_variant", None)
-        if not callable(get_variant):
-            break
-        concrete = get_variant()
-    get_feature = getattr(concrete, "get_feature", None)
-    return cast(Feature, get_feature()) if callable(get_feature) else None
 
 
 def _iter_module_rules(program: ModuleProgram) -> list[ModuleRule]:
@@ -77,10 +43,9 @@ def _iter_module_rules(program: ModuleProgram) -> list[ModuleRule]:
 
 def _declared_features(value: ModuleProgram | Module) -> list[Feature]:
     features: list[Feature] = []
-    for accessor in ("get_concept_features", "get_boolean_features", "get_numerical_features"):
-        get_typed_features = getattr(value, accessor, None)
-        if callable(get_typed_features):
-            features.extend(cast(list[Feature], get_typed_features()))
+    features.extend(cast(list[Feature], value.get_concept_features()))
+    features.extend(cast(list[Feature], value.get_boolean_features()))
+    features.extend(cast(list[Feature], value.get_numerical_features()))
     return features
 
 
@@ -121,6 +86,8 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
         num_threads=options.num_threads,
         prove_one=lambda task: prove_ground_solution(task.search_context, program, search_options),
         evidence=state_evidence(features, include_facts=True),
+        max_open_state_counterexamples=options.max_open_state_counterexamples,
+        max_deadend_transition_counterexamples=options.max_deadend_transition_counterexamples,
     )
     return write_proof_run(
         tool=TOOL_NAME,
@@ -133,6 +100,8 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
             "max_num_states": options.max_num_states,
             "max_time_seconds": options.max_time_seconds,
             "max_arity": options.max_arity,
+            "max_open_state_counterexamples": options.max_open_state_counterexamples,
+            "max_deadend_transition_counterexamples": options.max_deadend_transition_counterexamples,
             "features": [feature_key(feature) for feature in features],
         },
         result=result,

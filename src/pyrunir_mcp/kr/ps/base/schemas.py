@@ -12,3 +12,5 @@ class ProveSketchPolicyOptions:
     num_threads: int = 1
     max_num_states: int = 100_000
     max_time_seconds: float = 5.0
+    max_open_state_counterexamples: int = 1
+    max_deadend_transition_counterexamples: int = 1

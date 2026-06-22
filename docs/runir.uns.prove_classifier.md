@@ -26,6 +26,7 @@ Categories:
 
 ```text
 output_dir/
+  .pyrunir-mcp-output
   summary.json
   summary.md
   raw/stdout.txt

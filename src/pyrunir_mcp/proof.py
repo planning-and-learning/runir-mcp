@@ -94,11 +94,11 @@ def task_name(task: LoadedSearchContext) -> str:
 
 
 def status_name(status: ProofStatus) -> str:
-    return getattr(status, "name", str(status))
+    return status.name
 
 
 def make_search_options(options: ProofSearchOptions, max_num_states: int, max_time_seconds: float) -> ProofSearchOptions:
-    options.max_arity = getattr(options, "max_arity", 0)
+    options.max_arity = 0
     max_time = timedelta(seconds=max_time_seconds)
     options.brfs_options.max_num_states = max_num_states
     options.brfs_options.max_time = max_time
@@ -107,56 +107,47 @@ def make_search_options(options: ProofSearchOptions, max_num_states: int, max_ti
     return options
 
 
-def failure_items(result: ProofResult) -> list[FailureItem]:
+def failure_items(
+    result: ProofResult,
+    *,
+    max_open_state_counterexamples: int,
+    max_deadend_transition_counterexamples: int,
+) -> list[FailureItem]:
     items: list[FailureItem] = []
     if result.cycle:
         items.append(("cycle", [int(vertex) for vertex in result.cycle]))
-    items.extend(("open_state", int(vertex)) for vertex in result.open_states)
-    items.extend(("deadend_transition", int(edge)) for edge in result.deadend_transitions)
+    if max_open_state_counterexamples > 0:
+        items.extend(("open_state", int(vertex)) for vertex in result.open_states[:max_open_state_counterexamples])
+    if max_deadend_transition_counterexamples > 0:
+        items.extend(
+            ("deadend_transition", int(edge))
+            for edge in result.deadend_transitions[:max_deadend_transition_counterexamples]
+        )
     return items
 
 
 
 def _vertex_indices(graph: ProofGraph) -> list[int]:
-    get_vertex_indices = getattr(graph, "get_vertex_indices", None)
-    if callable(get_vertex_indices):
-        return [int(vertex) for vertex in get_vertex_indices()]
-    return list(range(int(graph.get_num_vertices())))
-
-
-def _edge_indices(graph: ProofGraph) -> list[int]:
-    get_edge_indices = getattr(graph, "get_edge_indices", None)
-    if callable(get_edge_indices):
-        return [int(edge) for edge in get_edge_indices()]
-    return list(range(int(graph.get_num_edges())))
+    return [int(vertex) for vertex in graph.get_vertex_indices()]
 
 
 def _out_edge_indices(graph: ProofGraph, vertex: int) -> list[int]:
-    get_out_edge_indices = getattr(graph, "get_out_edge_indices", None)
-    if callable(get_out_edge_indices):
-        return [int(edge) for edge in get_out_edge_indices(int(vertex))]
-    return [edge for edge in _edge_indices(graph) if int(graph.get_source(edge)) == int(vertex)]
+    return [int(edge) for edge in graph.get_out_edge_indices(int(vertex))]
 
 
-def _label_flag(label: ProofVertexLabel, name: str) -> bool:
-    if not hasattr(label, name):
-        return False
-    value = getattr(label, name)
-    if callable(value):
-        value = value()
-    return bool(value)
+def _label_is_initial(label: ProofVertexLabel) -> bool:
+    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | LiftedAnnotatedStateGraphVertexLabel):
+        return bool(label.is_initial)
+    if isinstance(label, GroundStateGraphVertexLabel | LiftedStateGraphVertexLabel):
+        return bool(label.is_initial)
+    if isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
+        return bool(label.is_initial)
+    raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
 
 
 def _initial_vertices(graph: ProofGraph) -> list[int]:
     vertices = _vertex_indices(graph)
-    found: list[int] = []
-    for vertex in vertices:
-        try:
-            label = graph.get_vertex_property(int(vertex))
-        except Exception:  # noqa: BLE001
-            continue
-        if _label_flag(label, "is_initial"):
-            found.append(int(vertex))
+    found = [vertex for vertex in vertices if _label_is_initial(graph.get_vertex_property(int(vertex)))]
     return found or ([vertices[0]] if vertices else [])
 
 
@@ -242,30 +233,44 @@ def _trace_from_path(
     return trace
 
 
+def _label_state(label: ProofVertexLabel) -> State:
+    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | LiftedAnnotatedStateGraphVertexLabel):
+        return label.state
+    if isinstance(label, GroundStateGraphVertexLabel | LiftedStateGraphVertexLabel):
+        return label.state
+    if isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
+        return label.state
+    raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
+
+
 def state_summary(
     graph: ProofGraph,
     vertex: int,
     evidence: StateEvidence | None = None,
 ) -> JsonObject:
     label = graph.get_vertex_property(int(vertex))
-    state = getattr(label, "state", None)
-    if state is None and hasattr(label, "get_state"):
-        state = label.get_state()
-    out: JsonObject = {"vertex_index": int(vertex)}
-    if state is not None:
-        try:
-            out["state_index"] = int(state.get_index())
-        except Exception:  # noqa: BLE001
-            out["state"] = str(state)
-        if evidence is not None:
-            out.update(evidence(state))
-    memory_state = getattr(label, "memory_state", None)
-    if memory_state is not None:
-        out["memory_state"] = str(memory_state)
-    for attr in ("is_initial", "is_goal", "is_alive", "is_unsolvable", "goal_distance"):
-        if hasattr(label, attr):
-            value = getattr(label, attr)
-            out[attr] = value() if callable(value) else value
+    state = _label_state(label)
+    out: JsonObject = {
+        "vertex_index": int(vertex),
+        "state_index": int(state.get_index()),
+    }
+    if evidence is not None:
+        out.update(evidence(state))
+    if isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
+        out["memory_state"] = str(label.memory_state)
+        out["module"] = str(label.module_.get_name())
+    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | LiftedAnnotatedStateGraphVertexLabel):
+        out["is_initial"] = bool(label.is_initial)
+        out["is_goal"] = bool(label.is_goal)
+        out["is_alive"] = bool(label.is_alive)
+        out["is_unsolvable"] = bool(label.is_unsolvable)
+        out["goal_distance"] = label.goal_distance
+    elif isinstance(label, GroundStateGraphVertexLabel | LiftedStateGraphVertexLabel):
+        out["is_initial"] = bool(label.is_initial)
+        out["is_goal"] = bool(label.is_goal)
+    elif isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
+        out["is_initial"] = bool(label.is_initial)
+        out["is_goal"] = bool(label.is_goal)
     return out
 
 
@@ -273,12 +278,9 @@ def _format_ground_action(action: GroundAction | StateGraphEdgeLabel | None) -> 
     if action is None:
         return None
 
-    ground_action = action.action if hasattr(action, "action") else cast(GroundAction, action)
+    ground_action = action.action if isinstance(action, StateGraphEdgeLabel) else cast(GroundAction, action)
     action_name = str(ground_action.get_action().get_name())
-    row_text = str(ground_action.get_row()).strip()
-    if row_text.startswith("(") and row_text.endswith(")"):
-        row_text = row_text[1:-1].strip()
-    arguments = ", ".join(row_text.split())
+    arguments = ", ".join(str(obj) for obj in ground_action.get_objects())
     return f"{action_name}({arguments})"
 
 
@@ -288,34 +290,27 @@ def _format_module_rule(rule: ProofRule | None) -> str | None:
     return str(rule.get_symbol()).strip()
 
 
-def _edge_action(prop: ProofEdgeLabel) -> str | None:
-    for name in ("transition", "state_transition", "action"):
-        action = getattr(prop, name, None)
-        if action is not None:
-            return _format_ground_action(cast(GroundAction | StateGraphEdgeLabel, action))
-    return None
-
-
 def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
     out: JsonObject = {
         "edge": int(edge),
         "source_vertex_index": int(graph.get_source(int(edge))),
         "target_vertex_index": int(graph.get_target(int(edge))),
     }
-    try:
-        prop = graph.get_edge_property(int(edge))
-        action = _edge_action(prop)
-        if action is not None:
-            out["action"] = action
-        rule = getattr(prop, "rule", None)
-        module_rule = _format_module_rule(cast(ProofRule | None, rule))
-        if module_rule is not None:
-            out["module_rule"] = module_rule
-        transition = getattr(prop, "transition", None) or getattr(prop, "state_transition", None)
-        if transition is not None:
-            out["transition"] = str(transition).strip()
-    except Exception as exc:  # noqa: BLE001
-        out["label_error"] = {"type": type(exc).__name__, "message": str(exc)}
+    prop = graph.get_edge_property(int(edge))
+    if isinstance(prop, SketchProofEdgeLabel):
+        out["action"] = _format_ground_action(prop.transition)
+        out["module_rule"] = _format_module_rule(prop.rule)
+        out["transition"] = str(prop.transition).strip()
+    elif isinstance(prop, ModuleProgramProofEdgeLabel):
+        if prop.state_transition is not None:
+            out["action"] = _format_ground_action(prop.state_transition)
+            out["transition"] = str(prop.state_transition).strip()
+        out["module_rule"] = _format_module_rule(prop.rule)
+    elif isinstance(prop, StateGraphEdgeLabel):
+        out["action"] = _format_ground_action(prop)
+        out["transition"] = str(prop).strip()
+    else:
+        raise TypeError(f"unsupported proof edge label: {type(prop).__name__}")
     return out
 
 
@@ -396,13 +391,19 @@ def prove_tasks(
     num_threads: int,
     prove_one: Callable[[LoadedSearchContext], ProofResult],
     evidence: StateEvidence | None = None,
+    max_open_state_counterexamples: int = 1,
+    max_deadend_transition_counterexamples: int = 1,
 ) -> ProofRunResult:
     execution_context = ExecutionContext(num_threads)
     task = load_grounded_search_context(domain_path, problem_path, execution_context)
     result = prove_one(task)
     counterexamples: list[JsonObject] = []
     if not result.is_successful():
-        for category, witness in failure_items(result):
+        for category, witness in failure_items(
+            result,
+            max_open_state_counterexamples=max_open_state_counterexamples,
+            max_deadend_transition_counterexamples=max_deadend_transition_counterexamples,
+        ):
             counterexamples.append(counterexample_data(task, result, category, witness, evidence))
     return ProofRunResult(
         status="success" if not counterexamples else "failure",

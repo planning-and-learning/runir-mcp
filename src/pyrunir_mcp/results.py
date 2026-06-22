@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import copy
 import json
-import re
 from pathlib import Path
 from typing import Protocol
 
-from pyrunir_mcp.counterexample_payloads import counterexample_and_trace_payloads
 from pyrunir_mcp.json_types import JsonObject, JsonValue
 
 from pyrunir_mcp.paths import relative_to
@@ -17,16 +14,6 @@ class ExecuteResultLike(Protocol):
 
 def _read_json(path: Path) -> JsonValue:
     return json.loads(path.read_text(encoding="utf-8"))
-
-def _slug(value: JsonValue, default: str = "counterexample") -> str:
-    text = str(value or default).strip().lower()
-    text = re.sub(r"[^a-z0-9_-]+", "_", text)
-    return text.strip("_") or default
-
-def _write_json(path: Path, data: JsonValue) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as fh:
-        fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 def _result_path(value: JsonValue, output_dir: Path) -> str | None:
     if value is None:
@@ -39,16 +26,24 @@ def _result_path(value: JsonValue, output_dir: Path) -> str | None:
     except ValueError:
         return "<omitted: outside output_dir>"
 
+def _manifest_item(item: JsonValue, output_dir: Path) -> JsonValue:
+    if not isinstance(item, dict):
+        return item
+    copied = dict(item)
+    for key in ("trace_path", "counterexample_path"):
+        if key in copied:
+            copied[key] = _result_path(copied.get(key), output_dir)
+    return copied
+
+
 def _manifest_result(manifest: JsonValue, output_dir: Path) -> JsonValue:
     if not isinstance(manifest, dict):
         return manifest
-    data = copy.deepcopy(manifest)
-    for collection in (data.get("tasks"), data.get("distinct_failures")):
-        if not isinstance(collection, list):
-            continue
-        for item in collection:
-            if isinstance(item, dict) and "trace_file" in item:
-                item["trace_file"] = _result_path(item.get("trace_file"), output_dir)
+    data = dict(manifest)
+    for key in ("tasks", "distinct_failures"):
+        collection = data.get(key)
+        if isinstance(collection, list):
+            data[key] = [_manifest_item(item, output_dir) for item in collection]
     return data
 
 def _reformat_prompt_summary(
@@ -110,7 +105,7 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
     for index, task in enumerate(tasks, start=1):
         problem = task.get("problem_file")
         name = Path(str(problem)).name if problem else f"task-{index:03d}"
-        trace_file = _result_path(task.get("trace_file"), output_dir)
+        trace_path_value = _result_path(task.get("trace_path"), output_dir)
         item = {
             "kind": "task",
             "id": f"task-{index:03d}",
@@ -119,7 +114,7 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
             "status": task.get("status"),
             "failure_category": task.get("failure_category"),
             "seed": task.get("seed"),
-            "trace_path": trace_file,
+            "trace_path": trace_path_value,
         }
         task_items.append(item)
         if failing_task is None and (
@@ -131,71 +126,14 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
             failure_category = task.get("failure_category")
 
     failure_items: list[JsonObject] = []
-    failing_tasks = [
-        item
-        for item in task_items
-        if item.get("failure_category") is not None
-        or item.get("status") not in (None, "SOLVED", "SUCCESS")
-    ]
-    failure_sources = distinct_failures if distinct_failures else failing_tasks
-    for index, item in enumerate(failure_sources, start=1):
-        category = _slug(item.get("failure_category") or item.get("status"), "failure")
-        failure_id = f"{category}-{index:03d}"
+    for index, item in enumerate(distinct_failures, start=1):
+        category = item.get("failure_category") or item.get("status") or "failure"
+        failure_id = str(item.get("id") or f"{category}-{index:03d}")
         problem = item.get("problem_file")
         task = item.get("task") or item.get("name") or (Path(str(problem)).name if problem else f"task-{index:03d}")
-        source_trace_path = _result_path(item.get("trace_file") or item.get("trace_path"), output_dir)
-        trace_path = None
-        trace_available = False
-        counterexample_payload: JsonObject = {}
-        if source_trace_path and source_trace_path != "<omitted: outside output_dir>":
-            source = output_dir / str(source_trace_path)
-            if source.is_file():
-                source_data = _read_json(source)
-                if isinstance(source_data, dict):
-                    counterexample_payload, trace_data = counterexample_and_trace_payloads(
-                        source_data,
-                        category,
-                        trace_metadata_keys=(
-                            "artifact_version",
-                            "tool",
-                            "domain_file",
-                            "problem_file",
-                            "sketch_file",
-                            "sketch_sha256",
-                            "module_program_file",
-                            "module_program_sha256",
-                            "options",
-                            "status",
-                            "failure_category",
-                            "task_index",
-                            "features",
-                        ),
-                    )
-                    if trace_data is not None:
-                        trace_target = output_dir / "traces" / category / f"{failure_id}.json"
-                        trace_data.setdefault("schema_version", 1)
-                        trace_data.setdefault("id", failure_id)
-                        trace_data.setdefault("category", category)
-                        _write_json(trace_target, trace_data)
-                        trace_path = trace_target.relative_to(output_dir).as_posix()
-                        trace_available = True
-        counterexample_path = output_dir / "counterexamples" / category / f"{failure_id}.json"
-        counterexample = {
-            "schema_version": 1,
-            "id": failure_id,
-            "category": category,
-            "kind": "failure",
-            "failure_category": item.get("failure_category"),
-            "problem_file": problem,
-            "task": task,
-            "seed": item.get("seed"),
-            "source_trace_path": source_trace_path,
-            "trace_available": trace_available,
-            **counterexample_payload,
-        }
-        if trace_path is not None:
-            counterexample["trace_path"] = trace_path
-        _write_json(counterexample_path, counterexample)
+        trace_path = _result_path(item.get("trace_path"), output_dir)
+        counterexample_path = _result_path(item.get("counterexample_path"), output_dir)
+        trace_available = bool(trace_path) and trace_path != "<omitted: outside output_dir>"
         failure_items.append({
             "kind": "failure",
             "id": failure_id,
@@ -204,10 +142,9 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
             "problem_file": problem,
             "task": task,
             "seed": item.get("seed"),
-            "path": counterexample_path.relative_to(output_dir).as_posix(),
+            "path": counterexample_path,
             "trace_path": trace_path,
-            "trace_available": trace_available,
-            "source_trace_path": source_trace_path,
+            "trace_available": bool(item.get("trace_available", trace_available)),
         })
     if failure_category is None and failure_items:
         failure_category = failure_items[0].get("failure_category")

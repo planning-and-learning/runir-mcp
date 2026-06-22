@@ -225,199 +225,70 @@ def test_execute_cli_reused_output_allocates_child_run(monkeypatch, tmp_path):
     assert (output_dir / "run-002" / "manifest.json").is_file()
 
 
-def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_path):
-    class Result:
-        failure = object()
 
-    output_dir = tmp_path / "execute" / "run-002"
-    output_dir.mkdir(parents=True)
-    trace = output_dir / "trace_seed-0.json"
-    trace.write_text(json.dumps({"states": [{"state_index": 1, "feature_values": {"n": 1}}], "transitions": []}) + "\n", encoding="utf-8")
-    manifest = {
-        "tasks": [
-            {
-                "problem_file": "p1.pddl",
-                "status": "FAILED",
-                "failure_category": "open_state",
-                "seed": 0,
-                "trace_file": trace.as_posix(),
-            }
-        ],
-        "distinct_failures": [
-            {
-                "problem_file": "p1.pddl",
-                "failure_category": "open_state",
-                "seed": 0,
-                "trace_file": trace.as_posix(),
-            }
-        ],
-    }
-    (output_dir / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
-
-    result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
-
-    assert result["tasks"][0]["trace_path"] == "trace_seed-0.json"
-    assert result["items"][0]["path"] == "counterexamples/open_state/open_state-001.json"
-    assert result["items"][0]["trace_path"] == "traces/open_state/open_state-001.json"
-    assert result["items"][0]["trace_available"] is True
-    assert (output_dir / result["items"][0]["path"]).is_file()
-    counterexample = json.loads((output_dir / result["items"][0]["path"]).read_text(encoding="utf-8"))
-    assert counterexample["state"]["feature_values"] == {"n": 1}
-    assert result["manifest"]["tasks"][0]["trace_file"] == "trace_seed-0.json"
-    assert result["manifest"]["distinct_failures"][0]["trace_file"] == "trace_seed-0.json"
-    persisted = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
-    assert persisted["tasks"][0]["trace_file"] == trace.as_posix()
-
-
-def test_execute_result_promotes_only_representative_failures(tmp_path):
+def test_execute_result_reuses_service_written_failure_artifacts(tmp_path):
     class Result:
         failure = object()
 
     output_dir = tmp_path / "execute"
-    output_dir.mkdir()
-    (output_dir / "trace_seed-0.json").write_text(
-        json.dumps({"states": [{"state_index": 1, "feature_values": {"n": 1}}], "transitions": []}) + "\n",
+    counterexample_path = output_dir / "counterexamples" / "open_state" / "open_state-001.json"
+    trace_path = output_dir / "traces" / "open_state" / "open_state-001.json"
+    counterexample_path.parent.mkdir(parents=True)
+    trace_path.parent.mkdir(parents=True)
+    counterexample_path.write_text(
+        json.dumps({"schema_version": 1, "id": "open_state-001", "trace_path": "traces/open_state/open_state-001.json"}) + "\n",
         encoding="utf-8",
     )
-    (output_dir / "trace_seed-1.json").write_text("{}\n", encoding="utf-8")
-    (output_dir / "trace_seed-2.json").write_text(
-        json.dumps({
-            "states": [{"state_index": 1}, {"state_index": 2}, {"state_index": 1}],
-            "transitions": [
-                {"step": 0, "source_state_index": 1, "target_state_index": 2, "action": "a"},
-                {"step": 1, "source_state_index": 2, "target_state_index": 1, "action": "b"},
-            ],
-            "cycle": {"prefix_state_indices": [], "cycle_state_indices": [1, 2, 1], "prefix_transition_steps": [], "cycle_transition_steps": [0, 1]},
-        }) + "\n",
+    trace_path.write_text(json.dumps({"schema_version": 1, "id": "open_state-001", "states": []}) + "\n", encoding="utf-8")
+    (output_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "tasks": [
+                    {
+                        "problem_file": "p1.pddl",
+                        "status": "FAILURE",
+                        "failure_category": "open_state",
+                        "seed": 0,
+                        "trace_path": trace_path.as_posix(),
+                    }
+                ],
+                "distinct_failures": [
+                    {
+                        "problem_file": "p1.pddl",
+                        "task": "p1.pddl",
+                        "status": "FAILURE",
+                        "failure_category": "open_state",
+                        "seed": 0,
+                        "counterexample_path": counterexample_path.as_posix(),
+                        "trace_path": trace_path.as_posix(),
+                        "trace_available": True,
+                    }
+                ],
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
-    (output_dir / "trace_seed-3.json").write_text(
-        json.dumps({"states": [{"state_index": 4, "feature_values": {"n": 4}}], "transitions": []}) + "\n",
-        encoding="utf-8",
-    )
-    manifest = {
-        "tasks": [
-            {
-                "problem_file": "p1.pddl",
-                "status": "FAILED",
-                "failure_category": "open_state",
-                "seed": 0,
-                "trace_file": "trace_seed-0.json",
-            },
-            {
-                "problem_file": "p1.pddl",
-                "status": "FAILED",
-                "failure_category": "open_state",
-                "seed": 1,
-                "trace_file": "trace_seed-1.json",
-            },
-            {
-                "problem_file": "p1.pddl",
-                "status": "FAILED",
-                "failure_category": "cycle",
-                "seed": 2,
-                "trace_file": "trace_seed-2.json",
-            },
-            {
-                "problem_file": "p2.pddl",
-                "status": "FAILED",
-                "failure_category": "open_state",
-                "seed": 3,
-                "trace_file": "trace_seed-3.json",
-            },
-        ],
-        "distinct_failures": [
-            {
-                "problem_file": "p1.pddl",
-                "failure_category": "open_state",
-                "seed": 0,
-                "trace_file": "trace_seed-0.json",
-                "fingerprint": "p1-open",
-            },
-            {
-                "problem_file": "p1.pddl",
-                "failure_category": "cycle",
-                "seed": 2,
-                "trace_file": "trace_seed-2.json",
-                "fingerprint": "p1-cycle",
-            },
-            {
-                "problem_file": "p2.pddl",
-                "failure_category": "open_state",
-                "seed": 3,
-                "trace_file": "trace_seed-3.json",
-                "fingerprint": "p2-open",
-            },
-        ],
-    }
-    (output_dir / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+    (output_dir / "summary.md").write_text("# summary\n", encoding="utf-8")
 
     result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
 
-    assert [(item["task"], item["failure_category"]) for item in result["items"]] == [
-        ("p1.pddl", "open_state"),
-        ("p1.pddl", "cycle"),
-        ("p2.pddl", "open_state"),
+    assert result["items"] == [
+        {
+            "kind": "failure",
+            "id": "open_state-001",
+            "category": "open_state",
+            "failure_category": "open_state",
+            "problem_file": "p1.pddl",
+            "task": "p1.pddl",
+            "seed": 0,
+            "path": "counterexamples/open_state/open_state-001.json",
+            "trace_path": "traces/open_state/open_state-001.json",
+            "trace_available": True,
+        }
     ]
-    assert [item["path"] for item in result["items"]] == [
-        "counterexamples/open_state/open_state-001.json",
-        "counterexamples/cycle/cycle-002.json",
-        "counterexamples/open_state/open_state-003.json",
-    ]
-    assert [item["trace_path"] for item in result["items"]] == [
-        "traces/open_state/open_state-001.json",
-        "traces/cycle/cycle-002.json",
-        "traces/open_state/open_state-003.json",
-    ]
-    cycle_counterexample = json.loads((output_dir / result["items"][1]["path"]).read_text(encoding="utf-8"))
-    cycle_trace = json.loads((output_dir / result["items"][1]["trace_path"]).read_text(encoding="utf-8"))
-    assert cycle_counterexample["cycle"]["cycle_state_indices"] == [1, 2, 1]
-    assert [transition["action"] for transition in cycle_counterexample["transitions"]] == ["a", "b"]
-    assert [transition["action"] for transition in cycle_trace["transitions"]] == []
-    assert result["primary"]["failure_count"] == 3
-    assert result["prompt_summary"]["counts"]["failures"] == 3
-
-
-def test_execute_result_omits_absolute_trace_paths_outside_output_dir(tmp_path):
-    class Result:
-        failure = object()
-
-    output_dir = tmp_path / "execute"
-    output_dir.mkdir()
-    trace = tmp_path / "outside" / "trace_seed-0.json"
-    trace.parent.mkdir()
-    trace.write_text("{}\n", encoding="utf-8")
-    manifest = {
-        "tasks": [
-            {
-                "problem_file": "p1.pddl",
-                "status": "FAILED",
-                "failure_category": "open_state",
-                "seed": 0,
-                "trace_file": trace.as_posix(),
-            }
-        ],
-        "distinct_failures": [
-            {
-                "problem_file": "p1.pddl",
-                "failure_category": "open_state",
-                "seed": 0,
-                "trace_file": trace.as_posix(),
-            }
-        ],
-    }
-    (output_dir / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
-
-    result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
-
-    assert result["tasks"][0]["trace_path"] == "<omitted: outside output_dir>"
-    assert result["items"][0]["path"] == "counterexamples/open_state/open_state-001.json"
-    assert result["items"][0]["trace_path"] is None
-    assert result["items"][0]["trace_available"] is False
-    assert (output_dir / result["items"][0]["path"]).is_file()
-    assert result["manifest"]["tasks"][0]["trace_file"] == "<omitted: outside output_dir>"
-    assert result["manifest"]["distinct_failures"][0]["trace_file"] == "<omitted: outside output_dir>"
-
+    assert json.loads(counterexample_path.read_text(encoding="utf-8"))["id"] == "open_state-001"
+    assert json.loads(trace_path.read_text(encoding="utf-8"))["id"] == "open_state-001"
 
 def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
     from pyrunir_mcp import invoke

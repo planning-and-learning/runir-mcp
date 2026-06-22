@@ -13,12 +13,11 @@ PolicyStatus: TypeAlias = PolicyProofStatus | SearchStatus
 
 
 def is_success_status(status: PolicyStatus) -> bool:
-    return getattr(status, "name", str(status)) in {"SOLVED", "SUCCESS"}
+    return status.name in {"SOLVED", "SUCCESS"}
 
 
 def failure_category_from_status(status: PolicyStatus) -> str | None:
-    name = getattr(status, "name", str(status))
-    return None if name in {"SOLVED", "SUCCESS"} else name.lower()
+    return None if status.name in {"SOLVED", "SUCCESS"} else status.name.lower()
 
 
 def sort_by_problem_name(tasks: list[LoadedSearchContext]) -> list[LoadedSearchContext]:

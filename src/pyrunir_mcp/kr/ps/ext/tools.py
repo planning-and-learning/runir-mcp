@@ -20,6 +20,8 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         max_num_states: int = 100_000,
         max_time_seconds: float = 5.0,
         max_arity: int = 0,
+        max_open_state_counterexamples: int = 1,
+        max_deadend_transition_counterexamples: int = 1,
     ) -> dict:
         """Prove an extended Runir module program and write every counterexample separately."""
         return run_prove_module_program(
@@ -32,5 +34,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
                 max_num_states=max_num_states,
                 max_time_seconds=max_time_seconds,
                 max_arity=max_arity,
+                max_open_state_counterexamples=max_open_state_counterexamples,
+                max_deadend_transition_counterexamples=max_deadend_transition_counterexamples,
             )
         )

@@ -112,6 +112,8 @@ def _base_prove(args: Args) -> ToolResult:
             num_threads=args.integer("num_threads", 1),
             max_num_states=args.integer("max_num_states", 100_000),
             max_time_seconds=args.number("max_time_seconds", 5.0),
+            max_open_state_counterexamples=args.integer("max_open_state_counterexamples", 1),
+            max_deadend_transition_counterexamples=args.integer("max_deadend_transition_counterexamples", 1),
         )
     )
 
@@ -127,6 +129,8 @@ def _ext_prove(args: Args) -> ToolResult:
             max_num_states=args.integer("max_num_states", 100_000),
             max_time_seconds=args.number("max_time_seconds", 5.0),
             max_arity=args.integer("max_arity", 0),
+            max_open_state_counterexamples=args.integer("max_open_state_counterexamples", 1),
+            max_deadend_transition_counterexamples=args.integer("max_deadend_transition_counterexamples", 1),
         )
     )
 

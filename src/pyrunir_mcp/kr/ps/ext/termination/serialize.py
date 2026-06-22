@@ -43,5 +43,4 @@ def counterexample_to_data(counterexample) -> JsonObject:
 
 
 def status_name(status: StructuralTerminationStatus) -> str:
-    name = getattr(status, "name", None)
-    return str(name if name is not None else status)
+    return status.name

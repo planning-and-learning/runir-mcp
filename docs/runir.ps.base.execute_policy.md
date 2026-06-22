@@ -29,6 +29,7 @@ Returns normalized execution output with one task entry per rollout seed and rep
 
 ```text
 output_dir/
+  .pyrunir-mcp-output
   summary.md
   manifest.json
   failures/<category>/<id>.json       # lightweight index to the normalized witness

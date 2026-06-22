@@ -63,8 +63,26 @@ class Module:
 
 
 class ModuleProgram:
-    def __init__(self, modules: list[Module]):
+    def __init__(
+        self,
+        modules: list[Module],
+        concepts: list[Feature] | None = None,
+        booleans: list[Feature] | None = None,
+        numericals: list[Feature] | None = None,
+    ):
         self._modules = modules
+        self._concepts = concepts or []
+        self._booleans = booleans or []
+        self._numericals = numericals or []
+
+    def get_concept_features(self) -> list[Feature]:
+        return self._concepts
+
+    def get_boolean_features(self) -> list[Feature]:
+        return self._booleans
+
+    def get_numerical_features(self) -> list[Feature]:
+        return self._numericals
 
     def get_modules(self) -> list[Module]:
         return self._modules

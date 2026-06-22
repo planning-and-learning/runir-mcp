@@ -38,6 +38,7 @@ Uses the shared counterexample summary format. Nontermination witnesses are stru
 
 ```text
 output_dir/
+  .pyrunir-mcp-output
   summary.json
   summary.md
   raw/stdout.txt

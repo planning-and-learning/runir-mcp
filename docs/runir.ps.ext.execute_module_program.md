@@ -20,6 +20,7 @@ Same normalized structure as `runir.ps.base.execute_policy`, with `tool: "runir.
 
 ```text
 output_dir/
+  .pyrunir-mcp-output
   summary.md
   manifest.json
   failures/<category>/<id>.json       # lightweight index to the normalized witness

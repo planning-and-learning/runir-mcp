@@ -23,10 +23,8 @@ def _repositories(domain_path: Path):
 
 
 def _module_name(module: Module, index: int) -> str:
-    get_name = getattr(module, "get_name", None)
-    if callable(get_name):
-        return str(get_name())
-    return f"module-{index:03d}"
+    name = str(module.get_name())
+    return name or f"module-{index:03d}"
 
 
 def _module_result_metadata(module_name: str, module_result: ModuleStructuralTerminationResult) -> JsonObject:

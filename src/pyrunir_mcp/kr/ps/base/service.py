@@ -17,12 +17,10 @@ TOOL_NAME = "runir.ps.base.prove_sketch_policy"
 
 def collect_features(policy: Sketch) -> list[Feature]:
     features_by_key: dict[str, Feature] = {}
-    for getter_name in ("get_boolean_features", "get_numerical_features"):
-        get_features = getattr(policy, getter_name, None)
-        if not callable(get_features):
-            continue
-        for feature in get_features():
-            features_by_key.setdefault(feature_key(feature), feature)
+    for feature in policy.get_boolean_features():
+        features_by_key.setdefault(feature_key(feature), feature)
+    for feature in policy.get_numerical_features():
+        features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
 
 
@@ -45,6 +43,8 @@ def prove_sketch_policy(options: ProveSketchPolicyOptions) -> JsonObject:
         num_threads=options.num_threads,
         prove_one=lambda task: prove_ground_solution(task.search_context, policy, search_options),
         evidence=state_evidence(features, include_facts=True),
+        max_open_state_counterexamples=options.max_open_state_counterexamples,
+        max_deadend_transition_counterexamples=options.max_deadend_transition_counterexamples,
     )
     return write_proof_run(
         tool=TOOL_NAME,
@@ -56,6 +56,8 @@ def prove_sketch_policy(options: ProveSketchPolicyOptions) -> JsonObject:
             "num_threads": options.num_threads,
             "max_num_states": options.max_num_states,
             "max_time_seconds": options.max_time_seconds,
+            "max_open_state_counterexamples": options.max_open_state_counterexamples,
+            "max_deadend_transition_counterexamples": options.max_deadend_transition_counterexamples,
             "features": [feature_key(feature) for feature in features],
         },
         result=result,

@@ -20,7 +20,7 @@ This directory documents the JSON calling arguments and normalized output struct
 
 ## Shared Conventions
 
-All paths are strings. The caller must pass an `output_dir` for tools that create run artifacts. A tool invocation reserves that directory if it is empty; if it already contains prior MCP output, the tool writes to `run-002`, `run-003`, etc. under it.
+All paths are strings. The caller must pass an `output_dir` for tools that create run artifacts. A tool invocation reserves that directory by writing `.pyrunir-mcp-output` if it is empty; if it already contains prior MCP output, the tool writes to `run-002`, `run-003`, etc. under it.
 
 Normalized successful tool results are JSON objects with at least:
 
