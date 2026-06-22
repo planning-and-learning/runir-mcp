@@ -11,7 +11,7 @@ def test_prove_classifier_writes_all_classifier_counterexamples_separately(tmp_p
             {
                 "task": "p-003.pddl",
                 "category": "false_positive",
-                "state_id": 12,
+                "state_index": 12,
                 "predicted_unsolvable": True,
                 "actually_solvable": True,
                 "feature_values": {"deadend_like": True},
@@ -20,7 +20,7 @@ def test_prove_classifier_writes_all_classifier_counterexamples_separately(tmp_p
             {
                 "task": "p-003.pddl",
                 "category": "false_negative",
-                "state_id": 13,
+                "state_index": 13,
                 "predicted_unsolvable": False,
                 "actually_solvable": False,
                 "feature_values": {"deadend_like": False},

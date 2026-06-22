@@ -27,4 +27,4 @@ Returns a compact success object. No `output_dir` is used.
 }
 ```
 
-The file is replaced with RunIR's canonical formatted representation.
+The file is replaced with Runir's canonical formatted representation.

@@ -66,31 +66,31 @@ def test_write_summary_refuses_existing_summary_json(tmp_path):
 
 
 def test_reformat_result_uses_layered_contract(tmp_path):
-    policy = tmp_path / "policy.txt"
+    policy = tmp_path / "sketch.txt"
     policy.write_text("(:sketch)", encoding="utf-8")
 
     result = reformat_result(
         tool="runir.ps.base.reformat_policy",
-        path_key="policy_file",
+        path_key="sketch_file",
         path=policy,
         kind="sketch",
     )
 
     assert result["status"] == "success"
     assert result["primary"]["successful"] is True
-    assert result["primary"]["policy_file"] == "policy.txt"
+    assert result["primary"]["sketch_file"] == "sketch.txt"
     assert result["primary"]["kind"] == "sketch"
     assert result["primary"]["prompt_summary"] == result["prompt_summary"]
     assert result["prompt_summary"] == {
         "tool": "runir.ps.base.reformat_policy",
         "status": "success",
         "successful": True,
-        "artifacts": {"policy_file": "policy.txt"},
+        "artifacts": {"sketch_file": "sketch.txt"},
         "kind": "sketch",
     }
     assert result["summary"]["tool"] == "runir.ps.base.reformat_policy"
-    assert result["artifacts"]["policy_file"] == "policy.txt"
-    assert result["policy_file"] == "policy.txt"
+    assert result["artifacts"]["sketch_file"] == "sketch.txt"
+    assert result["sketch_file"] == "sketch.txt"
     assert result["items"] == []
 
 
@@ -192,7 +192,6 @@ def test_execute_cli_reused_output_allocates_child_run(monkeypatch, tmp_path):
 
     class Result:
         failure = None
-        replay_errors = []
 
     calls: list[Path] = []
 
@@ -216,8 +215,8 @@ def test_execute_cli_reused_output_allocates_child_run(monkeypatch, tmp_path):
         "output_dir": str(output_dir),
     }
 
-    first = invoke._base_execute(args)
-    second = invoke._base_execute(args)
+    first = invoke._base_execute(invoke.Args(args))
+    second = invoke._base_execute(invoke.Args(args))
 
     assert calls == [output_dir, output_dir / "run-002"]
     assert first["output_dir"] == output_dir.as_posix()
@@ -229,12 +228,11 @@ def test_execute_cli_reused_output_allocates_child_run(monkeypatch, tmp_path):
 def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_path):
     class Result:
         failure = object()
-        replay_errors = []
 
     output_dir = tmp_path / "execute" / "run-002"
     output_dir.mkdir(parents=True)
-    trace = output_dir / "task-001_seed-0_trace.json"
-    trace.write_text(json.dumps({"states": [{"id": 1, "feature_values": {"n": 1}}], "transitions": []}) + "\n", encoding="utf-8")
+    trace = output_dir / "trace_seed-0.json"
+    trace.write_text(json.dumps({"states": [{"state_index": 1, "feature_values": {"n": 1}}], "transitions": []}) + "\n", encoding="utf-8")
     manifest = {
         "tasks": [
             {
@@ -258,15 +256,15 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
 
     result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
 
-    assert result["tasks"][0]["trace_path"] == "task-001_seed-0_trace.json"
+    assert result["tasks"][0]["trace_path"] == "trace_seed-0.json"
     assert result["items"][0]["path"] == "counterexamples/open_state/open_state-001.json"
     assert result["items"][0]["trace_path"] is None
     assert result["items"][0]["trace_available"] is False
     assert (output_dir / result["items"][0]["path"]).is_file()
     counterexample = json.loads((output_dir / result["items"][0]["path"]).read_text(encoding="utf-8"))
     assert counterexample["state"]["feature_values"] == {"n": 1}
-    assert result["manifest"]["tasks"][0]["trace_file"] == "task-001_seed-0_trace.json"
-    assert result["manifest"]["distinct_failures"][0]["trace_file"] == "task-001_seed-0_trace.json"
+    assert result["manifest"]["tasks"][0]["trace_file"] == "trace_seed-0.json"
+    assert result["manifest"]["distinct_failures"][0]["trace_file"] == "trace_seed-0.json"
     persisted = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
     assert persisted["tasks"][0]["trace_file"] == trace.as_posix()
 
@@ -274,28 +272,27 @@ def test_execute_result_relativizes_absolute_trace_paths_inside_output_dir(tmp_p
 def test_execute_result_promotes_only_representative_failures(tmp_path):
     class Result:
         failure = object()
-        replay_errors = []
 
     output_dir = tmp_path / "execute"
     output_dir.mkdir()
-    (output_dir / "task-001_seed-0_trace.json").write_text(
-        json.dumps({"states": [{"id": 1, "feature_values": {"n": 1}}], "transitions": []}) + "\n",
+    (output_dir / "trace_seed-0.json").write_text(
+        json.dumps({"states": [{"state_index": 1, "feature_values": {"n": 1}}], "transitions": []}) + "\n",
         encoding="utf-8",
     )
-    (output_dir / "task-002_seed-1_trace.json").write_text("{}\n", encoding="utf-8")
-    (output_dir / "task-003_seed-0_trace.json").write_text(
+    (output_dir / "trace_seed-1.json").write_text("{}\n", encoding="utf-8")
+    (output_dir / "trace_seed-2.json").write_text(
         json.dumps({
-            "states": [{"id": 1}, {"id": 2}, {"id": 1}],
+            "states": [{"state_index": 1}, {"state_index": 2}, {"state_index": 1}],
             "transitions": [
-                {"step": 0, "source_state": 1, "target_state": 2, "action": "a"},
-                {"step": 1, "source_state": 2, "target_state": 1, "action": "b"},
+                {"step": 0, "source_state_index": 1, "target_state_index": 2, "action": "a"},
+                {"step": 1, "source_state_index": 2, "target_state_index": 1, "action": "b"},
             ],
-            "cycle": {"prefix_state_ids": [], "cycle_state_ids": [1, 2, 1], "prefix_transition_steps": [], "cycle_transition_steps": [0, 1]},
+            "cycle": {"prefix_state_indices": [], "cycle_state_indices": [1, 2, 1], "prefix_transition_steps": [], "cycle_transition_steps": [0, 1]},
         }) + "\n",
         encoding="utf-8",
     )
-    (output_dir / "task-004_seed-0_trace.json").write_text(
-        json.dumps({"states": [{"id": 4, "feature_values": {"n": 4}}], "transitions": []}) + "\n",
+    (output_dir / "trace_seed-3.json").write_text(
+        json.dumps({"states": [{"state_index": 4, "feature_values": {"n": 4}}], "transitions": []}) + "\n",
         encoding="utf-8",
     )
     manifest = {
@@ -305,28 +302,28 @@ def test_execute_result_promotes_only_representative_failures(tmp_path):
                 "status": "FAILED",
                 "failure_category": "open_state",
                 "seed": 0,
-                "trace_file": "task-001_seed-0_trace.json",
+                "trace_file": "trace_seed-0.json",
             },
             {
                 "problem_file": "p1.pddl",
                 "status": "FAILED",
                 "failure_category": "open_state",
                 "seed": 1,
-                "trace_file": "task-002_seed-1_trace.json",
+                "trace_file": "trace_seed-1.json",
             },
             {
                 "problem_file": "p1.pddl",
                 "status": "FAILED",
                 "failure_category": "cycle",
-                "seed": 0,
-                "trace_file": "task-003_seed-0_trace.json",
+                "seed": 2,
+                "trace_file": "trace_seed-2.json",
             },
             {
                 "problem_file": "p2.pddl",
                 "status": "FAILED",
                 "failure_category": "open_state",
-                "seed": 0,
-                "trace_file": "task-004_seed-0_trace.json",
+                "seed": 3,
+                "trace_file": "trace_seed-3.json",
             },
         ],
         "distinct_failures": [
@@ -334,21 +331,21 @@ def test_execute_result_promotes_only_representative_failures(tmp_path):
                 "problem_file": "p1.pddl",
                 "failure_category": "open_state",
                 "seed": 0,
-                "trace_file": "task-001_seed-0_trace.json",
+                "trace_file": "trace_seed-0.json",
                 "fingerprint": "p1-open",
             },
             {
                 "problem_file": "p1.pddl",
                 "failure_category": "cycle",
-                "seed": 0,
-                "trace_file": "task-003_seed-0_trace.json",
+                "seed": 2,
+                "trace_file": "trace_seed-2.json",
                 "fingerprint": "p1-cycle",
             },
             {
                 "problem_file": "p2.pddl",
                 "failure_category": "open_state",
-                "seed": 0,
-                "trace_file": "task-004_seed-0_trace.json",
+                "seed": 3,
+                "trace_file": "trace_seed-3.json",
                 "fingerprint": "p2-open",
             },
         ],
@@ -374,7 +371,7 @@ def test_execute_result_promotes_only_representative_failures(tmp_path):
     ]
     cycle_counterexample = json.loads((output_dir / result["items"][1]["path"]).read_text(encoding="utf-8"))
     cycle_trace = json.loads((output_dir / result["items"][1]["trace_path"]).read_text(encoding="utf-8"))
-    assert cycle_counterexample["cycle"]["cycle_state_ids"] == [1, 2, 1]
+    assert cycle_counterexample["cycle"]["cycle_state_indices"] == [1, 2, 1]
     assert [transition["action"] for transition in cycle_counterexample["transitions"]] == ["a", "b"]
     assert [transition["action"] for transition in cycle_trace["transitions"]] == []
     assert result["primary"]["failure_count"] == 3
@@ -384,11 +381,10 @@ def test_execute_result_promotes_only_representative_failures(tmp_path):
 def test_execute_result_omits_absolute_trace_paths_outside_output_dir(tmp_path):
     class Result:
         failure = object()
-        replay_errors = []
 
     output_dir = tmp_path / "execute"
     output_dir.mkdir()
-    trace = tmp_path / "outside" / "trace.json"
+    trace = tmp_path / "outside" / "trace_seed-0.json"
     trace.parent.mkdir()
     trace.write_text("{}\n", encoding="utf-8")
     manifest = {
@@ -428,7 +424,6 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
 
     class Result:
         failure = None
-        replay_errors = []
 
     seen = {}
 
@@ -448,7 +443,7 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
         return Result()
 
     monkeypatch.setattr(invoke, "execute_base_policy", fake_execute)
-    result = invoke._base_execute({
+    result = invoke._base_execute(invoke.Args({
         "domain_file": str(tmp_path / "domain.pddl"),
         "problem_file": str(tmp_path / "problem.pddl"),
         "sketch_file": str(tmp_path / "sketch.txt"),
@@ -456,7 +451,7 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
         "max_arity": 1,
         "dump_max_steps": 7,
         "dump_max_states": 13,
-    })
+    }))
 
     assert seen == {
         "max_arity": 1,
@@ -471,14 +466,13 @@ def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
 
     class Result:
         failure = None
-        replay_errors = []
 
     seen = {}
 
     def fake_execute(options):
         seen["max_arity"] = options.max_arity
         seen["max_num_states"] = options.max_num_states
-        seen["max_time"] = options.max_time
+        seen["max_time_seconds"] = options.max_time_seconds
         dump_dir = Path(options.dump_dir)
         dump_dir.mkdir(parents=True, exist_ok=True)
         (dump_dir / "manifest.json").write_text(
@@ -489,15 +483,15 @@ def test_ext_execute_cli_passes_resource_budget(monkeypatch, tmp_path):
         return Result()
 
     monkeypatch.setattr(invoke, "execute_ext_policy", fake_execute)
-    result = invoke._ext_execute({
+    result = invoke._ext_execute(invoke.Args({
         "domain_file": str(tmp_path / "domain.pddl"),
         "problem_file": str(tmp_path / "problem.pddl"),
         "module_program_file": str(tmp_path / "module_program.txt"),
         "output_dir": str(tmp_path / "execute"),
         "max_arity": 2,
         "max_num_states": 123,
-        "max_time": 4.5,
-    })
+        "max_time_seconds": 4.5,
+    }))
 
-    assert seen == {"max_arity": 2, "max_num_states": 123, "max_time": 4.5}
+    assert seen == {"max_arity": 2, "max_num_states": 123, "max_time_seconds": 4.5}
     assert result["primary"]["successful"] is True

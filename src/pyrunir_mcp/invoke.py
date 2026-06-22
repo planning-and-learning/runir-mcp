@@ -81,9 +81,6 @@ class Args:
             raise TypeError(f"{key} must be a number")
         return float(value)
 
-    def number_alias(self, key: str, alias: str, default: float) -> float:
-        return self.number(key, default) if key in self.values else self.number(alias, default)
-
     def optional_number(self, key: str) -> float | None:
         value = self.value(key)
         if value is None:
@@ -105,12 +102,7 @@ class Args:
 ToolHandler: TypeAlias = Callable[[Args], ToolResult]
 
 
-def _args(args: Args | JsonObject) -> Args:
-    return args if isinstance(args, Args) else Args(args)
-
-
-def _base_prove(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _base_prove(args: Args) -> ToolResult:
     return prove_sketch_policy(
         ProveSketchPolicyOptions(
             domain_file=args.string("domain_file"),
@@ -119,13 +111,12 @@ def _base_prove(args: Args | JsonObject) -> ToolResult:
             output_dir=args.string("output_dir"),
             num_threads=args.integer("num_threads", 1),
             max_num_states=args.integer("max_num_states", 100_000),
-            max_time_seconds=args.number_alias("max_time_seconds", "max_time", 5.0),
+            max_time_seconds=args.number("max_time_seconds", 5.0),
         )
     )
 
 
-def _ext_prove(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _ext_prove(args: Args) -> ToolResult:
     return prove_module_program(
         ProveModuleProgramOptions(
             domain_file=args.string("domain_file"),
@@ -134,46 +125,43 @@ def _ext_prove(args: Args | JsonObject) -> ToolResult:
             output_dir=args.string("output_dir"),
             num_threads=args.integer("num_threads", 1),
             max_num_states=args.integer("max_num_states", 100_000),
-            max_time_seconds=args.number_alias("max_time_seconds", "max_time", 5.0),
+            max_time_seconds=args.number("max_time_seconds", 5.0),
             max_arity=args.integer("max_arity", 0),
         )
     )
 
 
-def _base_reformat(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _base_reformat(args: Args) -> ToolResult:
     result = reformat_base_policy(
         BaseReformatOptions(
             domain_path=args.path("domain_file"),
-            policy_file=args.path("policy_file"),
+            sketch_file=args.path("sketch_file"),
         )
     )
     return reformat_result(
         tool="runir.ps.base.reformat_policy",
-        path_key="policy_file",
-        path=result.policy_file,
+        path_key="sketch_file",
+        path=result.sketch_file,
         kind=result.kind,
     )
 
 
-def _base_create_empty(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _base_create_empty(args: Args) -> ToolResult:
     result = create_empty_base_policy(
         CreateEmptyPolicyOptions(
             domain_path=args.path("domain_file"),
-            policy_file=args.path("policy_file"),
+            sketch_file=args.path("sketch_file"),
         )
     )
     return reformat_result(
         tool="runir.ps.base.create_empty_policy",
-        path_key="policy_file",
-        path=result.policy_file,
+        path_key="sketch_file",
+        path=result.sketch_file,
         kind=result.kind,
     )
 
 
-def _ext_reformat_module_program(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _ext_reformat_module_program(args: Args) -> ToolResult:
     result = reformat_module_program(
         ReformatModuleProgramOptions(
             domain_path=args.path("domain_file"),
@@ -188,8 +176,7 @@ def _ext_reformat_module_program(args: Args | JsonObject) -> ToolResult:
     )
 
 
-def _ext_reformat_module(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _ext_reformat_module(args: Args) -> ToolResult:
     result = reformat_module(
         ReformatModuleOptions(
             domain_path=args.path("domain_file"),
@@ -204,11 +191,10 @@ def _ext_reformat_module(args: Args | JsonObject) -> ToolResult:
     )
 
 
-def _ext_create_empty(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _ext_create_empty(args: Args) -> ToolResult:
     result = create_empty_ext_policy(
         ExtCreateEmptyPolicyOptions(
-            policy_file=args.path("module_program_file"),
+            module_program_file=args.path("module_program_file"),
         )
     )
     return reformat_result(
@@ -219,8 +205,7 @@ def _ext_create_empty(args: Args | JsonObject) -> ToolResult:
     )
 
 
-def _uns_reformat(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _uns_reformat(args: Args) -> ToolResult:
     result = reformat_classifier(
         ReformatClassifierOptions(
             domain_path=args.path("domain_file"),
@@ -235,8 +220,7 @@ def _uns_reformat(args: Args | JsonObject) -> ToolResult:
     )
 
 
-def _base_execute(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _base_execute(args: Args) -> ToolResult:
     output_dir = fresh_output_dir(args.path("output_dir"))
     result = execute_base_policy(
         BaseExecuteOptions(
@@ -250,18 +234,16 @@ def _base_execute(args: Args | JsonObject) -> ToolResult:
             shuffle_labeled_succ_nodes=args.boolean("shuffle_labeled_succ_nodes", True),
             max_arity=args.integer("max_arity", 0),
             max_num_states=args.optional_integer("max_num_states"),
-            max_time=args.optional_number("max_time"),
+            max_time_seconds=args.optional_number("max_time_seconds"),
             dump_dir=output_dir,
             dump_max_steps=args.optional_integer("dump_max_steps"),
             dump_max_states=args.optional_integer("dump_max_states"),
-            replay_trace=None if args.optional_string("replay_trace") is None else args.path("replay_trace"),
         )
     )
     return execute_result(tool="runir.ps.base.execute_policy", result=result, output_dir=output_dir)
 
 
-def _ext_execute(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _ext_execute(args: Args) -> ToolResult:
     output_dir = fresh_output_dir(args.path("output_dir"))
     result = execute_ext_policy(
         ExtExecuteOptions(
@@ -275,18 +257,16 @@ def _ext_execute(args: Args | JsonObject) -> ToolResult:
             shuffle_labeled_succ_nodes=args.boolean("shuffle_labeled_succ_nodes", True),
             max_arity=args.integer("max_arity", 0),
             max_num_states=args.optional_integer("max_num_states"),
-            max_time=args.optional_number("max_time"),
+            max_time_seconds=args.optional_number("max_time_seconds"),
             dump_dir=output_dir,
             dump_max_steps=args.optional_integer("dump_max_steps"),
             dump_max_states=args.optional_integer("dump_max_states"),
-            replay_trace=None if args.optional_string("replay_trace") is None else args.path("replay_trace"),
         )
     )
     return execute_result(tool="runir.ps.ext.execute_module_program", result=result, output_dir=output_dir)
 
 
-def _uns_create_empty(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _uns_create_empty(args: Args) -> ToolResult:
     result = create_empty_classifier(
         CreateEmptyClassifierOptions(classifier_file=args.path("classifier_file"))
     )
@@ -298,8 +278,7 @@ def _uns_create_empty(args: Args | JsonObject) -> ToolResult:
     )
 
 
-def _termination(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _termination(args: Args) -> ToolResult:
     return prove_termination(
         ProveTerminationOptions(
             domain_file=args.string("domain_file"),
@@ -309,8 +288,7 @@ def _termination(args: Args | JsonObject) -> ToolResult:
     )
 
 
-def _uns_prove(args: Args | JsonObject) -> ToolResult:
-    args = _args(args)
+def _uns_prove(args: Args) -> ToolResult:
     return prove_classifier(
         ProveClassifierOptions(
             domain_file=args.string("domain_file"),
@@ -318,7 +296,7 @@ def _uns_prove(args: Args | JsonObject) -> ToolResult:
             output_dir=args.string("output_dir"),
             classifier_file=args.optional_string("classifier_file"),
             max_num_states=args.integer("max_num_states", 100_000),
-            max_time_seconds=args.number_alias("max_time_seconds", "max_time", 5.0),
+            max_time_seconds=args.number("max_time_seconds", 1_000_000_000.0),
         )
     )
 
@@ -349,9 +327,8 @@ def _write_result_json(path: Path, rendered: str) -> None:
 _OFFSET_RE = re.compile(r"\bat offset (\d+)\b")
 
 
-def _source_path_from_args(args: Args | JsonObject) -> Path | None:
-    args = _args(args)
-    for key in ("sketch_file", "policy_file", "module_program_file", "module_file", "classifier_file"):
+def _source_path_from_args(args: Args) -> Path | None:
+    for key in ("sketch_file", "module_program_file", "module_file", "classifier_file"):
         value = args.value(key)
         if value:
             return Path(str(value))
@@ -385,8 +362,7 @@ def _source_excerpt(path: Path | None, message: str) -> JsonObject | None:
     }
 
 
-def _format_tool_error(tool: str, args: Args | JsonObject, exc: BaseException) -> tuple[ToolResult, str]:
-    args = _args(args)
+def _format_tool_error(tool: str, args: Args, exc: BaseException) -> tuple[ToolResult, str]:
     error_type = type(exc).__name__
     message = str(exc)
     source = _source_excerpt(_source_path_from_args(args), message)

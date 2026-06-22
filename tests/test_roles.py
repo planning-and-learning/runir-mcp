@@ -50,13 +50,11 @@ def test_all_role_exposes_every_declared_tool(tmp_path):
     assert _tool_names(server) == set(ALL_TOOLS) | {"pyrunir_mcp.server_info"}
 
 
-def test_load_role_accepts_aliases(monkeypatch):
+def test_load_role_rejects_dotted_role_name(monkeypatch):
     monkeypatch.setenv("PYRUNIR_MCP_ROLE", "kr.ps.base")
 
-    role = load_role()
-
-    assert role.name == "kr.ps.base"
-    assert role.allowed_tools == KR_PS_BASE_TOOLS
+    with pytest.raises(ValueError, match="Unknown PYRUNIR_MCP_ROLE"):
+        load_role()
 
 
 def test_load_role_requires_explicit_env(monkeypatch):

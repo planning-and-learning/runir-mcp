@@ -20,9 +20,6 @@ class LoadedSearchContext:
     search_context: GroundTaskSearchContext
 
 
-def get_problem_paths(problem_dir: Path) -> list[Path]:
-    return sorted(path for path in problem_dir.glob("*.pddl") if path.name != "domain.pddl")
-
 
 def load_grounded_search_context(
     domain_path: Path,
@@ -43,13 +40,3 @@ def load_grounded_search_context(
         search_context=GroundTaskSearchContext(grounded_result.task, execution_context),
     )
 
-
-def load_grounded_search_contexts(
-    domain_path: Path,
-    problem_dir: Path,
-    execution_context: ExecutionContext,
-) -> list[LoadedSearchContext]:
-    return [
-        load_grounded_search_context(domain_path, problem_path, execution_context)
-        for problem_path in get_problem_paths(problem_dir)
-    ]

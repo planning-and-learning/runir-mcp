@@ -7,8 +7,8 @@ from pyrunir_mcp.proof import counterexample_data, edge_summary
 
 
 class Label:
-    def __init__(self, state_id: int, *, initial: bool = False):
-        self.state = SimpleNamespace(get_index=lambda: state_id)
+    def __init__(self, state_index: int, *, initial: bool = False):
+        self.state = SimpleNamespace(get_index=lambda: state_index)
         self.is_initial = initial
 
 
@@ -59,8 +59,8 @@ def test_open_state_counterexample_includes_initial_to_witness_trace():
 
     assert data["trace"]["trace_available"] is True
     assert data["trace"]["path_edges"] == [0, 1]
-    assert [state["state_id"] for state in data["trace"]["states"]] == [10, 11, 12]
-    assert [(edge["source"], edge["target"]) for edge in data["trace"]["transitions"]] == [(0, 1), (1, 2)]
+    assert [state["state_index"] for state in data["trace"]["states"]] == [10, 11, 12]
+    assert [(edge["source_vertex_index"], edge["target_vertex_index"]) for edge in data["trace"]["transitions"]] == [(0, 1), (1, 2)]
     assert [edge["action"] for edge in data["trace"]["transitions"]] == [
         "move(room0a, room0b)",
         "move(room1a, room1b)",
@@ -90,8 +90,8 @@ def test_module_program_edge_summary_uses_state_transition_action_and_rule_symbo
 
     assert edge_summary(graph, 7) == {
         "edge": 7,
-        "source": 1,
-        "target": 2,
+        "source_vertex_index": 1,
+        "target_vertex_index": 2,
         "action": "move(rooma, roomb)",
         "module_rule": "do-move",
         "transition": str(state_transition),
@@ -108,8 +108,8 @@ def test_module_program_load_edge_summary_uses_rule_symbol_without_action():
 
     assert edge_summary(graph, 8) == {
         "edge": 8,
-        "source": 1,
-        "target": 2,
+        "source_vertex_index": 1,
+        "target_vertex_index": 2,
         "module_rule": "load",
     }
 
@@ -125,8 +125,8 @@ def test_module_execute_matched_rules_recovers_rule_symbol_from_graph_edge():
             return self._index
 
     class Label:
-        def __init__(self, state_id):
-            self.state = State(state_id)
+        def __init__(self, state_index):
+            self.state = State(state_index)
 
     rule = SimpleNamespace(get_symbol=lambda: "advance")
     graph = SimpleNamespace(
@@ -154,8 +154,8 @@ def test_base_execute_matched_rules_recovers_rule_symbol_from_graph_edge():
             return self._index
 
     class Label:
-        def __init__(self, state_id):
-            self.state = State(state_id)
+        def __init__(self, state_index):
+            self.state = State(state_index)
 
     rule = SimpleNamespace(get_symbol=lambda: "advance")
     graph = SimpleNamespace(

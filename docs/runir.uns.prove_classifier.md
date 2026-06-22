@@ -11,7 +11,7 @@ Proves an unsolvability classifier against full reachable-state-space ground tru
 | `output_dir` | string | required | Directory for normalized proof artifacts. |
 | `classifier_file` | string or null | `null` | Classifier file. Null means empty/default classifier where supported. |
 | `max_num_states` | integer | `1000000` | Reachable-state enumeration budget. |
-| `max_time_seconds` | number | `1000000000.0` | Enumeration/proof wall-clock budget. Alias: `max_time`. |
+| `max_time_seconds` | number | `1000000000.0` | Enumeration/proof wall-clock budget. |
 
 ## Output
 

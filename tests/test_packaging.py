@@ -58,7 +58,7 @@ def test_invoke_role_rejects_disallowed_tool(monkeypatch) -> None:
 
 
 def test_invoke_formats_offset_error_with_source_pointer(tmp_path) -> None:
-    from pyrunir_mcp.invoke import _format_tool_error
+    from pyrunir_mcp.invoke import Args, _format_tool_error
 
     policy = tmp_path / "module_program.txt"
     policy.write_text("(:program\n  (:memory bad)\n)\n", encoding="utf-8")
@@ -66,7 +66,7 @@ def test_invoke_formats_offset_error_with_source_pointer(tmp_path) -> None:
 
     result, stderr = _format_tool_error(
         "runir.ps.ext.reformat_module_program",
-        {"module_program_file": str(policy)},
+        Args({"module_program_file": str(policy)}),
         RuntimeError(f"Rule entry section :memory is not valid. at offset {offset}."),
     )
 

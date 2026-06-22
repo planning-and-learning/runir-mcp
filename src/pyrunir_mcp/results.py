@@ -4,28 +4,31 @@ import copy
 import json
 import re
 from pathlib import Path
+from typing import Protocol
+
+from pyrunir_mcp.counterexample_payloads import counterexample_and_trace_payloads
 from pyrunir_mcp.json_types import JsonObject, JsonValue
 
 from pyrunir_mcp.paths import relative_to
 
 
+class ExecuteResultLike(Protocol):
+    failure: object | None
+
 def _read_json(path: Path) -> JsonValue:
     return json.loads(path.read_text(encoding="utf-8"))
 
-
-def _slug(value, default: str = "counterexample") -> str:
+def _slug(value: JsonValue, default: str = "counterexample") -> str:
     text = str(value or default).strip().lower()
     text = re.sub(r"[^a-z0-9_-]+", "_", text)
     return text.strip("_") or default
-
 
 def _write_json(path: Path, data: JsonValue) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as fh:
         fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
-
-def _result_path(value, output_dir: Path) -> str | None:
+def _result_path(value: JsonValue, output_dir: Path) -> str | None:
     if value is None:
         return None
     path = Path(str(value))
@@ -35,7 +38,6 @@ def _result_path(value, output_dir: Path) -> str | None:
         return path.relative_to(output_dir).as_posix()
     except ValueError:
         return "<omitted: outside output_dir>"
-
 
 def _manifest_result(manifest: JsonValue, output_dir: Path) -> JsonValue:
     if not isinstance(manifest, dict):
@@ -48,142 +50,6 @@ def _manifest_result(manifest: JsonValue, output_dir: Path) -> JsonValue:
             if isinstance(item, dict) and "trace_file" in item:
                 item["trace_file"] = _result_path(item.get("trace_file"), output_dir)
     return data
-
-
-def _state_id(state: JsonObject) -> int | None:
-    value = state.get("id", state.get("state_id"))
-    if isinstance(value, int):
-        return value
-    return None
-
-
-def _states_by_id(states: list[JsonObject]) -> dict[int, JsonObject]:
-    result: dict[int, JsonObject] = {}
-    for state in states:
-        state_id = _state_id(state)
-        if state_id is not None:
-            result.setdefault(state_id, state)
-    return result
-
-
-def _transition_source(transition: JsonObject) -> int | None:
-    value = transition.get("source_state", transition.get("source"))
-    return value if isinstance(value, int) else None
-
-
-def _transition_target(transition: JsonObject) -> int | None:
-    value = transition.get("target_state", transition.get("target"))
-    return value if isinstance(value, int) else None
-
-
-def _transition_state_path(transitions: list[JsonObject]) -> list[int]:
-    if not transitions:
-        return []
-    first = _transition_source(transitions[0])
-    if first is None:
-        return []
-    state_ids = [first]
-    for transition in transitions:
-        target = _transition_target(transition)
-        if target is None:
-            return state_ids
-        state_ids.append(target)
-    return state_ids
-
-
-def _ordered_states_for_path(source: JsonObject, state_ids: list[int]) -> list[JsonObject]:
-    by_id = _states_by_id([state for state in source.get("states", []) if isinstance(state, dict)])
-    return [copy.deepcopy(by_id[state_id]) for state_id in state_ids if state_id in by_id]
-
-
-def _path_trace_from_source(source: JsonObject, witness_state_id: int | None) -> JsonObject | None:
-    transitions = [t for t in source.get("transitions", []) if isinstance(t, dict)]
-    if not transitions:
-        return None
-    state_path = _transition_state_path(transitions)
-    if not state_path:
-        return None
-    if witness_state_id is not None and witness_state_id in state_path:
-        stop = state_path.index(witness_state_id)
-        transitions = transitions[:stop]
-        state_path = state_path[: stop + 1]
-    trace = {
-        key: copy.deepcopy(source[key])
-        for key in (
-            "artifact_version",
-            "tool",
-            "domain_file",
-            "problem_file",
-            "sketch_file",
-            "sketch_sha256",
-            "module_program_file",
-            "module_program_sha256",
-            "options",
-            "status",
-            "failure_category",
-            "task_index",
-            "features",
-        )
-        if key in source
-    }
-    trace.update(
-        {
-            "states": _ordered_states_for_path(source, state_path),
-            "transitions": copy.deepcopy(transitions),
-            "chosen_actions": [transition.get("action") for transition in transitions if transition.get("action") is not None],
-            "trace_available": True,
-        }
-    )
-    return trace
-
-
-def _cycle_counterexample_from_source(source: JsonObject) -> JsonObject | None:
-    cycle = source.get("cycle")
-    if not isinstance(cycle, dict):
-        return None
-    cycle_state_ids = [state_id for state_id in cycle.get("cycle_state_ids", []) if isinstance(state_id, int)]
-    cycle_steps = [step for step in cycle.get("cycle_transition_steps", []) if isinstance(step, int)]
-    transitions = [t for t in source.get("transitions", []) if isinstance(t, dict)]
-    cycle_transitions = [copy.deepcopy(transitions[step]) for step in cycle_steps if 0 <= step < len(transitions)]
-    data = {
-        "cycle": copy.deepcopy(cycle),
-        "states": _ordered_states_for_path(source, cycle_state_ids),
-        "transitions": cycle_transitions,
-        "chosen_actions": [transition.get("action") for transition in cycle_transitions if transition.get("action") is not None],
-    }
-    return data
-
-
-def _witness_state_from_source(source: JsonObject) -> JsonObject | None:
-    states = [state for state in source.get("states", []) if isinstance(state, dict)]
-    if not states:
-        return None
-    transitions = [t for t in source.get("transitions", []) if isinstance(t, dict)]
-    if transitions:
-        target = _transition_target(transitions[-1])
-        if target is not None:
-            by_id = _states_by_id(states)
-            if target in by_id:
-                return copy.deepcopy(by_id[target])
-    return copy.deepcopy(states[0])
-
-
-def _counterexample_payload_from_source(source: JsonObject, category: str) -> tuple[JsonObject, JsonObject | None]:
-    if category == "cycle" or isinstance(source.get("cycle"), dict):
-        cycle_payload = _cycle_counterexample_from_source(source)
-        if cycle_payload is not None:
-            witness_state_id = None
-            cycle = cycle_payload.get("cycle")
-            if isinstance(cycle, dict):
-                cycle_states = cycle.get("cycle_state_ids", [])
-                if cycle_states and isinstance(cycle_states[0], int):
-                    witness_state_id = cycle_states[0]
-            return cycle_payload, _path_trace_from_source(source, witness_state_id)
-    state = _witness_state_from_source(source)
-    payload: JsonObject = {"state": state} if state is not None else {}
-    witness_state_id = _state_id(state) if isinstance(state, dict) else None
-    return payload, _path_trace_from_source(source, witness_state_id)
-
 
 def _reformat_prompt_summary(
     *,
@@ -199,7 +65,6 @@ def _reformat_prompt_summary(
         "artifacts": {path_key: artifact_path},
         **metadata,
     }
-
 
 def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: JsonValue) -> JsonObject:
     artifact_path = path.name
@@ -228,11 +93,9 @@ def reformat_result(*, tool: str, path_key: str, path: Path, **metadata: JsonVal
         **metadata,
     }
 
-
-def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
-    replay_errors = getattr(result, "replay_errors", None) or []
-    failure = getattr(result, "failure", None)
-    status = "success" if failure is None and not replay_errors else "failure"
+def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) -> JsonObject:
+    failure = result.failure
+    status = "success" if failure is None else "failure"
     manifest_path = output_dir / "manifest.json"
     summary_md_path = output_dir / "summary.md"
     manifest = _read_json(manifest_path) if manifest_path.exists() else {}
@@ -289,7 +152,25 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
             if source.is_file():
                 source_data = _read_json(source)
                 if isinstance(source_data, dict):
-                    counterexample_payload, trace_data = _counterexample_payload_from_source(source_data, category)
+                    counterexample_payload, trace_data = counterexample_and_trace_payloads(
+                        source_data,
+                        category,
+                        trace_metadata_keys=(
+                            "artifact_version",
+                            "tool",
+                            "domain_file",
+                            "problem_file",
+                            "sketch_file",
+                            "sketch_sha256",
+                            "module_program_file",
+                            "module_program_sha256",
+                            "options",
+                            "status",
+                            "failure_category",
+                            "task_index",
+                            "features",
+                        ),
+                    )
                     if trace_data is not None:
                         trace_target = output_dir / "traces" / category / f"{failure_id}.json"
                         trace_data.setdefault("schema_version", 1)
@@ -349,7 +230,6 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
         "counts": {
             "tasks": len(task_items),
             "failures": len(failure_items),
-            "replay_errors": len(replay_errors),
         },
         "task_statuses": task_statuses,
         "failure_category": failure_category,
@@ -362,7 +242,6 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
         "status": failing_status,
         "failure_category": failure_category,
         "task_statuses": task_statuses,
-        "replay_errors": replay_errors,
         "task_count": len(task_items),
         "failure_count": len(failure_items),
         "prompt_summary": prompt_summary,
@@ -371,11 +250,10 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
         "schema_version": 1,
         "tool": tool,
         "status": status,
-        "counts": {"tasks": len(task_items), "failures": len(failure_items), "replay_errors": len(replay_errors)},
+        "counts": {"tasks": len(task_items), "failures": len(failure_items)},
         "manifest": result_manifest,
         "tasks": task_items,
         "distinct_failures": failure_items,
-        "replay_errors": replay_errors,
     }
     return {
         "schema_version": 1,
@@ -391,5 +269,4 @@ def execute_result(*, tool: str, result, output_dir: Path) -> JsonObject:
         "manifest_path": artifacts["manifest_json"],
         "summary_md_path": artifacts["summary_md"],
         "output_dir": output_dir.as_posix(),
-        "replay_errors": replay_errors,
     }

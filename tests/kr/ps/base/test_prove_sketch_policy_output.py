@@ -14,8 +14,8 @@ def test_prove_sketch_policy_writes_hierarchical_counterexample_summary(tmp_path
                 "proof_status": "FAILURE",
                 "states": [
                     {
-                        "vertex": 4,
-                        "state_id": 9,
+                        "vertex_index": 4,
+                        "state_index": 9,
                         "feature_values": {"n0": 2, "b0": False},
                     }
                 ],

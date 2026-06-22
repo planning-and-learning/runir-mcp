@@ -11,11 +11,8 @@ ALL_TOOLS = KR_PS_BASE_TOOLS | KR_PS_EXT_TOOLS | KR_UNS_TOOLS
 
 ROLE_TOOLS = {
     "kr/ps/base": KR_PS_BASE_TOOLS,
-    "kr.ps.base": KR_PS_BASE_TOOLS,
     "kr/ps/ext": KR_PS_EXT_TOOLS,
-    "kr.ps.ext": KR_PS_EXT_TOOLS,
     "kr/uns": KR_UNS_TOOLS,
-    "kr.uns": KR_UNS_TOOLS,
     "all": ALL_TOOLS,
 }
 

@@ -7,7 +7,7 @@ Writes the canonical empty base sketch policy. This tool performs creation only;
 | Name | Type | Default | Description |
 |---|---:|---:|---|
 | `domain_file` | string | required | Path to the planning domain PDDL file. |
-| `policy_file` | string | required | Path where the empty sketch policy should be written. |
+| `sketch_file` | string | required | Path where the empty sketch policy should be written. |
 
 ## Output
 
@@ -19,12 +19,12 @@ Returns the same compact artifact shape as the reformat tool:
   "status": "success",
   "primary": {
     "successful": true,
-    "policy_file": "<basename>",
+    "sketch_file": "<basename>",
     "kind": "sketch"
   },
-  "artifacts": {"policy_file": "<basename>"},
+  "artifacts": {"sketch_file": "<basename>"},
   "items": []
 }
 ```
 
-The file at `policy_file` is overwritten with RunIR's canonical empty sketch representation.
+The file at `sketch_file` is overwritten with Runir's canonical empty sketch representation.

@@ -14,19 +14,19 @@ def test_prove_module_program_writes_category_directories_and_feature_values(tmp
                 "proof_status": "FAILURE",
                 "states": [
                     {
-                        "vertex": 1,
-                        "state_id": 3,
+                        "vertex_index": 1,
+                        "state_index": 3,
                         "memory_state": "m0",
                         "feature_values": {"holding": False},
                     },
                     {
-                        "vertex": 2,
-                        "state_id": 4,
+                        "vertex_index": 2,
+                        "state_index": 4,
                         "memory_state": "m1",
                         "feature_values": {"holding": True},
                     },
                 ],
-                "transitions": [{"edge": 7, "source": 1, "target": 2}],
+                "transitions": [{"edge": 7, "source_vertex_index": 1, "target_vertex_index": 2}],
             }
         ],
     )

@@ -251,10 +251,10 @@ def state_summary(
     state = getattr(label, "state", None)
     if state is None and hasattr(label, "get_state"):
         state = label.get_state()
-    out: JsonObject = {"vertex": int(vertex)}
+    out: JsonObject = {"vertex_index": int(vertex)}
     if state is not None:
         try:
-            out["state_id"] = int(state.get_index())
+            out["state_index"] = int(state.get_index())
         except Exception:  # noqa: BLE001
             out["state"] = str(state)
         if evidence is not None:
@@ -299,8 +299,8 @@ def _edge_action(prop: ProofEdgeLabel) -> str | None:
 def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
     out: JsonObject = {
         "edge": int(edge),
-        "source": int(graph.get_source(int(edge))),
-        "target": int(graph.get_target(int(edge))),
+        "source_vertex_index": int(graph.get_source(int(edge))),
+        "target_vertex_index": int(graph.get_target(int(edge))),
     }
     try:
         prop = graph.get_edge_property(int(edge))
@@ -379,9 +379,9 @@ def counterexample_data(
             evidence=evidence,
         )
         if vertices:
-            cycle_state_ids = {state.get("vertex") for state in trace["states"] if isinstance(state, dict)}
+            cycle_vertex_indices = {state.get("vertex_index") for state in trace["states"] if isinstance(state, dict)}
             for vertex in vertices:
-                if vertex not in cycle_state_ids:
+                if vertex not in cycle_vertex_indices:
                     trace["states"].append(state_summary(graph, vertex, evidence))
         data["states"] = trace["states"]
         data["transitions"] = trace["transitions"]

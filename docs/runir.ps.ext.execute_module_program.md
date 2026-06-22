@@ -10,7 +10,7 @@ Same as `runir.ps.base.execute_policy`, except the policy path argument is:
 |---|---:|---:|---|
 | `module_program_file` | string | required | Extended module program file. |
 
-All other execution arguments are identical: `domain_file`, `problem_file`, `output_dir`, rollout settings, resource settings, dump settings, and `replay_trace`.
+All other execution arguments are identical: `domain_file`, `problem_file`, `output_dir`, rollout settings, resource settings including `max_time_seconds`, and dump settings.
 
 ## Output
 
@@ -22,8 +22,8 @@ Same normalized structure as `runir.ps.base.execute_policy`, with `tool: "runir.
 output_dir/
   summary.md
   manifest.json
-  task-001_seed-0_trace.json
-  failures/
+  trace_seed-<seed>.json
+  failures/<category>/<id>.json
   counterexamples/<category>/<id>.json
   traces/<category>/<id>.json
 ```

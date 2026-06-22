@@ -12,7 +12,7 @@ Proves a base sketch policy on one grounded planning task.
 | `output_dir` | string | required | Directory for normalized proof artifacts. |
 | `num_threads` | integer | `1` | Grounding/loading worker count. |
 | `max_num_states` | integer | `100000` | Proof search state budget. |
-| `max_time_seconds` | number | `5.0` | Proof wall-clock budget in seconds. Alias: `max_time`. |
+| `max_time_seconds` | number | `5.0` | Proof wall-clock budget in seconds. |
 
 ## Output
 

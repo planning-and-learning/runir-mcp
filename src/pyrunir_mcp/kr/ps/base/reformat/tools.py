@@ -16,24 +16,24 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
     @mcp.tool(name=TOOL_NAME)
     def reformat_base_policy(
         domain_file: str,
-        policy_file: str,
+        sketch_file: str,
     ) -> dict:
         """Parse-check and rewrite a base Runir sketch policy in canonical form."""
         result = reformat_policy(
             ReformatPolicyOptions(
                 domain_path=Path(domain_file).resolve(),
-                policy_file=server_output_path(config.output_root, policy_file),
+                sketch_file=server_output_path(config.output_root, sketch_file),
             )
         )
-        return reformat_result(tool=TOOL_NAME, path_key="policy_file", path=result.policy_file, kind=result.kind)
+        return reformat_result(tool=TOOL_NAME, path_key="sketch_file", path=result.sketch_file, kind=result.kind)
 
     @mcp.tool(name=CREATE_EMPTY_TOOL_NAME)
-    def create_empty_base_policy(domain_file: str, policy_file: str) -> dict:
+    def create_empty_base_policy(domain_file: str, sketch_file: str) -> dict:
         """Write the canonical empty base Runir sketch policy."""
         result = create_empty_policy(
             CreateEmptyPolicyOptions(
                 domain_path=Path(domain_file).resolve(),
-                policy_file=server_output_path(config.output_root, policy_file),
+                sketch_file=server_output_path(config.output_root, sketch_file),
             )
         )
-        return reformat_result(tool=CREATE_EMPTY_TOOL_NAME, path_key="policy_file", path=result.policy_file, kind=result.kind)
+        return reformat_result(tool=CREATE_EMPTY_TOOL_NAME, path_key="sketch_file", path=result.sketch_file, kind=result.kind)

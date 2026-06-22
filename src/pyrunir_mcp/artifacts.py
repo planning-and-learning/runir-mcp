@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+
+from pyrunir_mcp.counterexample_payloads import counterexample_and_trace_payloads
 from pyrunir_mcp.json_types import JsonObject, JsonValue
 
 from pyrunir_mcp.paths import relative_to
-
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -18,8 +18,6 @@ class CommandResult:
     returncode: int
     stdout: str
     stderr: str
-
-
 
 @dataclass(frozen=True)
 class CounterexampleItem:
@@ -30,7 +28,6 @@ class CounterexampleItem:
     trace_path: str | None = None
     trace_available: bool = False
 
-
 def _slug(value, default: str = "counterexample") -> str:
     text = str(value or default).strip().lower()
     text = re.sub(r"[^a-z0-9_-]+", "_", text)
@@ -39,7 +36,6 @@ def _slug(value, default: str = "counterexample") -> str:
 
 
 RESERVATION_MARKER = ".pyrunir-mcp-output"
-
 
 def _has_existing_run_output(output_dir: Path) -> bool:
     return any(
@@ -56,7 +52,6 @@ def _has_existing_run_output(output_dir: Path) -> bool:
         )
     )
 
-
 def _reserve_output_dir(output_dir: Path) -> bool:
     output_dir.mkdir(parents=True, exist_ok=True)
     if _has_existing_run_output(output_dir):
@@ -67,7 +62,6 @@ def _reserve_output_dir(output_dir: Path) -> bool:
     except FileExistsError:
         return False
     return True
-
 
 def fresh_output_dir(output_dir: Path) -> Path:
     """Return an output dir that will not overwrite a previous MCP run.
@@ -85,138 +79,13 @@ def fresh_output_dir(output_dir: Path) -> Path:
             return candidate
     raise RuntimeError(f"could not allocate fresh MCP output directory under {output_dir}")
 
-
 def _read_json(path: Path) -> JsonValue:
     return json.loads(path.read_text(encoding="utf-8"))
-
 
 def _write_json(path: Path, data: JsonValue) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as fh:
         fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
-
-
-def _state_id(state: JsonObject) -> int | None:
-    for key in ("id", "state_id", "vertex"):
-        value = state.get(key)
-        if isinstance(value, int):
-            return value
-    return None
-
-
-def _states_by_id(states: list[JsonObject]) -> dict[int, JsonObject]:
-    result: dict[int, JsonObject] = {}
-    for state in states:
-        for key in ("id", "state_id", "vertex"):
-            value = state.get(key)
-            if isinstance(value, int):
-                result.setdefault(value, state)
-    return result
-
-
-def _transition_source(transition: JsonObject) -> int | None:
-    value = transition.get("source_state", transition.get("source"))
-    return value if isinstance(value, int) else None
-
-
-def _transition_target(transition: JsonObject) -> int | None:
-    value = transition.get("target_state", transition.get("target"))
-    return value if isinstance(value, int) else None
-
-
-def _transition_state_path(transitions: list[JsonObject]) -> list[int]:
-    if not transitions:
-        return []
-    first = _transition_source(transitions[0])
-    if first is None:
-        return []
-    state_ids = [first]
-    for transition in transitions:
-        target = _transition_target(transition)
-        if target is None:
-            return state_ids
-        state_ids.append(target)
-    return state_ids
-
-
-def _ordered_states_for_path(data: JsonObject, state_ids: list[int]) -> list[JsonObject]:
-    states = [state for state in data.get("states", []) if isinstance(state, dict)]
-    by_id = _states_by_id(states)
-    return [dict(by_id[state_id]) for state_id in state_ids if state_id in by_id]
-
-
-def _path_trace_from_data(data: JsonObject, witness_state_id: int | None) -> JsonObject | None:
-    trace = data.get("trace")
-    if isinstance(trace, dict):
-        return dict(trace)
-    transitions = [transition for transition in data.get("transitions", []) if isinstance(transition, dict)]
-    if not transitions:
-        return None
-    state_path = _transition_state_path(transitions)
-    if state_path and witness_state_id is not None and witness_state_id in state_path:
-        stop = state_path.index(witness_state_id)
-        transitions = transitions[:stop]
-        state_path = state_path[: stop + 1]
-    trace_data = {
-        key: data[key]
-        for key in ("tool", "task", "problem", "category", "failure_category", "proof_status", "status")
-        if key in data
-    }
-    trace_data.update(
-        {
-            "states": _ordered_states_for_path(data, state_path) if state_path else [state for state in data.get("states", []) if isinstance(state, dict)],
-            "transitions": [dict(transition) for transition in transitions],
-            "chosen_actions": [transition.get("action") for transition in transitions if transition.get("action") is not None],
-            "trace_available": True,
-        }
-    )
-    return trace_data
-
-
-def _cycle_payload_from_data(data: JsonObject) -> JsonObject | None:
-    cycle = data.get("cycle")
-    if not isinstance(cycle, dict):
-        return None
-    cycle_state_ids = [state_id for state_id in cycle.get("cycle_state_ids", []) if isinstance(state_id, int)]
-    cycle_steps = [step for step in cycle.get("cycle_transition_steps", []) if isinstance(step, int)]
-    transitions = [transition for transition in data.get("transitions", []) if isinstance(transition, dict)]
-    return {
-        "cycle": dict(cycle),
-        "states": _ordered_states_for_path(data, cycle_state_ids),
-        "transitions": [dict(transitions[step]) for step in cycle_steps if 0 <= step < len(transitions)],
-    }
-
-
-def _witness_state_from_data(data: JsonObject) -> JsonObject | None:
-    states = [state for state in data.get("states", []) if isinstance(state, dict)]
-    if not states:
-        return None
-    transitions = [transition for transition in data.get("transitions", []) if isinstance(transition, dict)]
-    if transitions:
-        target = _transition_target(transitions[-1])
-        if target is not None:
-            by_id = _states_by_id(states)
-            if target in by_id:
-                return dict(by_id[target])
-    return dict(states[0])
-
-
-def _counterexample_and_trace_payloads(data: JsonObject, category_slug: str) -> tuple[JsonObject, JsonObject | None]:
-    if category_slug == "cycle" or isinstance(data.get("cycle"), dict):
-        cycle_payload = _cycle_payload_from_data(data)
-        if cycle_payload is not None:
-            witness_state_id = None
-            cycle = cycle_payload.get("cycle")
-            if isinstance(cycle, dict):
-                cycle_states = cycle.get("cycle_state_ids", [])
-                if cycle_states and isinstance(cycle_states[0], int):
-                    witness_state_id = cycle_states[0]
-            return cycle_payload, _path_trace_from_data(data, witness_state_id)
-    state = _witness_state_from_data(data)
-    payload = {"state": state} if state is not None else {}
-    witness_state_id = _state_id(state) if isinstance(state, dict) else None
-    return payload, _path_trace_from_data(data, witness_state_id)
-
 
 def _write_counterexample_and_trace(
     *,
@@ -225,7 +94,11 @@ def _write_counterexample_and_trace(
     category_slug: str,
     data: JsonObject,
 ) -> tuple[Path, str | None, bool]:
-    counterexample_payload, trace_data = _counterexample_and_trace_payloads(data, category_slug)
+    counterexample_payload, trace_data = counterexample_and_trace_payloads(
+        data,
+        category_slug,
+        trace_metadata_keys=("tool", "task", "problem", "category", "failure_category", "proof_status", "status"),
+    )
     trace_path: str | None = None
     trace_available = False
     if trace_data is not None:
@@ -252,132 +125,6 @@ def _write_counterexample_and_trace(
         stored["trace_path"] = trace_path
     _write_json(target, stored)
     return target, trace_path, trace_available
-
-
-def _copy_counterexample(
-    *,
-    source: Path,
-    output_dir: Path,
-    index: int,
-    category: str,
-    task: str | None,
-) -> CounterexampleItem:
-    category_slug = _slug(category)
-    counterexample_id = f"{category_slug}-{index:03d}"
-    data = _read_json(source)
-    if not isinstance(data, dict):
-        data = {"value": data}
-    target, trace_path, trace_available = _write_counterexample_and_trace(
-        output_dir=output_dir,
-        counterexample_id=counterexample_id,
-        category_slug=category_slug,
-        data=data,
-    )
-    return CounterexampleItem(
-        id=counterexample_id,
-        category=category_slug,
-        task=task,
-        path=relative_to(target, output_dir),
-        trace_path=trace_path,
-        trace_available=trace_available,
-    )
-
-
-def normalize_trace_dump(
-    *,
-    tool: str,
-    status: str,
-    output_dir: Path,
-    raw_dump_dir: Path,
-    command: CommandResult,
-    metadata: JsonObject,
-) -> JsonObject:
-    output_dir = fresh_output_dir(output_dir)
-    raw_target = output_dir / "raw"
-    if raw_target.exists():
-        shutil.rmtree(raw_target)
-    if raw_dump_dir.exists():
-        shutil.copytree(raw_dump_dir, raw_target)
-    else:
-        raw_target.mkdir(parents=True, exist_ok=True)
-
-    items: list[CounterexampleItem] = []
-    for index, trace_path in enumerate(sorted(raw_target.glob("task-*.json")), start=1):
-        data = _read_json(trace_path)
-        category = str(data.get("failure_category") or data.get("category") or "counterexample")
-        task = data.get("problem") or data.get("task")
-        task_name = Path(str(task)).name if task is not None else None
-        items.append(
-            _copy_counterexample(
-                source=trace_path,
-                output_dir=output_dir,
-                index=index,
-                category=category,
-                task=task_name,
-            )
-        )
-
-    return write_summary(
-        tool=tool,
-        status=status,
-        output_dir=output_dir,
-        command=command,
-        metadata=metadata,
-        counterexamples=items,
-    )
-
-
-def normalize_unsolvability_dump(
-    *,
-    tool: str,
-    status: str,
-    output_dir: Path,
-    raw_dump_dir: Path,
-    command: CommandResult,
-    metadata: JsonObject,
-) -> JsonObject:
-    output_dir = fresh_output_dir(output_dir)
-    raw_target = output_dir / "raw"
-    if raw_target.exists():
-        shutil.rmtree(raw_target)
-    if raw_dump_dir.exists():
-        shutil.copytree(raw_dump_dir, raw_target)
-    else:
-        raw_target.mkdir(parents=True, exist_ok=True)
-
-    source = raw_target / "counterexamples.json"
-    counterexamples = _read_json(source) if source.exists() else []
-    items: list[CounterexampleItem] = []
-    for index, counterexample in enumerate(counterexamples, start=1):
-        category = _slug(counterexample.get("category"), "counterexample")
-        counterexample_id = f"{category}-{index:03d}"
-        data = dict(counterexample)
-        target, trace_path, trace_available = _write_counterexample_and_trace(
-            output_dir=output_dir,
-            counterexample_id=counterexample_id,
-            category_slug=category,
-            data=data,
-        )
-        items.append(
-            CounterexampleItem(
-                id=counterexample_id,
-                category=category,
-                task=data.get("task"),
-                path=relative_to(target, output_dir),
-                trace_path=trace_path,
-                trace_available=trace_available,
-            )
-        )
-
-    return write_summary(
-        tool=tool,
-        status=status,
-        output_dir=output_dir,
-        command=command,
-        metadata=metadata,
-        counterexamples=items,
-    )
-
 
 def _prompt_summary(
     *,
@@ -409,7 +156,6 @@ def _prompt_summary(
             "false_negative": "false on an unsolvable state",
         }
     return summary
-
 
 def write_summary(
     *,
@@ -542,7 +288,6 @@ def write_summary(
         "by_category": by_category,
     }
 
-
 def write_summary_markdown(path: Path, summary: JsonObject) -> None:
     lines = [
         f"# {summary['tool']}",
@@ -572,7 +317,6 @@ def write_summary_markdown(path: Path, summary: JsonObject) -> None:
         lines.append("")
     with path.open("x", encoding="utf-8") as fh:
         fh.write("\n".join(lines).rstrip() + "\n")
-
 
 def write_native_counterexample_run(
     *,

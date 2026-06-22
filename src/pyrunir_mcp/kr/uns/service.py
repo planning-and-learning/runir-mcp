@@ -78,14 +78,14 @@ def _expand(domain_path: Path, problem_path: Path, max_num_states: int, ctx: Exe
 
 
 def _backward_solvable(space: StateSpace) -> set[int]:
-    reverse: dict[int, list[int]] = {state_id: [] for state_id in space.states}
+    reverse: dict[int, list[int]] = {state_index: [] for state_index in space.states}
     for src, dst in space.edges:
         reverse.setdefault(dst, []).append(src)
     solvable = set(space.goals)
     queue = deque(space.goals)
     while queue:
-        state_id = queue.popleft()
-        for predecessor in reverse.get(state_id, ()):
+        state_index = queue.popleft()
+        for predecessor in reverse.get(state_index, ()):
             if predecessor not in solvable:
                 solvable.add(predecessor)
                 queue.append(predecessor)
@@ -130,10 +130,10 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
         per_task = {"task": problem_path.name, "status": "resource_limit", "reason": str(exc)}
     else:
         task_counterexamples = 0
-        for state_id, state in sorted(space.states.items()):
+        for state_index, state in sorted(space.states.items()):
             eval_context = GroundEvaluationContext(state, builder, denotations)
             predicted_unsolvable = bool(classify(classifier, eval_context))
-            actually_solvable = state_id in space.solvable
+            actually_solvable = state_index in space.solvable
             if predicted_unsolvable and actually_solvable:
                 category = "false_positive"
             elif not predicted_unsolvable and not actually_solvable:
@@ -146,7 +146,7 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
                     "task": problem_path.name,
                     "problem_file": problem_path.as_posix(),
                     "category": category,
-                    "state_id": int(state_id),
+                    "state_index": int(state_index),
                     "predicted_unsolvable": predicted_unsolvable,
                     "actually_solvable": actually_solvable,
                     "feature_values": feature_values(classifier, eval_context),

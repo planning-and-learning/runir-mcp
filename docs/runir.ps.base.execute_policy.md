@@ -17,10 +17,9 @@ Executes a base sketch policy on one grounded planning task. This is the cheap v
 | `shuffle_labeled_succ_nodes` | boolean | `true` | Shuffle successor labels during rollout search. |
 | `max_arity` | integer | `0` | Maximum sketch arity. |
 | `max_num_states` | integer or null | `null` | Per-subgoal state budget. |
-| `max_time` | number or null | `null` | Per-subgoal wall-clock budget in seconds. |
+| `max_time_seconds` | number or null | `null` | Per-subgoal wall-clock budget in seconds. |
 | `dump_max_steps` | integer or null | `null` | Maximum path transitions dumped. |
 | `dump_max_states` | integer or null | `null` | Cap on dumped state objects. |
-| `replay_trace` | string or null | `null` | Path to a prior trace to replay/validate. |
 
 ## Output
 
@@ -32,8 +31,8 @@ Returns normalized execution output with one task entry per rollout seed and rep
 output_dir/
   summary.md
   manifest.json
-  task-001_seed-0_trace.json
-  failures/
+  trace_seed-<seed>.json
+  failures/<category>/<id>.json
   counterexamples/<category>/<id>.json
   traces/<category>/<id>.json
 ```

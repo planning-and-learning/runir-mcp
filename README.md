@@ -11,7 +11,7 @@ Set `PYRUNIR_MCP_ROLE` before launching the server. The server and invoke CLI fa
 - `kr/uns`: unsolvability classifier proof and formatting tools.
 - `all`: every pyrunir MCP tool; use only for trusted, unrestricted local maintenance.
 
-Slash roles also accept dotted aliases such as `kr.ps.base`. The server rejects missing or unknown roles at startup.
+The server rejects missing or unknown roles at startup.
 
 ## Tool Documentation
 

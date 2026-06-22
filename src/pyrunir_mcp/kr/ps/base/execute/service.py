@@ -45,11 +45,10 @@ class ExecutePolicyOptions:
     max_arity: int = 0
     # Per-subgoal sub-search budget for greedy execution. None => library default.
     max_num_states: int | None = None
-    max_time: float | None = None   # seconds (wall bound on the sub-search)
+    max_time_seconds: float | None = None   # seconds (wall bound on the sub-search)
     dump_dir: Path | None = None
     dump_max_steps: int | None = None
     dump_max_states: int | None = None
-    replay_trace: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -58,11 +57,9 @@ class ExecutePolicyResult:
     tasks: list[LoadedSearchContext]
     failure: ExecutionFailure | None
     dump_dir: Path | None = None
-    replay_errors: list[str] | None = None
-
     @property
     def is_successful(self) -> bool:
-        return self.failure is None and not self.replay_errors
+        return self.failure is None
 
 
 def _file_sha256(path: Path) -> str:
@@ -82,7 +79,7 @@ def _collect_features(policy: Policy) -> list[Feature]:
 
 def _state_facts(state: State) -> JsonObject:
     return {
-        "id": int(state.get_index()),
+        "state_index": int(state.get_index()),
         "fluent_facts": [str(fact) for fact in state.fluent_facts()],
         "derived_atoms": [str(atom) for atom in state.derived_atoms()],
     }
@@ -131,14 +128,14 @@ def _matched_rules(
 ) -> JsonDictList:
     if graph is None:
         return []
-    source_state_id = int(source_state.get_index())
-    target_state_id = int(target_state.get_index())
+    source_state_index = int(source_state.get_index())
+    target_state_index = int(target_state.get_index())
     for vertex in _graph_vertex_indices(graph):
-        if int(_state_from_vertex(graph, vertex).get_index()) != source_state_id:
+        if int(_state_from_vertex(graph, vertex).get_index()) != source_state_index:
             continue
         for edge in _graph_out_edge_indices(graph, vertex):
             target_vertex = int(graph.get_target(edge))
-            if int(_state_from_vertex(graph, target_vertex).get_index()) != target_state_id:
+            if int(_state_from_vertex(graph, target_vertex).get_index()) != target_state_index:
                 continue
             summary = edge_summary(graph, edge)
             symbol = summary.get("module_rule")
@@ -147,7 +144,7 @@ def _matched_rules(
     return []
 
 
-def _state_id(state: State) -> int:
+def _state_index(state: State) -> int:
     return int(state.get_index())
 
 
@@ -184,10 +181,10 @@ def _native_counterexamples(failure_items: list[NativeFailureItem]) -> JsonDictL
 def _native_cycle_description(result: GroundSketchProofResults, graph: GroundSketchProofGraph | None) -> JsonObject | None:
     if not result.cycle:
         return None
-    cycle_vertex_ids = [int(vertex) for vertex in result.cycle]
-    data: JsonObject = {"cycle_vertex_ids": cycle_vertex_ids}
+    cycle_vertex_indices = [int(vertex) for vertex in result.cycle]
+    data: JsonObject = {"cycle_vertex_indices": cycle_vertex_indices}
     if graph is not None:
-        data["cycle_state_ids"] = [int(_state_from_vertex(graph, vertex).get_index()) for vertex in cycle_vertex_ids]
+        data["cycle_state_indices"] = [int(_state_from_vertex(graph, vertex).get_index()) for vertex in cycle_vertex_indices]
     return data
 
 
@@ -206,10 +203,9 @@ def _dump_options(options: ExecutePolicyOptions) -> JsonObject:
         "shuffle_labeled_succ_nodes": options.shuffle_labeled_succ_nodes,
         "max_arity": options.max_arity,
         "max_num_states": options.max_num_states,
-        "max_time": options.max_time,
+        "max_time_seconds": options.max_time_seconds,
         "dump_max_steps": options.dump_max_steps,
         "dump_max_states": options.dump_max_states,
-        "replay_trace": None if options.replay_trace is None else str(options.replay_trace),
     }
 
 
@@ -219,36 +215,36 @@ def _add_state(
     features: list[Feature],
     max_states: int | None,
 ) -> None:
-    state_id = int(state.get_index())
-    if state_id in states:
+    state_index = int(state.get_index())
+    if state_index in states:
         return
     if max_states is not None and len(states) >= max_states:
-        states[state_id] = {"id": state_id, "truncated": True}
+        states[state_index] = {"state_index": state_index, "truncated": True}
         return
     data = _state_facts(state)
     data["feature_values"] = _feature_values(state, features)
-    states[state_id] = data
+    states[state_index] = data
 
 
-def _cycle_description(start_state_id: int | None, transitions: JsonDictList) -> JsonObject | None:
-    if start_state_id is None:
+def _cycle_description(start_state_index: int | None, transitions: JsonDictList) -> JsonObject | None:
+    if start_state_index is None:
         return None
-    state_ids = [start_state_id]
+    state_indices = [start_state_index]
     for transition in transitions:
-        target = transition.get("target_state")
+        target = transition.get("target_state_index")
         if isinstance(target, int):
-            state_ids.append(target)
+            state_indices.append(target)
     first_seen: dict[int, int] = {}
-    for index, state_id in enumerate(state_ids):
-        if state_id in first_seen:
-            start = first_seen[state_id]
+    for index, state_index in enumerate(state_indices):
+        if state_index in first_seen:
+            start = first_seen[state_index]
             return {
-                "prefix_state_ids": state_ids[:start],
-                "cycle_state_ids": state_ids[start : index + 1],
+                "prefix_state_indices": state_indices[:start],
+                "cycle_state_indices": state_indices[start : index + 1],
                 "prefix_transition_steps": list(range(start)),
                 "cycle_transition_steps": list(range(start, index)),
             }
-        first_seen[state_id] = index
+        first_seen[state_index] = index
     return None
 
 
@@ -264,7 +260,7 @@ def _trace_from_result(
     feature_names, rules = _policy_metadata(policy)
     states: dict[int, JsonObject] = {}
     transitions: JsonDictList = []
-    start_state_id: int | None = None
+    start_state_index: int | None = None
     plan = getattr(result, "plan", None)
 
     native_counterexamples: JsonDictList = []
@@ -272,7 +268,7 @@ def _trace_from_result(
 
     if plan is None:
         node = task.search_context.successor_generator.get_initial_node()
-        start_state_id = int(node.get_state().get_index())
+        start_state_index = int(node.get_state().get_index())
         failure_items = _native_failure_items(result)
         native_counterexamples = _native_counterexamples(failure_items)
 
@@ -284,7 +280,7 @@ def _trace_from_result(
 
     else:
         node = plan.get_start_node()
-        start_state_id = int(node.get_state().get_index())
+        start_state_index = int(node.get_state().get_index())
         _add_state(states, node.get_state(), features, options.dump_max_states)
         for step, labeled in enumerate(plan.get_labeled_succ_nodes()):
             if options.dump_max_steps is not None and step >= options.dump_max_steps:
@@ -295,8 +291,8 @@ def _trace_from_result(
             target_values = _feature_values(target_state, features)
             transition: JsonObject = {
                 "step": step,
-                "source_state": int(source_state.get_index()),
-                "target_state": int(target_state.get_index()),
+                "source_state_index": int(source_state.get_index()),
+                "target_state_index": int(target_state.get_index()),
                 "action": str(labeled.label).strip(),
                 "matched_rules": _matched_rules(graph, source_state, target_state),
                 "feature_delta": _feature_delta(source_values, target_values),
@@ -311,7 +307,7 @@ def _trace_from_result(
     if native_counterexamples:
         native_failure_category = str(native_counterexamples[0].get("failure_category"))
     failure_category = native_failure_category or status_failure_category
-    cycle_info = _native_cycle_description(result, graph) or (_cycle_description(start_state_id, transitions) if status == "CYCLE" else None)
+    cycle_info = _native_cycle_description(result, graph) or (_cycle_description(start_state_index, transitions) if status == "CYCLE" else None)
     return {
         "artifact_version": ARTIFACT_VERSION,
         "tool": "execute_policy",
@@ -385,9 +381,11 @@ def _write_summary(dump_dir: Path, traces: JsonDictList) -> None:
         lines.append("## First failure per task/category")
         for trace in representatives.values():
             fingerprint = trace.get("failure_fingerprint") or _failure_fingerprint(trace)
+            failure_id = trace.get("id") or str(trace["failure_category"])
+            trace_file = trace.get("trace_file")
             lines.append(
-                f"- {trace['failure_category']}: {trace['problem_file']} "
-                f"seed {trace['options']['random_seed']} fingerprint `{fingerprint}`"
+                f"- {failure_id}: {trace['problem_file']} seed {trace['options']['random_seed']} "
+                f"trace `{trace_file}` fingerprint `{fingerprint}`"
             )
     with dump_dir.joinpath("summary.md").open("x", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
@@ -397,6 +395,10 @@ def _rollout_seeds(options: ExecutePolicyOptions) -> list[int]:
     if options.num_rollouts == 1:
         return [options.random_seed]
     return [options.random_seed_start + offset for offset in range(options.num_rollouts)]
+
+
+def _trace_file_name(random_seed: int) -> str:
+    return f"trace_seed-{random_seed}.json"
 
 
 def _execute_single_rollout(
@@ -425,8 +427,9 @@ def _execute_single_rollout(
             trace["execute_status"] = result.status.name
             trace["counterexample_source"] = trace_source
             trace["failure_fingerprint"] = _failure_fingerprint(trace)
+            trace_name = _trace_file_name(random_seed)
+            trace["trace_file"] = trace_name
             traces.append(trace)
-            trace_name = f"task-{index:03d}_seed-{random_seed}_trace.json"
             _write_dump_json(dump_dir / trace_name, trace)
         if not is_success_status(result.status) and failure is None:
             failure = ExecutionFailure(task=task, result=trace_result)
@@ -463,9 +466,11 @@ def _execute_policy_with_dumps(
         if failure is not None and first_failure is None:
             first_failure = failure
     distinct_failures = _failure_representatives(all_traces)
-    for trace in distinct_failures.values():
-        failure_name = f"{trace['failure_category']}_{trace['task_index']:03d}_seed-{trace['options']['random_seed']}.json"
-        _write_dump_json(dump_dir / "failures" / failure_name, trace)
+    for failure_index, trace in enumerate(distinct_failures.values(), start=1):
+        failure_category = str(trace["failure_category"])
+        failure_id = f"{failure_category}-{failure_index:03d}"
+        trace["id"] = failure_id
+        _write_dump_json(dump_dir / "failures" / failure_category / f"{failure_id}.json", trace)
     manifest = {
         "artifact_version": ARTIFACT_VERSION,
         "tool": "execute_policy",
@@ -487,10 +492,11 @@ def _execute_policy_with_dumps(
         "distinct_failures": [
             {
                 "fingerprint": trace.get("failure_fingerprint") or _failure_fingerprint(trace),
+                "id": trace.get("id"),
                 "failure_category": trace["failure_category"],
                 "problem_file": trace["problem_file"],
                 "seed": trace["options"]["random_seed"],
-                "trace_file": f"task-{trace['task_index']:03d}_seed-{trace['options']['random_seed']}_trace.json",
+                "trace_file": trace["trace_file"],
             }
             for trace in distinct_failures.values()
         ],
@@ -500,7 +506,7 @@ def _execute_policy_with_dumps(
                 "status": trace["status"],
                 "failure_category": trace["failure_category"],
                 "seed": trace["options"]["random_seed"],
-                "trace_file": f"task-{trace['task_index']:03d}_seed-{trace['options']['random_seed']}_trace.json",
+                "trace_file": trace["trace_file"],
             }
             for trace in all_traces
         ],
@@ -519,8 +525,8 @@ def create_policy_search_options(options: ExecutePolicyOptions, random_seed: int
     # task; generous state budget so a correct policy still succeeds (execute = hard).
     if options.max_num_states is not None:
         search_options.brfs_options.max_num_states = options.max_num_states
-    if options.max_time is not None:
-        search_options.brfs_options.max_time = timedelta(seconds=options.max_time)
+    if options.max_time_seconds is not None:
+        search_options.brfs_options.max_time = timedelta(seconds=options.max_time_seconds)
     return search_options
 
 
@@ -539,109 +545,11 @@ def _execute_policy_rollouts_without_dumps(
     return first_failure
 
 
-def _load_trace(path: Path) -> JsonObject:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"Replay trace must contain a JSON object: {path}")
-    return data
-
-
-def _trace_task(trace: JsonObject, tasks: list[LoadedSearchContext]) -> LoadedSearchContext | None:
-    problem = trace.get("problem_file")
-    if not isinstance(problem, str):
-        return None
-    problem_path = Path(problem)
-    for task in tasks:
-        if task.problem_path == problem_path or task.problem_path.name == problem_path.name:
-            return task
-    return None
-
-
-def _trace_projection(trace: JsonObject) -> JsonObject:
-    return {
-        "status": trace.get("status"),
-        "failure_category": trace.get("failure_category"),
-        "transitions": [
-            {
-                "step": transition.get("step"),
-                "source_state": transition.get("source_state"),
-                "target_state": transition.get("target_state"),
-                "action": transition.get("action"),
-                "matched_rules": transition.get("matched_rules"),
-                "feature_delta": transition.get("feature_delta"),
-            }
-            for transition in trace.get("transitions", [])
-        ],
-        "state_features": {
-            state.get("id"): state.get("feature_values")
-            for state in trace.get("states", [])
-            if isinstance(state, dict) and not state.get("truncated")
-        },
-    }
-
-
-def _validate_replay_trace(
-    options: ExecutePolicyOptions,
-    policy: Policy,
-    tasks: list[LoadedSearchContext],
-) -> list[str]:
-    assert options.replay_trace is not None
-    trace = _load_trace(options.replay_trace)
-    errors: list[str] = []
-    if trace.get("tool") != "execute_policy":
-        errors.append(f"tool mismatch: expected execute_policy, got {trace.get('tool')}")
-    expected_sketch_hash = _file_sha256(options.sketch_file)
-    if trace.get("sketch_sha256") != expected_sketch_hash:
-        errors.append("sketch_sha256 mismatch")
-    task = _trace_task(trace, tasks)
-    if task is None:
-        errors.append(f"problem does not match problem_file: {trace.get('problem_file')}")
-        return errors
-
-    trace_options = trace.get("options") if isinstance(trace.get("options"), dict) else {}
-    replay_options = replace(
-        options,
-        random_seed=int(trace_options.get("random_seed", options.random_seed)),
-        shuffle_labeled_succ_nodes=bool(trace_options.get("shuffle_labeled_succ_nodes", options.shuffle_labeled_succ_nodes)),
-        max_arity=int(trace_options.get("max_arity", options.max_arity)),
-        max_num_states=None if trace_options.get("max_num_states") is None else int(trace_options.get("max_num_states")),
-        max_time=None if trace_options.get("max_time") is None else float(trace_options.get("max_time")),
-        dump_max_steps=len(trace.get("transitions", [])),
-        dump_max_states=None,
-        dump_dir=None,
-        num_rollouts=1,
-        replay_trace=None,
-    )
-    search_options = create_policy_search_options(replay_options)
-    result = find_ground_solution(task.search_context, policy, search_options)
-    replayed = _trace_from_result(options=replay_options, policy=policy, task=task, result=result, task_index=int(trace.get("task_index", 1)))
-
-    original_projection = _trace_projection(trace)
-    replay_projection = _trace_projection(replayed)
-    if original_projection["status"] != replay_projection["status"]:
-        errors.append(f"status mismatch: {original_projection['status']} != {replay_projection['status']}")
-    if original_projection["failure_category"] != replay_projection["failure_category"]:
-        errors.append(
-            f"failure_category mismatch: {original_projection['failure_category']} != {replay_projection['failure_category']}"
-        )
-    if original_projection["transitions"] != replay_projection["transitions"]:
-        errors.append("transition/action/rule/feature-delta projection mismatch")
-    original_states = original_projection["state_features"]
-    replay_states = replay_projection["state_features"]
-    for state_id, feature_values in original_states.items():
-        if replay_states.get(state_id) != feature_values:
-            errors.append(f"feature_values mismatch for state {state_id}")
-    return errors
-
-
 def execute_policy(options: ExecutePolicyOptions) -> ExecutePolicyResult:
     execution_context = ExecutionContext(options.num_threads)
     context = create_base_policy_context(options.domain_file)
     policy = parse_policy_description(context, read_policy_description(options.sketch_file))
     tasks = [load_grounded_search_context(options.domain_file, options.problem_file, execution_context)]
-    if options.replay_trace is not None:
-        replay_errors = _validate_replay_trace(options, policy, tasks)
-        return ExecutePolicyResult(policy=policy, tasks=tasks, failure=None, dump_dir=options.dump_dir, replay_errors=replay_errors)
     if options.dump_dir is None:
         failure = _execute_policy_rollouts_without_dumps(options, policy, tasks)
     else:
