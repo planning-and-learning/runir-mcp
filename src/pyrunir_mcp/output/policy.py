@@ -1,0 +1,255 @@
+"""Build policy/module-program witness documents (counterexamples, traces, successors).
+
+Consumes a normalized witness (raw symbols + resolved flags) and the run-global
+`Dictionaries`, interning symbols as it builds. Base policy and module-program (ext) share
+everything; ext adds the `vtx|state|mem` columns. See
+docs/output/runir.ps.base.counterexamples.md and runir.ps.ext.counterexamples.md.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import StrEnum
+
+from pyrunir_mcp.json_types import JsonValue
+from pyrunir_mcp.output.dictionaries import Dictionaries
+from pyrunir_mcp.tables import Document, Table
+
+
+@dataclass(frozen=True)
+class WitnessState:
+    state: int
+    features: dict[str, JsonValue] = field(default_factory=dict)
+    fluent: tuple[str, ...] = ()
+    derived: tuple[str, ...] = ()
+    static: tuple[str, ...] = ()
+    flags: tuple[str, ...] = ()
+    vertex: int | None = None
+    memory: tuple[str, str, str] | None = None  # (module, memory, kind) for ext
+
+
+@dataclass(frozen=True)
+class WitnessTransition:
+    step: int
+    source: int
+    target: int
+    action: str | None = None
+    rule: str | None = None  # raw rule symbol; looked up in the rules dictionary
+    delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Cycle:
+    state_indices: tuple[int, ...] = ()
+    vertex_indices: tuple[int, ...] = ()
+    transition_steps: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class Successor:
+    src: int
+    target: WitnessState
+    action: str | None = None
+    rule: str | None = None
+    delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=dict)
+
+
+class Flag(StrEnum):
+    """State markers for the `flags` column (docs/output/runir.ps.base.counterexamples.md).
+
+    An empty `flags` cell means nothing notable (an unremarkable, alive state) or that the
+    status was not evaluated. `DEADEND`/`GOAL` are the status exceptions worth flagging.
+    """
+
+    INIT = "INIT"
+    GOAL = "GOAL"
+    OPEN = "OPEN"
+    WITNESS = "WITNESS"
+    CYCLE = "CYCLE"
+    DEADEND = "DEADEND"
+    TRUNC = "TRUNC"
+
+
+def resolve_flags(
+    *,
+    initial: bool = False,
+    goal: bool = False,
+    open_state: bool = False,
+    witness: bool = False,
+    cycle: bool = False,
+    deadend: bool = False,
+    truncated: bool = False,
+) -> tuple[Flag, ...]:
+    """Map known state roles to flag tokens (empty when nothing notable applies)."""
+    return tuple(
+        flag
+        for present, flag in (
+            (initial, Flag.INIT),
+            (goal, Flag.GOAL),
+            (open_state, Flag.OPEN),
+            (witness, Flag.WITNESS),
+            (cycle, Flag.CYCLE),
+            (deadend, Flag.DEADEND),
+            (truncated, Flag.TRUNC),
+        )
+        if present
+    )
+
+
+# -- cell helpers --------------------------------------------------------------
+
+def _scalar(value: JsonValue) -> str:
+    return "T" if value is True else "F" if value is False else str(value)
+
+
+def _flags(flags: tuple[str, ...]) -> str:
+    return ",".join(flags)
+
+
+def _indices(indices: tuple[int, ...]) -> str:
+    return ",".join(map(str, indices))
+
+
+def _action_alias(symbol: str | None, dicts: Dictionaries) -> str:
+    return dicts.action(symbol) if symbol else ""
+
+
+def _rule_alias(symbol: str | None, dicts: Dictionaries) -> str:
+    return (dicts.rule_alias(symbol) or dicts.rule(symbol)) if symbol else ""
+
+
+def _delta(delta: dict[str, tuple[JsonValue, JsonValue]], dicts: Dictionaries) -> str:
+    return " ".join(f"{dicts.feature(s)}:{_scalar(before)}>{_scalar(after)}" for s, (before, after) in delta.items())
+
+
+# -- row + table builders (one `_x_row` / `_x_table` per section) ---------------
+
+def _state_row(state: WitnessState, dicts: Dictionaries, *, ext: bool, features: list[str]) -> list[JsonValue]:
+    values = [state.features.get(symbol) for symbol in features]
+    if ext:
+        mem = dicts.memory(*state.memory) if state.memory else ""
+        return [state.vertex, state.state, mem, _flags(state.flags), *values]
+    return [state.state, _flags(state.flags), *values]
+
+
+def _states_table(name: str, states: list[WitnessState], dicts: Dictionaries, *, ext: bool) -> Table:
+    features = dicts.feature_symbols()
+    aliases = [f"f{index}" for index in range(len(features))]
+    leading = ["vtx", "state", "mem", "flags"] if ext else ["idx", "flags"]
+    rows = [_state_row(state, dicts, ext=ext, features=features) for state in states]
+    return Table(name=name, columns=[*leading, *aliases], rows=rows)
+
+
+def _transition_row(transition: WitnessTransition, dicts: Dictionaries) -> list[JsonValue]:
+    return [
+        transition.step,
+        transition.source,
+        transition.target,
+        _rule_alias(transition.rule, dicts),
+        _action_alias(transition.action, dicts),
+        _delta(transition.delta, dicts),
+    ]
+
+
+def _transitions_table(transitions: list[WitnessTransition], dicts: Dictionaries) -> Table:
+    rows = [_transition_row(transition, dicts) for transition in transitions]
+    return Table(name="transitions", columns=["step", "src", "tgt", "rule", "action", "delta"], rows=rows)
+
+
+def _successor_row(successor: Successor, dicts: Dictionaries, *, ext: bool) -> list[JsonValue]:
+    target = successor.target
+    return [
+        successor.src,
+        _action_alias(successor.action, dicts),
+        target.vertex if ext else target.state,
+        _rule_alias(successor.rule, dicts),
+        _flags(target.flags),
+        _delta(successor.delta, dicts),
+    ]
+
+
+def _successors_table(successors: list[Successor], dicts: Dictionaries, *, ext: bool) -> Table:
+    rows = [_successor_row(successor, dicts, ext=ext) for successor in successors]
+    return Table(name="successors", columns=["src", "action", "tgt", "rule", "flags", "delta"], rows=rows)
+
+
+def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | None:
+    rows: list[list[JsonValue]] = []
+    for state in states:
+        atoms = ",".join(
+            dicts.atom(kind, atom)
+            for kind, group in (("fluent", state.fluent), ("derived", state.derived), ("static", state.static))
+            for atom in group
+        )
+        if atoms:
+            rows.append([state.state, atoms])
+    return Table(name="facts", columns=["state", "atoms"], rows=rows) if rows else None
+
+
+def _cycle_table(cycle: Cycle, *, ext: bool) -> Table:
+    rows: list[list[JsonValue]] = []
+    if ext and cycle.vertex_indices:
+        rows.append(["cycle_vertex_indices", _indices(cycle.vertex_indices)])
+    if cycle.state_indices:
+        rows.append(["cycle_state_indices", _indices(cycle.state_indices)])
+    if cycle.transition_steps:
+        rows.append(["cycle_transition_steps", _indices(cycle.transition_steps)])
+    return Table(name="cycle", columns=["key", "value"], rows=rows)
+
+
+# -- documents (each: intern features first, assemble sections, drop empty ones) --
+
+def _document(header: list[tuple[str, str]], sections: list[Table | None]) -> Document:
+    return Document(header=header, sections=[section for section in sections if section is not None])
+
+
+def _intern_features(features: list[str], dicts: Dictionaries) -> None:
+    """Fix the `f0,f1,…` column order before any `[states]` table is built."""
+    for symbol in features:
+        dicts.feature(symbol)
+
+
+def counterexample_document(
+    *,
+    header: list[tuple[str, str]],
+    feature_symbols: list[str],
+    states: list[WitnessState],
+    transitions: list[WitnessTransition],
+    cycle: Cycle | None,
+    dicts: Dictionaries,
+    ext: bool,
+) -> Document:
+    _intern_features(feature_symbols, dicts)
+    if cycle is not None:
+        sections = [_cycle_table(cycle, ext=ext), _states_table("states", states, dicts, ext=ext), _transitions_table(transitions, dicts)]
+    else:
+        sections = [_states_table("state", states, dicts, ext=ext)]
+    return _document(header, [*sections, _facts_table(states, dicts)])
+
+
+def trace_document(
+    *,
+    header: list[tuple[str, str]],
+    feature_symbols: list[str],
+    states: list[WitnessState],
+    transitions: list[WitnessTransition],
+    dicts: Dictionaries,
+    ext: bool,
+) -> Document:
+    _intern_features(feature_symbols, dicts)
+    sections = [_states_table("states", states, dicts, ext=ext), _transitions_table(transitions, dicts), _facts_table(states, dicts)]
+    return _document(header, sections)
+
+
+def successors_document(
+    *,
+    header: list[tuple[str, str]],
+    feature_symbols: list[str],
+    successors: list[Successor],
+    dicts: Dictionaries,
+    ext: bool,
+) -> Document:
+    _intern_features(feature_symbols, dicts)
+    targets = [successor.target for successor in successors]
+    sections = [_successors_table(successors, dicts, ext=ext), _states_table("states", targets, dicts, ext=ext)]
+    return _document(header, sections)

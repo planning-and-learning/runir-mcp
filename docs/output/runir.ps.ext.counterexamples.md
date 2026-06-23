@@ -106,8 +106,8 @@ Same as base, with the `vtx|state|mem|flags|…` state columns and vertex-indexe
 
 [states]
 vtx|state|mem|flags|f0|f1
-0|0|m0|I|3|0
-1|1|m0|A|2|1
+0|0|m0|INIT|3|0
+1|1|m0||2|1
 3|10|m1|CYCLE|2|0
 
 [transitions]

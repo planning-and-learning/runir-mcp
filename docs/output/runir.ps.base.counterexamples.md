@@ -16,7 +16,7 @@ While we are still settling on the best representation, all three are emitted so
 - A `|` never appears inside a cell. Ground actions, atoms, feature names, and feature deltas contain no `|`. The one composite field, `fingerprint`, uses `~` as its internal separator (`category~aK~delta`, aliased like everything else) so it stays pipe-free.
 - Cells never contain newlines; multi-line action strings are reduced to their first line.
 - **Header lines** carry scalar metadata as `@key value`, one per line, before any table. The value is the opaque remainder of the line. Each tool adds its own keys (e.g. `execute_policy` adds `@seed`).
-- Boolean values render as `T`/`F`, numeric values as integers, an evaluation error as `err`.
+- Boolean values render as `T`/`F`, numeric values as integers.
 - An empty optional value renders as an empty cell.
 - **Interning via run-global dictionaries.** Features, rules, actions, and atoms recur across every trace and counterexample in a run (these tools run a single problem, so the ground actions/atoms are shared too). Each is listed **once per run** in a top-level dictionary file and referenced everywhere by a short alias `<prefix><K>`. This bounds each value to one full occurrence per run, independent of trace count, trace length, or symbol size:
   - **Features → `fK`** — `features.*` (`id|symbol`; often long DL expressions). Used as `[state]`/`[states]` columns (`idx|flags|f0|f1|…`) and as `delta` keys (`fK:before>after`).
@@ -123,8 +123,8 @@ Files `traces/<category>/<id>.{psv,md,json}` — the path from the initial state
 
 [states]
 idx|flags|f0|f1|f2
-0|I|3|0|F
-1|A|2|1|F
+0|INIT|3|0|F
+1||2|1|F
 2|CYCLE|2|0|F
 
 [transitions]
@@ -206,15 +206,14 @@ In the `.json` file the whole sectioned document is one object with the header i
 
 All `fK`/`rK`/`aK`/`pK` aliases resolve against the run-global [dictionaries](#dictionaries).
 
-The `flags` column holds a comma-separated set of state markers. It is empty only when the state's status was not evaluated; an evaluated state always carries at least one marker:
+The `flags` column holds a comma-separated set of state markers, empty when nothing notable applies (an unremarkable, alive state) or the status was not evaluated. `GOAL`/`DEADEND` are the status exceptions worth flagging:
 
 | Flag | Meaning |
 |---|---|
-| `I` | Initial state. |
+| `INIT` | Initial state. |
 | `GOAL` | Goal state. |
 | `OPEN` | Open / unexpanded state (e.g. an `open_state` witness). |
 | `WITNESS` | The counterexample witness state. |
 | `CYCLE` | State participating in the cycle. |
-| `A` | Alive — the goal is still reachable. Used when no other marker applies, so an evaluated, unremarkable state is never blank. |
 | `DEADEND` | Dead — the goal is unreachable from this state. |
 | `TRUNC` | Truncated — feature cells are left empty when the per-state cap (e.g. `execute_policy`'s `dump_max_states`) is hit. |
