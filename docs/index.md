@@ -41,4 +41,9 @@ Tool errors return `status: "error"` and `primary.category: "tool_error"`. Parse
 
 ## Output File Formats
 
-Counterexample, trace, and successor output for the base sketch-policy tools (`execute_policy`, `prove_policy`) shares one spec: the [base sketch-policy output format](output/runir.ps.base.counterexamples.md). It defines the PSV/Markdown/JSON renderings, the run-global alias dictionaries (`features`/`rules`/`actions`/`atoms`), the sectioned witness files, and the flag vocabulary. Each tool doc covers only its own index/summary layer and tool-specific options.
+Counterexample, trace, and successor output is shared per tool family. Each spec defines the PSV/Markdown/JSON renderings, the run-global alias dictionaries, the sectioned witness files, and the flag vocabulary; each tool doc covers only its own index/summary layer and tool-specific options.
+
+- Base sketch-policy tools (`execute_policy`, `prove_policy`): [base output format](output/runir.ps.base.counterexamples.md).
+- Module-program tools (`execute_module_program`, `prove_module_program`): [module-program output format](output/runir.ps.ext.counterexamples.md) — mirrors base plus the `(module, memory-state)` control dimension.
+- Termination (`prove_termination`): [termination output format](output/runir.ps.ext.prove_termination.md) — a different witness shape (a cycle in the structural termination graph); same PSV encoding.
+- Unsolvability classifier (`prove_classifier`): [classifier output format](output/runir.uns.prove_classifier.md) — a single merged `counterexamples` table, one row per misclassified state (boolean feature valuations); no traces or successors.

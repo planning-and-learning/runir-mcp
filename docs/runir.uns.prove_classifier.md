@@ -12,10 +12,12 @@ Proves an unsolvability classifier against full reachable-state-space ground tru
 | `classifier_file` | string or null | `null` | Classifier file. Null means empty/default classifier where supported. |
 | `max_num_states` | integer | `1000000` | Reachable-state enumeration budget. |
 | `max_time_seconds` | number | `1000000000.0` | Enumeration/proof wall-clock budget. |
+| `max_false_positive_counterexamples` | integer | `20` | Maximum number of `false_positive` counterexamples to record. |
+| `max_false_negative_counterexamples` | integer | `20` | Maximum number of `false_negative` counterexamples to record. |
 
 ## Output
 
-Uses the shared proof artifact structure. Classifier mistakes are state witnesses, not path traces, so counterexamples normally have no `trace_path`.
+Classifier mistakes are single **witness states**, not path traces — there are no `traces/` or `successors/`, and because each witness is one state they collapse into a single merged `counterexamples` table (one row per mistake). The dictionaries and that table use the [unsolvability-classifier output format](output/runir.uns.prove_classifier.md); `summary.{psv,md,json}` carries run counts and `manifest.json` holds run metadata (JSON-only).
 
 Categories:
 
@@ -27,10 +29,9 @@ Categories:
 ```text
 output_dir/
   .pyrunir-mcp-output
-  summary.json
-  summary.md
-  raw/stdout.txt
-  raw/stderr.txt
-  counterexamples/false_positive/<id>.json
-  counterexamples/false_negative/<id>.json
+  manifest.json                        # run metadata: config (JSON only)
+  summary.{psv,md,json}                # run index/counts table
+  features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol
+  atoms.{psv,md,json}                  # run-global dictionary: p0,p1,… -> ground atom (+ kind)
+  counterexamples.{psv,md,json}        # one row per classifier mistake (false_positive / false_negative)
 ```

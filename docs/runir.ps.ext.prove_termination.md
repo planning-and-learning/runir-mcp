@@ -12,36 +12,17 @@ Checks structural termination of an extended module program.
 
 ## Output
 
-Uses the shared counterexample summary format. Nontermination witnesses are structural graph witnesses, not planning-state traces. They are stored in counterexample files and normally do not create `traces/` files.
-
-```json
-{
-  "tool": "runir.ps.ext.prove_termination",
-  "status": "failure",
-  "primary": {
-    "successful": false,
-    "program_status": "NON_TERMINATING",
-    "nonterminating_modules": ["main"],
-    "prompt_summary": {}
-  },
-  "items": [
-    {
-      "category": "structural_termination",
-      "path": "<output-dir>/counterexamples/structural_termination/structural_termination-001.json",
-      "trace_available": false
-    }
-  ]
-}
-```
+A non-termination witness is a **cycle in the structural termination graph** — abstract vertices (a memory state plus concept/boolean/numerical variable valuations) connected by module-rule edges. It is reported, not a planning trace: the dictionaries and counterexample files use the [module-program termination output format](output/runir.ps.ext.prove_termination.md). On success no counterexamples are written; the normalized result still carries `program_status` and `nonterminating_modules`.
 
 ## Output Directory
 
 ```text
 output_dir/
   .pyrunir-mcp-output
-  summary.json
-  summary.md
-  raw/stdout.txt
-  raw/stderr.txt
-  counterexamples/structural_termination/<id>.json
+  manifest.json                        # run metadata: config (JSON only)
+  summary.{psv,md,json}                # run index/counts table
+  variables.{psv,md,json}              # dictionary: v0,v1,… -> (kind, variable symbol)
+  memory.{psv,md,json}                 # dictionary: m0,m1,… -> memory state
+  rules.{psv,md,json}                  # dictionary: r0,r1,… -> module rule
+  counterexamples/structural_termination/<id>.{psv,md,json}  # non-termination cycle
 ```
