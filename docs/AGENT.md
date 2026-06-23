@@ -1,0 +1,3 @@
+- JSON only for manifest / machine metadata.
+- PSV for anything the LLM reads.
+- Markdown only for human summary.

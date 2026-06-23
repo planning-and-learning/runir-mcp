@@ -85,5 +85,5 @@ def test_invoke_allows_tool_inside_role(monkeypatch):
 
     monkeypatch.setenv("PYRUNIR_MCP_ROLE", "kr/ps/base")
 
-    _ensure_tool_allowed("runir.ps.base.prove_sketch_policy")
+    _ensure_tool_allowed("runir.ps.base.prove_policy")
 

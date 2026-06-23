@@ -4,10 +4,10 @@ from pathlib import Path
 from tests.support.artifacts import assert_common_output, read_json, write_example_tool_output
 
 
-def test_prove_sketch_policy_writes_hierarchical_counterexample_summary(tmp_path):
+def test_prove_policy_writes_hierarchical_counterexample_summary(tmp_path):
     result = write_example_tool_output(
         tmp_path,
-        tool="runir.ps.base.prove_sketch_policy",
+        tool="runir.ps.base.prove_policy",
         counterexamples=[
             {
                 "task": "p-001.pddl",

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class ProveSketchPolicyOptions:
+class ProvePolicyOptions:
     domain_file: str
     problem_file: str
     sketch_file: str

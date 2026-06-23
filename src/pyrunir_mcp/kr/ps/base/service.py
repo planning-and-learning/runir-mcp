@@ -8,10 +8,10 @@ from pyrunir_mcp.feature_evidence import Feature, feature_key, state_evidence
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.base.core.features import create_base_policy_context
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description
-from pyrunir_mcp.kr.ps.base.schemas import ProveSketchPolicyOptions
+from pyrunir_mcp.kr.ps.base.schemas import ProvePolicyOptions
 from pyrunir_mcp.proof import make_search_options, prove_tasks, write_proof_run
 
-TOOL_NAME = "runir.ps.base.prove_sketch_policy"
+TOOL_NAME = "runir.ps.base.prove_policy"
 
 
 
@@ -24,7 +24,7 @@ def collect_features(policy: Sketch) -> list[Feature]:
     return list(features_by_key.values())
 
 
-def prove_sketch_policy(options: ProveSketchPolicyOptions) -> JsonObject:
+def prove_policy(options: ProvePolicyOptions) -> JsonObject:
     domain_path = Path(options.domain_file).resolve()
     problem_path = Path(options.problem_file).resolve()
     context = create_base_policy_context(domain_path)

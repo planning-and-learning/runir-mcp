@@ -15,8 +15,8 @@ from pyrunir_mcp.kr.ps.base.execute.service import execute_policy as execute_bas
 from pyrunir_mcp.kr.ps.base.reformat.service import CreateEmptyPolicyOptions, ReformatPolicyOptions as BaseReformatOptions
 from pyrunir_mcp.kr.ps.base.reformat.service import create_empty_policy as create_empty_base_policy
 from pyrunir_mcp.kr.ps.base.reformat.service import reformat_policy as reformat_base_policy
-from pyrunir_mcp.kr.ps.base.schemas import ProveSketchPolicyOptions
-from pyrunir_mcp.kr.ps.base.service import prove_sketch_policy
+from pyrunir_mcp.kr.ps.base.schemas import ProvePolicyOptions
+from pyrunir_mcp.kr.ps.base.service import prove_policy
 from pyrunir_mcp.kr.ps.ext.execute.service import ExecutePolicyOptions as ExtExecuteOptions
 from pyrunir_mcp.kr.ps.ext.execute.service import execute_policy as execute_ext_policy
 from pyrunir_mcp.kr.ps.ext.reformat.service import CreateEmptyPolicyOptions as ExtCreateEmptyPolicyOptions
@@ -103,8 +103,8 @@ ToolHandler: TypeAlias = Callable[[Args], ToolResult]
 
 
 def _base_prove(args: Args) -> ToolResult:
-    return prove_sketch_policy(
-        ProveSketchPolicyOptions(
+    return prove_policy(
+        ProvePolicyOptions(
             domain_file=args.string("domain_file"),
             problem_file=args.string("problem_file"),
             sketch_file=args.string("sketch_file"),
@@ -306,7 +306,7 @@ def _uns_prove(args: Args) -> ToolResult:
 
 
 TOOLS: dict[str, ToolHandler] = {
-    "runir.ps.base.prove_sketch_policy": _base_prove,
+    "runir.ps.base.prove_policy": _base_prove,
     "runir.ps.base.execute_policy": _base_execute,
     "runir.ps.base.create_empty_policy": _base_create_empty,
     "runir.ps.base.reformat_policy": _base_reformat,

@@ -3,15 +3,15 @@ from __future__ import annotations
 from fastmcp import FastMCP
 
 from pyrunir_mcp.config import ServerConfig
-from pyrunir_mcp.kr.ps.base.schemas import ProveSketchPolicyOptions
+from pyrunir_mcp.kr.ps.base.schemas import ProvePolicyOptions
 from pyrunir_mcp.paths import server_output_dir
-from pyrunir_mcp.kr.ps.base.service import TOOL_NAME, prove_sketch_policy as run_prove_sketch_policy
+from pyrunir_mcp.kr.ps.base.service import TOOL_NAME, prove_policy as run_prove_policy
 
 
 def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
 
     @mcp.tool(name=TOOL_NAME)
-    def prove_sketch_policy(
+    def prove_policy(
         domain_file: str,
         problem_file: str,
         sketch_file: str,
@@ -23,8 +23,8 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         max_deadend_transition_counterexamples: int = 1,
     ) -> dict:
         """Prove a Runir sketch policy and write every counterexample separately."""
-        return run_prove_sketch_policy(
-            ProveSketchPolicyOptions(
+        return run_prove_policy(
+            ProvePolicyOptions(
                 domain_file=domain_file,
                 problem_file=problem_file,
                 sketch_file=sketch_file,

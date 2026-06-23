@@ -13,6 +13,7 @@ authors = [
 ]
 dependencies = [
     "fastmcp>=2",
+    "jinja2>=3",
     "pyrunir>=0.0.12,<0.1",
 ]
 

@@ -20,21 +20,56 @@ Executes a base sketch policy on one grounded planning task. This is the cheap v
 | `max_time_seconds` | number or null | `null` | Per-subgoal wall-clock budget in seconds. |
 | `dump_max_steps` | integer or null | `null` | Maximum path transitions dumped. |
 | `dump_max_states` | integer or null | `null` | Cap on dumped state objects. |
+| `dump_max_successors` | integer or null | `null` | Cap on 1-step successors dumped per witness. |
 
 ## Output
 
-Returns normalized execution output with one task entry per rollout seed and representative failure entries. State objects always include `feature_values`, `fluent_facts`, and `derived_atoms`. Transition objects always include concrete action labels and compact matched rule symbols.
+Returns normalized execution output with one task entry per rollout seed and representative failure entries. State rows always carry feature values and (for witness/cycle states) `fluent`/`derived` facts. Transition rows always carry concrete action labels and the matched rule symbol. The on-disk encoding of the dictionaries, counterexamples, traces, and successors is the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md).
 
 ## Output Directory
 
 ```text
 output_dir/
   .pyrunir-mcp-output
-  summary.md
-  manifest.json
-  failures/<category>/<id>.json       # lightweight index to the normalized witness
-  counterexamples/<category>/<id>.json # witness state or cycle
-  traces/<category>/<id>.json          # path to witness, present when a path exists
+  manifest.json                        # run metadata: config, command, budgets (JSON only)
+  summary.{psv,md,json}                # run index/counts table
+  features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol
+  rules.{psv,md,json}                  # run-global dictionary: r0,r1,… -> rule symbol
+  actions.{psv,md,json}                # run-global dictionary: a0,a1,… -> ground action
+  atoms.{psv,md,json}                  # run-global dictionary: p0,p1,… -> ground atom (+ kind)
+  failures.{psv,md,json}               # one row per representative failure (index)
+  counterexamples/<category>/<id>.{psv,md,json}  # witness state or cycle
+  traces/<category>/<id>.{psv,md,json}           # path to witness, present when a path exists
+  successors/<category>/<id>.{psv,md,json}       # 1-step successors of the witness (open_state, cycle, deadend)
 ```
 
-Counterexample files hold the witness state or cycle. Trace files, when present, hold only the path to that witness. Failure files are lightweight indices and do not duplicate states or transitions.
+## Output Files
+
+The alias dictionaries (`features`/`rules`/`actions`/`atoms`) and the `counterexamples`/`traces`/`successors` files use the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md) — PSV/Markdown/JSON renderings, alias dictionaries, sectioned witness files, the section reference, and the flag vocabulary. This tool's specifics:
+
+- `source` is `find_ground_solution`; `seed` is the rollout seed.
+- Successors are emitted for `open_state`, `cycle`, and `deadend` witnesses, capped by `dump_max_successors`.
+
+It also writes the `failures` index below (execute-specific). Each artifact is written in all three formats (`.psv`, `.md`, `.json`) during experimentation, controlled by a `formats` option that later narrows to `["psv"]`. `summary.{psv,md,json}` is the run index/counts table; `manifest.json` holds run metadata (config, command, budgets) and stays JSON-only per the project output policy.
+
+### Failures
+
+Files `failures.psv` / `failures.md` / `failures.json` — one row per representative failure (the first failure seen per task/category). Replaces the former `failures/<category>/<id>.json` tree.
+
+| Column | Meaning |
+|---|---|
+| `id` | Stable failure id, e.g. `cycle-001`. |
+| `category` | Failure category (`cycle`, `deadend`, `open_state`, `resource_limit`, …). |
+| `status` | Execution status that produced the failure (e.g. `CYCLE`). |
+| `seed` | Rollout seed. |
+| `problem` | Problem file path. |
+| `source` | Counterexample source (e.g. `find_ground_solution`). |
+| `fingerprint` | Dedup fingerprint, `category~aK~delta` (action and feature aliased). |
+| `trace` | Relative path to the trace file, or empty if none. |
+| `counterexample` | Relative path to the counterexample file. |
+| `successors` | Relative path to the successors file, or empty if none. |
+
+```text
+id|category|status|seed|problem|source|fingerprint|trace|counterexample|successors
+cycle-001|cycle|CYCLE|0|p01.pddl|find_ground_solution|cycle~a1~f0:3>2|traces/cycle/cycle-001.psv|counterexamples/cycle/cycle-001.psv|successors/cycle/cycle-001.psv
+```

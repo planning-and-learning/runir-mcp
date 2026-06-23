@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 
 
-KR_PS_BASE_TOOLS = frozenset({"runir.ps.base.prove_sketch_policy", "runir.ps.base.execute_policy", "runir.ps.base.reformat_policy", "runir.ps.base.create_empty_policy"})
+KR_PS_BASE_TOOLS = frozenset({"runir.ps.base.prove_policy", "runir.ps.base.execute_policy", "runir.ps.base.reformat_policy", "runir.ps.base.create_empty_policy"})
 KR_PS_EXT_TOOLS = frozenset({"runir.ps.ext.prove_module_program", "runir.ps.ext.prove_termination", "runir.ps.ext.execute_module_program", "runir.ps.ext.reformat_module_program", "runir.ps.ext.reformat_module", "runir.ps.ext.create_empty_module_program"})
 KR_UNS_TOOLS = frozenset({"runir.uns.prove_classifier", "runir.uns.reformat_classifier", "runir.uns.create_empty_classifier"})
 ALL_TOOLS = KR_PS_BASE_TOOLS | KR_PS_EXT_TOOLS | KR_UNS_TOOLS

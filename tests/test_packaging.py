@@ -45,7 +45,7 @@ def test_invoke_role_allows_declared_tool(monkeypatch) -> None:
 
     monkeypatch.setenv("PYRUNIR_MCP_ROLE", "kr/ps/base")
 
-    _ensure_tool_allowed("runir.ps.base.prove_sketch_policy")
+    _ensure_tool_allowed("runir.ps.base.prove_policy")
 
 
 def test_invoke_role_rejects_disallowed_tool(monkeypatch) -> None:

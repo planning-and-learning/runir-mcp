@@ -58,7 +58,7 @@ def test_registered_base_tool_constrains_output_dir(monkeypatch, tmp_path):
         captured["output_dir"] = options.output_dir
         return {"status": "success"}
 
-    monkeypatch.setattr(base_tools, "run_prove_sketch_policy", fake_run)
+    monkeypatch.setattr(base_tools, "run_prove_policy", fake_run)
     base_tools.register_tools(mcp, config)
 
     result = mcp.tools[base_tools.TOOL_NAME](
