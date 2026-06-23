@@ -21,7 +21,7 @@ Proves an extended module program on one grounded planning task.
 
 Counterexample output is bounded by category: at most `max_open_state_counterexamples` open states, at most `max_deadend_transition_counterexamples` deadend transitions, and exactly one cycle counterexample if a cycle exists. Cycle witnesses are not counted against the open/deadend bounds.
 
-The dictionaries, counterexamples, traces, and successors use the shared [module-program output format](output/runir.ps.ext.counterexamples.md) with `tool: "runir.ps.ext.prove_module_program"`; `summary.{psv,md,json}` indexes them and `manifest.json` holds run metadata (JSON-only). Failure categories are `open_state`, `deadend_transition`, and `cycle`. Like `prove_policy`, proof has no rollout seeds (no `@seed`), and structural witnesses stay in the counterexample file without producing a trace.
+The dictionaries, counterexamples, traces, and successors use the shared [module-program output format](output/runir.ps.ext.counterexamples.md) with `tool: "runir.ps.ext.prove_module_program"`; `summary.{psv,md,json}` indexes them and `manifest.json` holds run metadata (JSON-only). Failure categories are `open_state`, `deadend_transition`, and `cycle`. Like `prove_policy`, proof has no rollout seeds (no `@seed`); otherwise each witness produces the same counterexample / trace (the path to the witness, present when one exists) / successors files.
 
 ## Output Directory
 
