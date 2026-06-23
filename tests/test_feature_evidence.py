@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pyrunir_mcp.feature_evidence import json_value
+from pyrunir_mcp.kr.ps.feature_evidence import json_value
 
 
 class ObjectView:

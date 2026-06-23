@@ -53,6 +53,7 @@ class Dictionaries:
     """
 
     def __init__(self, *, ext: bool = False) -> None:
+        self._ext = ext
         self.features = Dictionary("f", ["symbol"])
         self.rules = Dictionary("r", ["symbol", "src", "tgt"] if ext else ["symbol"])
         self.actions = Dictionary("a", ["action"])
@@ -72,8 +73,10 @@ class Dictionaries:
         return self.memories.intern((module, memory, kind), [module, memory, kind])
 
     def rule(self, symbol: str, src: str | None = None, tgt: str | None = None) -> str:
-        """Intern a rule, keyed by symbol. `src`/`tgt` are memory aliases for ext rules."""
-        cells = [symbol] if src is None else [symbol, src, tgt]
+        """Intern a rule, keyed by symbol. `src`/`tgt` are memory aliases for ext rules; ext
+        rows always carry the three columns even if memory is unknown (so lazy interning of an
+        unexpected rule symbol stays well-formed)."""
+        cells = [symbol, src or "", tgt or ""] if self._ext else [symbol]
         return self.rules.intern(symbol, cells)
 
     def rule_alias(self, symbol: str) -> str | None:

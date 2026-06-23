@@ -25,10 +25,10 @@ from pyrunir.kr.ps.ext import (
 from pyyggdrasil.execution import ExecutionContext
 from pytyr.planning.ground import State
 
-from pyrunir_mcp.feature_evidence import Feature, evaluate_features, feature_key
+from pyrunir_mcp.kr.ps.feature_evidence import Feature, evaluate_features, feature_key
 from pyrunir_mcp.json_types import JsonDictList, JsonObject
 from pyrunir_mcp.artifacts import _write_counterexample_and_trace
-from pyrunir_mcp.proof import edge_summary
+from pyrunir_mcp.kr.ps.proof import edge_summary
 from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext, load_grounded_search_context
 from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure, create_module_program_context
 from pyrunir_mcp.kr.ps.ext.core.policy_evaluation import execute_policy_on_tasks, failure_category_from_status, is_success_status

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from pyrunir_mcp.proof import _format_ground_action, failure_items
+from pyrunir_mcp.kr.ps.proof import _format_ground_action, failure_items
 
 
 def test_format_ground_action_uses_get_objects():

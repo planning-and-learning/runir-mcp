@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from collections.abc import Callable
@@ -41,18 +40,13 @@ from pyrunir.kr.ps.ext import (
 )
 from pytyr.formalism.planning import GroundAction, Parser, PlanningDomain
 from pytyr.planning.ground import State
-from pyyggdrasil.execution import ExecutionContext
 
-from pyrunir_mcp.artifacts import write_native_counterexample_run
 from pyrunir_mcp.json_types import JsonObject
-from pyrunir_mcp.planning import LoadedSearchContext, load_grounded_search_context
-
-
-@dataclass(frozen=True)
-class ProofRunResult:
-    status: str
-    num_tasks: int
-    counterexamples: list[JsonObject]
+from pyrunir_mcp.output.dictionaries import Dictionaries
+from pyrunir_mcp.output.policy import Cycle, counterexample_document, successors_document, trace_document
+from pyrunir_mcp.output.proof_witness import successor as build_successor, witness_state, witness_transition
+from pyrunir_mcp.output.run import RunItem, write_native_run
+from pyrunir_mcp.planning import LoadedSearchContext
 
 
 ProofEdgeLabel: TypeAlias = StateGraphEdgeLabel | SketchProofEdgeLabel | ModuleProgramProofEdgeLabel
@@ -189,48 +183,14 @@ def _states_for_edges(graph: ProofGraph, path_edges: list[int], evidence: StateE
     return [state_summary(graph, vertex, evidence) for vertex in vertices]
 
 
-def _trace_states(
-    graph: ProofGraph,
-    category: str,
-    witness: FailureWitness,
-    edges: list[int],
-    evidence: StateEvidence | None,
-) -> list[JsonObject]:
-    if edges:
-        return _states_for_edges(graph, edges, evidence)
-    if category == "open_state":
-        return [state_summary(graph, int(witness), evidence)]
-    if category == "cycle" and isinstance(witness, list) and witness:
-        return [state_summary(graph, int(witness[0]), evidence)]
-    return []
-
-
-def _trace_from_path(
-    *,
-    task: LoadedSearchContext,
-    result: ProofResult,
-    category: str,
-    witness: FailureWitness,
-    path_edges: list[int] | None,
-    evidence: StateEvidence | None,
-    extra_edges: list[int] | None = None,
-) -> JsonObject:
-    graph = result.graph
-    edges = list(path_edges or []) + list(extra_edges or [])
-    trace = {
-        "task": task_name(task),
-        "problem_path": task.problem_path.as_posix(),
-        "category": category,
-        "proof_status": status_name(result.status),
-        "witness": witness,
-        "trace_available": path_edges is not None,
-        "path_edges": [int(edge) for edge in path_edges] if path_edges is not None else None,
-        "states": _trace_states(graph, category, witness, edges, evidence),
-        "transitions": [edge_summary(graph, edge) for edge in edges],
-    }
-    if category == "cycle" and isinstance(witness, list):
-        trace["cycle_vertices"] = [int(vertex) for vertex in witness]
-    return trace
+def _cycle_edges(graph: ProofGraph, vertices: list[int]) -> list[int]:
+    edges: list[int] = []
+    for source, target in zip(vertices, vertices[1:] + vertices[:1]):
+        for edge in _out_edge_indices(graph, source):
+            if int(graph.get_target(edge)) == target:
+                edges.append(edge)
+                break
+    return edges
 
 
 def _label_state(label: ProofVertexLabel) -> State:
@@ -314,118 +274,156 @@ def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
     return out
 
 
-def counterexample_data(
-    task: LoadedSearchContext,
-    result: ProofResult,
-    category: str,
-    witness: FailureWitness,
-    evidence: StateEvidence | None = None,
-) -> JsonObject:
-    graph = result.graph
-    data: JsonObject = {
-        "task": task_name(task),
-        "problem_path": task.problem_path.as_posix(),
-        "category": category,
-        "proof_status": status_name(result.status),
-        "graph": {
-            "num_vertices": int(graph.get_num_vertices()),
-            "num_edges": int(graph.get_num_edges()),
-        },
-        "witness": witness,
-    }
-    if category == "open_state":
-        path_edges = _path_edges_to(graph, int(witness))
-        trace = _trace_from_path(
-            task=task,
-            result=result,
-            category=category,
-            witness=witness,
-            path_edges=path_edges,
-            evidence=evidence,
+def _transitions(graph: ProofGraph, edges: list[int], evidence: StateEvidence | None, *, ext: bool) -> list:
+    transitions = []
+    for step, edge in enumerate(edges):
+        source = state_summary(graph, int(graph.get_source(edge)), evidence)
+        target = state_summary(graph, int(graph.get_target(edge)), evidence)
+        transitions.append(witness_transition(edge_summary(graph, edge), step=step, source=source, target=target, ext=ext))
+    return transitions
+
+
+def _successors(graph: ProofGraph, vertices: list[int], evidence: StateEvidence | None, *, exclude: set[int]) -> list:
+    successors = []
+    for vertex in vertices:
+        source = state_summary(graph, vertex, evidence)
+        for edge in _out_edge_indices(graph, vertex):
+            target_vertex = int(graph.get_target(edge))
+            if target_vertex in exclude:
+                continue
+            target = state_summary(graph, target_vertex, evidence)
+            successors.append(build_successor(source, edge_summary(graph, edge), target))
+    return successors
+
+
+def _trace_document(graph, path_edges, evidence, *, feature_symbols, dicts, ext, header, witness_vertices):
+    if not path_edges:
+        return None
+    states = [
+        witness_state(state, witness=state.get("vertex_index") in witness_vertices)
+        for state in _states_for_edges(graph, path_edges, evidence)
+    ]
+    return trace_document(
+        header=header,
+        feature_symbols=feature_symbols,
+        states=states,
+        transitions=_transitions(graph, path_edges, evidence, ext=ext),
+        dicts=dicts,
+        ext=ext,
+    )
+
+
+def _witness_artifacts(graph, category, witness, evidence, *, feature_symbols, dicts, ext, header):
+    """Return (counterexample, trace | None, successors | None) documents for one witness."""
+    if category == "cycle":
+        vertices = [int(vertex) for vertex in witness]
+        cycle_states = [witness_state(state_summary(graph, vertex, evidence), cycle=True) for vertex in vertices]
+        cycle_edges = _cycle_edges(graph, vertices)
+        cycle = Cycle(
+            state_indices=tuple(state.state for state in cycle_states),
+            vertex_indices=tuple(vertices) if ext else (),
+            transition_steps=tuple(range(len(cycle_edges))),
         )
-        data["states"] = trace["states"]
-        data["transitions"] = trace["transitions"]
-        data["trace"] = trace
+        counterexample = counterexample_document(
+            header=header, feature_symbols=feature_symbols, states=cycle_states,
+            transitions=_transitions(graph, cycle_edges, evidence, ext=ext), cycle=cycle, dicts=dicts, ext=ext,
+        )
+        path_edges = _path_edges_to(graph, vertices[0]) if vertices else None
+        trace = _trace_document(graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices=set())
+        successors = _successors(graph, vertices, evidence, exclude=set(vertices))
     elif category == "deadend_transition":
         edge = int(witness)
-        source = int(graph.get_source(edge))
-        path_edges = _path_edges_to(graph, source)
-        trace = _trace_from_path(
-            task=task,
-            result=result,
-            category=category,
-            witness=witness,
-            path_edges=path_edges,
-            evidence=evidence,
-            extra_edges=[edge],
+        source_vertex, dead_vertex = int(graph.get_source(edge)), int(graph.get_target(edge))
+        counterexample = counterexample_document(
+            header=header, feature_symbols=feature_symbols,
+            states=[witness_state(state_summary(graph, dead_vertex, evidence), witness=True)],
+            transitions=[], cycle=None, dicts=dicts, ext=ext,
         )
-        data["transitions"] = trace["transitions"]
-        data["states"] = trace["states"]
-        data["trace"] = trace
-    elif category == "cycle":
-        vertices = [int(vertex) for vertex in witness]
-        path_edges = _path_edges_to(graph, vertices[0]) if vertices else None
-        trace = _trace_from_path(
-            task=task,
-            result=result,
-            category=category,
-            witness=vertices,
-            path_edges=path_edges,
-            evidence=evidence,
+        path_edges = _path_edges_to(graph, source_vertex)
+        trace_edges = ([*path_edges, edge]) if path_edges is not None else None
+        trace = _trace_document(graph, trace_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices={dead_vertex})
+        successors = _successors(graph, [source_vertex], evidence, exclude=set())
+    else:  # open_state
+        vertex = int(witness)
+        counterexample = counterexample_document(
+            header=header, feature_symbols=feature_symbols,
+            states=[witness_state(state_summary(graph, vertex, evidence), witness=True, open_state=True)],
+            transitions=[], cycle=None, dicts=dicts, ext=ext,
         )
-        if vertices:
-            cycle_vertex_indices = {state.get("vertex_index") for state in trace["states"] if isinstance(state, dict)}
-            for vertex in vertices:
-                if vertex not in cycle_vertex_indices:
-                    trace["states"].append(state_summary(graph, vertex, evidence))
-        data["states"] = trace["states"]
-        data["transitions"] = trace["transitions"]
-        data["trace"] = trace
-    return data
+        trace = _trace_document(graph, _path_edges_to(graph, vertex), evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices={vertex})
+        successors = _successors(graph, [vertex], evidence, exclude=set())
+
+    successor_doc = (
+        successors_document(header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=ext)
+        if successors
+        else None
+    )
+    return counterexample, trace, successor_doc
 
 
-def prove_tasks(
+def build_proof_run(
     *,
-    domain_path: Path,
-    problem_path: Path,
-    num_threads: int,
-    prove_one: Callable[[LoadedSearchContext], ProofResult],
+    tool: str,
+    output_dir: Path,
+    metadata: JsonObject,
+    task: LoadedSearchContext,
+    result: ProofResult,
+    feature_symbols: list[str],
+    dicts: Dictionaries,
+    ext: bool,
     evidence: StateEvidence | None = None,
     max_open_state_counterexamples: int = 1,
     max_deadend_transition_counterexamples: int = 1,
-) -> ProofRunResult:
-    execution_context = ExecutionContext(num_threads)
-    task = load_grounded_search_context(domain_path, problem_path, execution_context)
-    result = prove_one(task)
-    counterexamples: list[JsonObject] = []
+) -> JsonObject:
+    graph = result.graph
+    status = "success" if result.is_successful() else "failure"
+    artifacts: dict[str, object] = {}
+    items: list[RunItem] = []
     if not result.is_successful():
+        counts: dict[str, int] = {}
         for category, witness in failure_items(
             result,
             max_open_state_counterexamples=max_open_state_counterexamples,
             max_deadend_transition_counterexamples=max_deadend_transition_counterexamples,
         ):
-            counterexamples.append(counterexample_data(task, result, category, witness, evidence))
-    return ProofRunResult(
-        status="success" if not counterexamples else "failure",
-        num_tasks=1,
-        counterexamples=counterexamples,
-    )
-
-
-def write_proof_run(
-    *,
-    tool: str,
-    output_dir: Path,
-    metadata: JsonObject,
-    result: ProofRunResult,
-) -> JsonObject:
-    metadata = {**metadata, "num_tasks": result.num_tasks}
-    return write_native_counterexample_run(
+            counts[category] = counts.get(category, 0) + 1
+            counterexample_id = f"{category}-{counts[category]:03d}"
+            header = [
+                ("tool", tool),
+                ("id", counterexample_id),
+                ("category", category),
+                ("status", status_name(result.status)),
+                ("problem", task_name(task)),
+            ]
+            counterexample, trace, successors = _witness_artifacts(
+                graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header
+            )
+            names = {"counterexample": f"counterexamples/{category}/{counterexample_id}"}
+            artifacts[names["counterexample"]] = counterexample
+            if trace is not None:
+                names["trace"] = f"traces/{category}/{counterexample_id}"
+                artifacts[names["trace"]] = trace
+            if successors is not None:
+                names["successors"] = f"successors/{category}/{counterexample_id}"
+                artifacts[names["successors"]] = successors
+            items.append(
+                RunItem(
+                    id=counterexample_id,
+                    category=category,
+                    task=task_name(task),
+                    counterexample=names["counterexample"],
+                    trace=names.get("trace"),
+                    successors=names.get("successors"),
+                )
+            )
+    return write_native_run(
         tool=tool,
-        status=result.status,
+        status=status,
         output_dir=output_dir,
         metadata=metadata,
-        counterexamples=result.counterexamples,
+        dictionary_tables=dicts.tables(),
+        artifacts=artifacts,
+        items=items,
     )
 
 
