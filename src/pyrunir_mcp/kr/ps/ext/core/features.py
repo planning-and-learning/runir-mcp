@@ -22,12 +22,6 @@ class ModuleProgramContext:
 
 
 @dataclass(frozen=True)
-class PolicyProofCounterexample:
-    task: LoadedSearchContext
-    result: GroundPolicyProofResults
-
-
-@dataclass(frozen=True)
 class ExecutionFailure:
     task: LoadedSearchContext
     result: GroundPolicyProofResults
