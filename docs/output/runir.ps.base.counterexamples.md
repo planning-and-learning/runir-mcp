@@ -13,7 +13,7 @@ While we are still settling on the best representation, all three are emitted so
 ## Conventions
 
 - **Tables** are pipe-separated with a single header row naming the columns. No alignment padding, no Markdown rule (`|---|`) row. Cells are joined by `|` with no surrounding spaces.
-- A `|` never appears inside a cell. Ground actions, atoms, feature names, and feature deltas contain no `|`. The one composite field, `fingerprint`, uses `~` as its internal separator (`category~aK~delta`, aliased like everything else) so it stays pipe-free.
+- A `|` never appears inside a cell. Ground actions, atoms, feature names, and feature deltas contain no `|`.
 - Cells never contain newlines; multi-line action strings are reduced to their first line.
 - **Header lines** carry scalar metadata as `@key value`, one per line, before any table. The value is the opaque remainder of the line. Each tool adds its own keys (e.g. `execute_policy` adds `@seed`).
 - Boolean values render as `T`/`F`, numeric values as integers.
@@ -68,10 +68,6 @@ Files `counterexamples/<category>/<id>.{psv,md,json}` — the witness, a single 
 @category cycle
 @status CYCLE
 @problem p01.pddl
-@domain domain.pddl
-@sketch sketch.lisp
-@fingerprint cycle~a1~f0:3>2
-@trace traces/cycle/cycle-001.psv
 ```
 
 **State witness** (non-cycle categories) — one `[state]` section plus its facts:

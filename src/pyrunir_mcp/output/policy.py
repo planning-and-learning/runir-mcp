@@ -22,7 +22,6 @@ class WitnessState:
     features: dict[str, JsonValue] = field(default_factory=dict)
     fluent: tuple[str, ...] = ()
     derived: tuple[str, ...] = ()
-    static: tuple[str, ...] = ()
     flags: tuple[str, ...] = ()
     vertex: int | None = None
     memory: tuple[str, str, str] | None = None  # (module, memory, kind) for ext
@@ -175,7 +174,7 @@ def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | Non
     for state in states:
         atoms = ",".join(
             dicts.atom(kind, atom)
-            for kind, group in (("fluent", state.fluent), ("derived", state.derived), ("static", state.static))
+            for kind, group in (("fluent", state.fluent), ("derived", state.derived))
             for atom in group
         )
         if atoms:

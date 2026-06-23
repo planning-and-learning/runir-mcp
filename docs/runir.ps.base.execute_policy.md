@@ -61,12 +61,11 @@ Files `failures.psv` / `failures.md` / `failures.json` — one row per represent
 | `seed` | Rollout seed. |
 | `problem` | Problem file path. |
 | `source` | Counterexample source (e.g. `find_ground_solution`). |
-| `fingerprint` | Dedup fingerprint, `category~aK~delta` (action and feature aliased). |
 | `trace` | Relative path to the trace file, or empty if none. |
 | `counterexample` | Relative path to the counterexample file. |
 | `successors` | Relative path to the successors file, or empty if none. |
 
 ```text
-id|category|status|seed|problem|source|fingerprint|trace|counterexample|successors
-cycle-001|cycle|CYCLE|0|p01.pddl|find_ground_solution|cycle~a1~f0:3>2|traces/cycle/cycle-001.psv|counterexamples/cycle/cycle-001.psv|successors/cycle/cycle-001.psv
+id|category|status|seed|problem|source|trace|counterexample|successors
+cycle-001|cycle|CYCLE|0|p01.pddl|find_ground_solution|traces/cycle/cycle-001.psv|counterexamples/cycle/cycle-001.psv|successors/cycle/cycle-001.psv
 ```
