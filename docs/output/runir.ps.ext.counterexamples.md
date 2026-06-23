@@ -123,6 +123,8 @@ state|atoms
 
 ## Successors
 
+> **Note:** module programs do not yet emit the generator-expanded frontier that base sketches do. Determining which module rule permits a `(state, memory)` transition needs a compatibility primitive that `pyrunir.kr.ps.ext` does not currently expose, so ext successors remain the witness's **graph-derived compatible transitions** (the moves already in the proof graph), not the full applicable-move frontier. The schema below is unchanged; only the source of the rows differs.
+
 Same purpose and categories as [base successors](runir.ps.base.counterexamples.md#successors) — the 1-step frontier from the witness, the gap visible as an advancing successor with an empty `rule`. `src`/`tgt` are vertices:
 
 ```text

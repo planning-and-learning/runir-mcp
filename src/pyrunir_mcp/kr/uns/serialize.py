@@ -7,7 +7,7 @@ from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
 
 
 def fluent_facts(state: State) -> list[str]:
-    return [str(fact) for fact in state.fluent_facts()]
+    return [str(fact.get_atom()) for fact in state.fluent_facts()]
 
 
 def feature_symbols(classifier: Classifier) -> list[str]:

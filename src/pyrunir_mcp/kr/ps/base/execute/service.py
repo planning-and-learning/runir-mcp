@@ -18,6 +18,7 @@ from pyrunir_mcp.kr.ps.base.core.policy_evaluation import execute_policy_on_task
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description, read_policy_description
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds, run_execute
 from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.kr.ps.frontier import make_frontier_expander
 from pyrunir_mcp.output.dictionaries import Dictionaries
 
 
@@ -77,6 +78,7 @@ def _manifest_metadata(options: ExecutePolicyOptions) -> JsonObject:
 def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, tasks: list[LoadedSearchContext]) -> ExecutionFailure | None:
     assert options.dump_dir is not None
     features = collect_features(policy)
+    evidence = state_evidence(features, include_facts=True)
     failing = run_execute(
         tool="execute_policy",
         ext=False,
@@ -85,9 +87,10 @@ def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, ta
         tasks=tasks,
         solve=lambda task, seed: find_ground_solution(task.search_context, policy, create_policy_search_options(options, seed)),
         feature_symbols=[feature_key(feature) for feature in features],
-        evidence=state_evidence(features, include_facts=True),
+        evidence=evidence,
         dicts=Dictionaries(ext=False),
         manifest_metadata=_manifest_metadata(options),
+        expander_factory=lambda task: make_frontier_expander(task.search_context, policy, evidence),
     )
     return ExecutionFailure(task=failing[0], result=failing[1]) if failing else None
 

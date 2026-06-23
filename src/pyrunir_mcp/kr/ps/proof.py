@@ -174,13 +174,19 @@ def _path_edges_to(graph: ProofGraph, target: int) -> list[int] | None:
     return None
 
 
-def _states_for_edges(graph: ProofGraph, path_edges: list[int], evidence: StateEvidence | None) -> list[JsonObject]:
+def _vertices_for_edges(graph: ProofGraph, path_edges: list[int] | None) -> list[int]:
+    """Vertices along a path (source of the first edge, then each target). An empty/None path
+    means the witness is an initial vertex -> just that vertex."""
     if not path_edges:
         starts = _initial_vertices(graph)
-        return [state_summary(graph, starts[0], evidence)] if starts else []
+        return [starts[0]] if starts else []
     vertices = [int(graph.get_source(path_edges[0]))]
     vertices.extend(int(graph.get_target(edge)) for edge in path_edges)
-    return [state_summary(graph, vertex, evidence) for vertex in vertices]
+    return vertices
+
+
+def _states_for_edges(graph: ProofGraph, path_edges: list[int], evidence: StateEvidence | None) -> list[JsonObject]:
+    return [state_summary(graph, vertex, evidence) for vertex in _vertices_for_edges(graph, path_edges)]
 
 
 def _cycle_edges(graph: ProofGraph, vertices: list[int]) -> list[int]:
@@ -297,7 +303,9 @@ def _successors(graph: ProofGraph, vertices: list[int], evidence: StateEvidence 
 
 
 def _trace_document(graph, path_edges, evidence, *, feature_symbols, dicts, ext, header, witness_vertices):
-    if not path_edges:
+    # `path_edges == []` means the witness IS an initial vertex: emit a singleton trace (one
+    # state, no transitions). Only `None` (no path / not applicable) suppresses the trace.
+    if path_edges is None:
         return None
     states = [
         witness_state(state, witness=state.get("vertex_index") in witness_vertices)
@@ -313,7 +321,30 @@ def _trace_document(graph, path_edges, evidence, *, feature_symbols, dicts, ext,
     )
 
 
-def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, dicts, ext, header):
+def _expand_frontier(
+    graph: ProofGraph,
+    expander: Callable[[list[State]], list] | None,
+    evidence: StateEvidence | None,
+    *,
+    trace_vertices: list[int],
+    graph_vertices: list[int],
+    exclude: set[int],
+) -> list:
+    """The 1-step frontier of the witness. With an `expander` (base) it expands every state
+    on the trace via the successor generator + sketch compatibility; without one (ext) it
+    falls back to the graph's compatible out-edges of the witness vertices."""
+    if expander is None:
+        return _successors(graph, graph_vertices, evidence, exclude=exclude)
+    seen: set[int] = set()
+    states: list[State] = []
+    for vertex in trace_vertices:
+        if vertex not in seen:
+            seen.add(vertex)
+            states.append(_label_state(graph.get_vertex_property(int(vertex))))
+    return expander(states)
+
+
+def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, dicts, ext, header, expander=None):
     """Return (counterexample, trace | None, successors | None) documents for one witness."""
     if category == "cycle":
         vertices = [int(vertex) for vertex in witness]
@@ -330,7 +361,11 @@ def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, di
         )
         path_edges = _path_edges_to(graph, vertices[0]) if vertices else None
         trace = _trace_document(graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices=set())
-        successors = _successors(graph, vertices, evidence, exclude=set(vertices))
+        successors = _expand_frontier(
+            graph, expander, evidence,
+            trace_vertices=_vertices_for_edges(graph, path_edges) + vertices,
+            graph_vertices=vertices, exclude=set(vertices),
+        )
     elif category == "deadend_transition":
         edge = int(witness)
         source_vertex, dead_vertex = int(graph.get_source(edge)), int(graph.get_target(edge))
@@ -342,7 +377,11 @@ def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, di
         path_edges = _path_edges_to(graph, source_vertex)
         trace_edges = ([*path_edges, edge]) if path_edges is not None else None
         trace = _trace_document(graph, trace_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices={dead_vertex})
-        successors = _successors(graph, [source_vertex], evidence, exclude=set())
+        successors = _expand_frontier(
+            graph, expander, evidence,
+            trace_vertices=_vertices_for_edges(graph, trace_edges) if trace_edges is not None else [source_vertex, dead_vertex],
+            graph_vertices=[source_vertex], exclude=set(),
+        )
     else:  # open_state
         vertex = int(witness)
         counterexample = counterexample_document(
@@ -350,8 +389,13 @@ def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, di
             states=[witness_state(state_summary(graph, vertex, evidence), witness=True, open_state=True)],
             transitions=[], cycle=None, dicts=dicts, ext=ext,
         )
-        trace = _trace_document(graph, _path_edges_to(graph, vertex), evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices={vertex})
-        successors = _successors(graph, [vertex], evidence, exclude=set())
+        path_edges = _path_edges_to(graph, vertex)
+        trace = _trace_document(graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices={vertex})
+        successors = _expand_frontier(
+            graph, expander, evidence,
+            trace_vertices=_vertices_for_edges(graph, path_edges),
+            graph_vertices=[vertex], exclude=set(),
+        )
 
     successor_doc = (
         successors_document(header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=ext)
@@ -372,6 +416,7 @@ def build_proof_run(
     dicts: Dictionaries,
     ext: bool,
     evidence: StateEvidence | None = None,
+    expander: Callable[[list[State]], list] | None = None,
     max_open_state_counterexamples: int = 1,
     max_deadend_transition_counterexamples: int = 1,
 ) -> JsonObject:
@@ -396,7 +441,7 @@ def build_proof_run(
                 ("problem", task_name(task)),
             ]
             counterexample, trace, successors = witness_artifacts(
-                graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header
+                graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
             )
             names = {"counterexample": f"counterexamples/{category}/{counterexample_id}"}
             artifacts[names["counterexample"]] = counterexample

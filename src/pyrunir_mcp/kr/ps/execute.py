@@ -96,6 +96,7 @@ def run_execute(
     evidence: StateEvidence,
     dicts: Dictionaries,
     manifest_metadata: JsonObject,
+    expander_factory: Callable[[Task], object] | None = None,
 ) -> tuple[Task, object] | None:
     """Run rollouts and write the new-format artifacts. Returns the first failing (task, result)."""
     rollouts: list[JsonObject] = []
@@ -125,8 +126,9 @@ def run_execute(
         names: dict[str, str | None] = {"counterexample": None, "trace": None, "successors": None}
         if witness is not None:
             header = [("tool", tool), ("id", counterexample_id), ("category", category), ("status", result.status.name), ("problem", problem), ("seed", str(seed))]
+            expander = expander_factory(task) if expander_factory is not None else None
             counterexample, trace, successors = witness_artifacts(
-                result.graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header
+                result.graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
             )
             names["counterexample"] = f"counterexamples/{category}/{counterexample_id}"
             artifacts[names["counterexample"]] = counterexample

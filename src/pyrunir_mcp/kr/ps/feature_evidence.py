@@ -65,7 +65,7 @@ def evaluate_features(state: State, features: list[Feature]) -> JsonObject:
 
 def state_facts(state: State) -> JsonObject:
     return {
-        "fluent_facts": [str(fact) for fact in state.fluent_facts()],
+        "fluent_facts": [str(fact.get_atom()) for fact in state.fluent_facts()],
         "derived_atoms": [str(atom) for atom in state.derived_atoms()],
     }
 

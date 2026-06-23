@@ -10,6 +10,7 @@ from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.base.core.features import collect_features, create_base_policy_context
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description
 from pyrunir_mcp.kr.ps.base.schemas import ProvePolicyOptions
+from pyrunir_mcp.kr.ps.frontier import make_frontier_expander
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.planning import load_grounded_search_context
 from pyrunir_mcp.kr.ps.proof import build_proof_run, make_search_options
@@ -29,6 +30,7 @@ def prove_policy(options: ProvePolicyOptions) -> JsonObject:
     task = load_grounded_search_context(domain_path, problem_path, execution_context)
     result = prove_ground_solution(task.search_context, policy, search_options)
 
+    evidence = state_evidence(features, include_facts=True)
     return build_proof_run(
         tool=TOOL_NAME,
         output_dir=Path(options.output_dir).resolve(),
@@ -47,7 +49,8 @@ def prove_policy(options: ProvePolicyOptions) -> JsonObject:
         feature_symbols=[feature_key(feature) for feature in features],
         dicts=Dictionaries(ext=False),
         ext=False,
-        evidence=state_evidence(features, include_facts=True),
+        evidence=evidence,
+        expander=make_frontier_expander(task.search_context, policy, evidence),
         max_open_state_counterexamples=options.max_open_state_counterexamples,
         max_deadend_transition_counterexamples=options.max_deadend_transition_counterexamples,
     )

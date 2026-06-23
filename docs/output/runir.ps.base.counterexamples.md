@@ -136,34 +136,32 @@ state|atoms
 
 ## Successors
 
-Files `successors/<category>/<id>.{psv,md,json}` — the 1-step successors of the witness, the frontier of moves the policy *could* take. This is what lets a reader reason about **what is missing to make progress**: each row is an available move with its feature change (`delta`) and whether any sketch rule selects it (`rule`). A successor that advances toward the goal with an **empty `rule` cell** is the gap — no rule picks the progressing move.
+Files `successors/<category>/<id>.{psv,md,json}` — the 1-step frontier of moves the policy *could* take, the signal for **what is missing to make progress**: each row is an available move with its feature change (`delta`) and whether any sketch rule selects it (`rule`). A move that advances toward the goal with an **empty `rule` cell** is the gap — no rule picks the progressing move.
 
-Emitted for:
+The frontier is built by **expanding every state along the trace/cycle with the planning successor generator** and marking each generated transition with the sketch rule that selects it (`rule`), or empty when none does. (The proof/execution graph holds only sketch-compatible transitions, so it can't surface the moves the policy *failed* to take — the generator can.) The `src` column is the state each successor branches from; with several trace states, rows for each appear under their own `src`.
 
-- **`open_state`** — successors of the single open witness state (which move makes progress).
-- **`cycle`** — for each state on the cycle, only its **off-cycle** successors, the escapes the policy didn't take (which move breaks the loop). In-cycle moves already appear in the cycle's `[transitions]`, so they're not repeated; this bounds the file to the escape frontier instead of `cycle_length × branching_factor`.
-- **`deadend`** (named `deadend_transition` in proof) — successors of the state *before* the deadend (the source of the deadend transition): the move into the deadend, flagged `DEADEND`, alongside the alive siblings the policy could have taken instead (which move avoids the dead end). Deadends must be avoided, so the alive alternatives are the repair signal.
-
-The `src` column is the state each successor branches from — a single state for `open_state` and `deadend`, the cycle states for `cycle`.
+Emitted for `open_state`, `cycle`, and `deadend` (named `deadend_transition` in proof). For the common case where the policy is stuck immediately (an initial open state), the trace is a single state and the frontier is exactly that state's applicable moves — all with an empty `rule` when no rule fires.
 
 ```text
 @tool execute_policy
-@id cycle-001
-@category cycle
+@id open_state-001
+@category open_state
 @problem p01.pddl
 
 [successors]
 src|action|tgt|rule|flags|delta
-1|a5|60||GOAL|f0:2>1 f2:F>T
-2|a6|61|r1|DEADEND|f1:0>1
+0|a0|0|||
+0|a1|1||GOAL|f0:2>1 f2:F>T
+0|a2|2|r1||f1:0>1
 
 [states]
 idx|flags|f0|f1|f2
-60|GOAL|1|0|T
-61|DEADEND|2|1|F
+0||2|1|F
+1|GOAL|1|0|T
+2||2|0|F
 ```
 
-Here the escape from state `1` reaches a goal but has an empty `rule` — the missing guidance — while rule `r1` steers state `2` into a deadend. The full 1-step frontier is always emitted (never truncated — a missing move is exactly what this artifact is for). `[states]` carries the full feature vector of each successor (the absolute values behind each `delta`).
+Here move `a1` reaches a goal but has an empty `rule` — the missing guidance — while `a2` is the only move a rule (`r1`) selects. The full 1-step frontier is always emitted (never truncated — a missing move is exactly what this artifact is for). `[states]` carries the full feature vector of each successor (the absolute values behind each `delta`); a `GOAL` flag marks successors that satisfy the goal (`DEADEND` is not computed for off-graph successors).
 
 ## The same tables in Markdown and JSON
 
@@ -198,7 +196,7 @@ In the `.json` file the whole sectioned document is one object with the header i
 | `[transitions]` | `step\|src\|tgt\|rule\|action\|delta` | `src`/`tgt` are state indices; `rule` is `rK`, `action` is `aK`; `delta` is space-separated `fK:before>after`, changed features only. |
 | `[facts]` | `state\|atoms` | `atoms` is a comma-separated `pK` list referencing `atoms.*`; lists only the per-state `fluent`/`derived` atoms. `static` atoms hold everywhere and are not repeated here. |
 | `[cycle]` | `key\|value` | Cycle descriptor: state-index path and transition steps. |
-| `[successors]` | `src\|action\|tgt\|rule\|flags\|delta` | 1-step successors branching from `src`; for `cycle`, off-cycle escapes only; for `deadend`, the siblings of the deadend move. `rule` empty when no rule selects that successor. |
+| `[successors]` | `src\|action\|tgt\|rule\|flags\|delta` | 1-step successor frontier branching from `src`, expanded with the planning successor generator for every state along the trace/cycle. `rule` is the sketch rule that selects the move, empty when none does (the gap). |
 
 All `fK`/`rK`/`aK`/`pK` aliases resolve against the run-global [dictionaries](#dictionaries).
 
