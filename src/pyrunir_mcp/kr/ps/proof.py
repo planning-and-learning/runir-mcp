@@ -313,7 +313,7 @@ def _trace_document(graph, path_edges, evidence, *, feature_symbols, dicts, ext,
     )
 
 
-def _witness_artifacts(graph, category, witness, evidence, *, feature_symbols, dicts, ext, header):
+def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, dicts, ext, header):
     """Return (counterexample, trace | None, successors | None) documents for one witness."""
     if category == "cycle":
         vertices = [int(vertex) for vertex in witness]
@@ -395,7 +395,7 @@ def build_proof_run(
                 ("status", status_name(result.status)),
                 ("problem", task_name(task)),
             ]
-            counterexample, trace, successors = _witness_artifacts(
+            counterexample, trace, successors = witness_artifacts(
                 graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header
             )
             names = {"counterexample": f"counterexamples/{category}/{counterexample_id}"}

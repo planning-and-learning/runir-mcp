@@ -25,7 +25,7 @@ def _manifest_item(item: JsonValue, output_dir: Path) -> JsonValue:
     if not isinstance(item, dict):
         return item
     copied = dict(item)
-    for key in ("trace_path", "counterexample_path"):
+    for key in ("trace_path", "counterexample_path", "successors_path"):
         if key in copied:
             copied[key] = _result_path(copied.get(key), output_dir)
     return copied
@@ -128,6 +128,7 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
         task = item.get("task") or item.get("name") or (Path(str(problem)).name if problem else f"task-{index:03d}")
         trace_path = _result_path(item.get("trace_path"), output_dir)
         counterexample_path = _result_path(item.get("counterexample_path"), output_dir)
+        successors_path = _result_path(item.get("successors_path"), output_dir)
         trace_available = bool(trace_path) and trace_path != "<omitted: outside output_dir>"
         failure_items.append({
             "kind": "failure",
@@ -139,6 +140,7 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
             "seed": item.get("seed"),
             "path": counterexample_path,
             "trace_path": trace_path,
+            "successors_path": successors_path,
             "trace_available": bool(item.get("trace_available", trace_available)),
         })
     if failure_category is None and failure_items:

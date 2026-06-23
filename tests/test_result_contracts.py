@@ -262,6 +262,7 @@ def test_execute_result_reuses_service_written_failure_artifacts(tmp_path):
                         "seed": 0,
                         "counterexample_path": counterexample_path.as_posix(),
                         "trace_path": trace_path.as_posix(),
+                        "successors_path": (output_dir / "successors" / "open_state" / "open_state-001.psv").as_posix(),
                         "trace_available": True,
                     }
                 ],
@@ -285,6 +286,7 @@ def test_execute_result_reuses_service_written_failure_artifacts(tmp_path):
             "seed": 0,
             "path": counterexample_path.as_posix(),
             "trace_path": trace_path.as_posix(),
+            "successors_path": (output_dir / "successors" / "open_state" / "open_state-001.psv").as_posix(),
             "trace_available": True,
         }
     ]
