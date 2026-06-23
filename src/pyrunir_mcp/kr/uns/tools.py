@@ -15,9 +15,11 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         domain_file: str,
         problem_file: str,
         output_dir: str,
-        classifier_file: str | None = None,
+        classifier_file: str,
         max_num_states: int = 1_000_000,
         max_time_seconds: float = 1_000_000_000.0,
+        max_false_positive_counterexamples: int = 20,
+        max_false_negative_counterexamples: int = 20,
     ) -> dict:
         """Prove an unsolvability DNF classifier and write each counterexample separately."""
         return run_prove_classifier(
@@ -28,5 +30,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
                 classifier_file=classifier_file,
                 max_num_states=max_num_states,
                 max_time_seconds=max_time_seconds,
+                max_false_positive_counterexamples=max_false_positive_counterexamples,
+                max_false_negative_counterexamples=max_false_negative_counterexamples,
             )
         )

@@ -48,36 +48,41 @@ def test_prove_classifier_writes_all_classifier_counterexamples_separately(tmp_p
 
 
 def test_prove_classifier_accepts_frozen_options(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
     from pyrunir_mcp.kr.uns import service
     from pyrunir_mcp.kr.uns.schemas import ProveClassifierOptions
 
     domain = tmp_path / "domain.pddl"
-    train = tmp_path / "train"
+    classifier = tmp_path / "classifier.txt"
     output = tmp_path / "out"
     domain.write_text("(define (domain d))\n", encoding="utf-8")
-    train.mkdir()
+    classifier.write_text('(:classifier (:symbol c0) (:description "") (:features) (:expression (or)))\n', encoding="utf-8")
 
     descriptions = []
 
     def fake_parse(description, _domain, _repo):
         descriptions.append(description)
-        return object()
+        return SimpleNamespace(get_features=lambda: [])
 
+    empty_graph = SimpleNamespace(get_num_vertices=lambda: 0, get_vertex_indices=lambda: [])
     monkeypatch.setattr(service, "_repositories", lambda _domain: (object(), object()))
     monkeypatch.setattr(service, "parse_classifier", fake_parse)
-    monkeypatch.setattr(service, "_expand", lambda *_args, **_kwargs: service.StateSpace(problem_path=train / "p1.pddl", states={}, edges=[], goals=set()))
+    monkeypatch.setattr(service, "build_ground_search_context", lambda *_a, **_k: object())
+    monkeypatch.setattr(service, "generate_ground_state_graph_result", lambda *_a, **_k: SimpleNamespace(status=service.SearchStatus.EXHAUSTED, graph=object()))
+    monkeypatch.setattr(service, "annotate_ground_state_graph", lambda *_a, **_k: SimpleNamespace(get_forward_graph=lambda: empty_graph))
 
     result = service.prove_classifier(
         ProveClassifierOptions(
             domain_file=str(domain),
-            problem_file=str(train / "p1.pddl"),
+            problem_file=str(tmp_path / "p1.pddl"),
             output_dir=str(output),
-            classifier_file=None,
+            classifier_file=str(classifier),
             max_time_seconds=0.01,
         )
     )
 
-    assert descriptions == [service.EMPTY_CLASSIFIER]
+    assert descriptions == [classifier.read_text(encoding="utf-8")]
     assert result["status"] == "success"
     assert result["primary"]["successful"] is True
 

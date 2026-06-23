@@ -8,9 +8,15 @@ from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtRepositoryFacto
 from pyrunir.kr.ps.ext import Module, ModuleStructuralTerminationResult, RepositoryFactory, parse_module_program, structural_termination
 from pytyr.formalism.planning import Parser
 
-from pyrunir_mcp.artifacts import write_native_counterexample_run
 from pyrunir_mcp.kr.ps.ext.termination.schemas import ProveTerminationOptions
 from pyrunir_mcp.kr.ps.ext.termination.serialize import counterexample_to_data, status_name
+from pyrunir_mcp.output.run import RunItem, write_native_run
+from pyrunir_mcp.output.termination import (
+    TerminationDictionaries,
+    TerminationEdge,
+    TerminationVertex,
+    counterexample_document,
+)
 
 TOOL_NAME = "runir.ps.ext.prove_termination"
 
@@ -25,6 +31,26 @@ def _repositories(domain_path: Path):
 def _module_name(module: Module, index: int) -> str:
     name = str(module.get_name())
     return name or f"module-{index:03d}"
+
+
+def _vertex(data: JsonObject) -> TerminationVertex:
+    return TerminationVertex(
+        index=data["index"],
+        memory_state=data["memory_state"],
+        concepts=data["concepts"],
+        booleans=data["booleans"],
+        numericals=data["numericals"],
+    )
+
+
+def _edge(data: JsonObject) -> TerminationEdge:
+    return TerminationEdge(
+        index=data["index"],
+        source=data["source"],
+        target=data["target"],
+        rule=data["rule"],
+        numerical_changes=data["numerical_changes"],
+    )
 
 
 def _module_result_metadata(module_name: str, module_result: ModuleStructuralTerminationResult) -> JsonObject:
@@ -44,7 +70,9 @@ def prove_termination(options: ProveTerminationOptions) -> JsonObject:
     program_result = structural_termination(program)
     module_results = list(program_result.get_module_results())
 
-    counterexamples: list[JsonObject] = []
+    dicts = TerminationDictionaries()
+    artifacts: dict[str, object] = {}
+    items: list[RunItem] = []
     module_summaries: list[JsonObject] = []
     nonterminating_modules: list[str] = []
     for index, (module, module_result) in enumerate(zip(modules, module_results, strict=True), start=1):
@@ -56,17 +84,24 @@ def prove_termination(options: ProveTerminationOptions) -> JsonObject:
         counterexample = module_result.get_counterexample()
         if counterexample is None:
             continue
-        counterexamples.append(
-            {
-                "category": "structural_termination",
-                "module": module_name,
-                "task": module_name,
-                "status": status_name(module_result.status),
-                "counterexample": counterexample_to_data(counterexample),
-            }
+        data = counterexample_to_data(counterexample)
+        counterexample_id = f"structural_termination-{len(items) + 1:03d}"
+        name = f"counterexamples/structural_termination/{counterexample_id}"
+        artifacts[name] = counterexample_document(
+            header=[
+                ("tool", TOOL_NAME),
+                ("id", counterexample_id),
+                ("category", "structural_termination"),
+                ("status", status_name(module_result.status)),
+                ("module", module_name),
+            ],
+            vertices=[_vertex(vertex) for vertex in data["vertices"]],
+            edges=[_edge(edge) for edge in data["edges"]],
+            dicts=dicts,
         )
+        items.append(RunItem(id=counterexample_id, category="structural_termination", task=module_name, counterexample=name))
 
-    return write_native_counterexample_run(
+    return write_native_run(
         tool=TOOL_NAME,
         status="success" if program_result.is_terminating() else "failure",
         output_dir=Path(options.output_dir).resolve(),
@@ -76,10 +111,10 @@ def prove_termination(options: ProveTerminationOptions) -> JsonObject:
             "program_status": status_name(program_result.status),
             "terminating": bool(program_result.is_terminating()),
             "nonterminating_modules": nonterminating_modules,
-            "recursive_call_rules": [
-                str(rule).strip() for rule in program_result.get_recursive_call_rules()
-            ],
+            "recursive_call_rules": [str(rule).strip() for rule in program_result.get_recursive_call_rules()],
             "modules": module_summaries,
         },
-        counterexamples=counterexamples,
+        dictionary_tables=dicts.tables(),
+        artifacts=artifacts,
+        items=items,
     )

@@ -9,7 +9,7 @@ Proves an unsolvability classifier against full reachable-state-space ground tru
 | `domain_file` | string | required | Path to the planning domain PDDL file. |
 | `problem_file` | string | required | Path to one problem PDDL file. |
 | `output_dir` | string | required | Directory for normalized proof artifacts. |
-| `classifier_file` | string or null | `null` | Classifier file. Null means empty/default classifier where supported. |
+| `classifier_file` | string | required | Classifier file to prove. Required — there is no implicit empty-classifier fallback. |
 | `max_num_states` | integer | `1000000` | Reachable-state enumeration budget. |
 | `max_time_seconds` | number | `1000000000.0` | Enumeration/proof wall-clock budget. |
 | `max_false_positive_counterexamples` | integer | `20` | Maximum number of `false_positive` counterexamples to record. |
