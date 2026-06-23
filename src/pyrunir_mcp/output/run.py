@@ -51,7 +51,7 @@ def _result_item(item: RunItem, paths: dict[str, str]) -> JsonObject:
     }
 
 
-def write_native_run(
+def build_run_envelope(
     *,
     tool: str,
     status: str,

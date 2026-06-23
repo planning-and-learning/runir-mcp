@@ -13,11 +13,11 @@ from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext, load_grounded_search_context
-from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, create_base_policy_context
+from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, collect_features, create_base_policy_context
 from pyrunir_mcp.kr.ps.base.core.policy_evaluation import execute_policy_on_tasks
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description, read_policy_description
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds, run_execute
-from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key, state_evidence
+from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
 from pyrunir_mcp.output.dictionaries import Dictionaries
 
 
@@ -54,15 +54,6 @@ def _file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _collect_features(policy: Policy) -> list[Feature]:
-    features_by_key: dict[str, Feature] = {}
-    for feature in policy.get_boolean_features():
-        features_by_key.setdefault(feature_key(feature), feature)
-    for feature in policy.get_numerical_features():
-        features_by_key.setdefault(feature_key(feature), feature)
-    return list(features_by_key.values())
-
-
 def create_policy_search_options(options: ExecutePolicyOptions, random_seed: int | None = None) -> GroundPolicySearchOptions:
     return configure_search_options(
         GroundPolicySearchOptions(),
@@ -85,7 +76,7 @@ def _manifest_metadata(options: ExecutePolicyOptions) -> JsonObject:
 
 def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, tasks: list[LoadedSearchContext]) -> ExecutionFailure | None:
     assert options.dump_dir is not None
-    features = _collect_features(policy)
+    features = collect_features(policy)
     failing = run_execute(
         tool="execute_policy",
         ext=False,

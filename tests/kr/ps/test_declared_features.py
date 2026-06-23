@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pyrunir_mcp.kr.ps.base.service import collect_features as collect_base_features
 from pyrunir_mcp.kr.ps.ext.service import collect_features as collect_ext_features
-from pyrunir_mcp.kr.ps.base.execute.service import _collect_features as collect_base_execute_features
+from pyrunir_mcp.kr.ps.base.execute.service import collect_features as collect_base_execute_features
 from pyrunir_mcp.kr.ps.ext.execute.service import collect_features as collect_ext_execute_features
 
 

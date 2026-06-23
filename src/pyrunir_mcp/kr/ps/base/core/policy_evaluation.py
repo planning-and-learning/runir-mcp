@@ -1,19 +1,10 @@
 from __future__ import annotations
 
-from typing import TypeAlias
-
-from pyrunir.kr.ps.base import GroundSketchSearchOptions as GroundPolicySearchOptions, Sketch as Policy, SketchProofStatus as PolicyProofStatus, find_ground_solution
-from pytyr.planning import SearchStatus
+from pyrunir.kr.ps.base import GroundSketchSearchOptions as GroundPolicySearchOptions, Sketch as Policy, find_ground_solution
 
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext
 from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure
-
-
-PolicyStatus: TypeAlias = PolicyProofStatus | SearchStatus
-
-
-def is_success_status(status: PolicyStatus) -> bool:
-    return status.name in {"SOLVED", "SUCCESS"}
+from pyrunir_mcp.kr.ps.status import is_success_status
 
 
 def execute_policy_on_tasks(

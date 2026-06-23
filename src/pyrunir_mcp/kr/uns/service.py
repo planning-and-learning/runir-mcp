@@ -23,7 +23,7 @@ from pyrunir_mcp.kr.uns.schemas import ProveClassifierOptions
 from pyrunir_mcp.kr.uns.serialize import feature_symbols, feature_values, fluent_facts
 from pyrunir_mcp.output.classifier import ClassifierRow, counterexamples_table
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.output.run import RunItem, write_native_run
+from pyrunir_mcp.output.run import RunItem, build_run_envelope
 from pyrunir_mcp.planning import build_ground_search_context
 
 TOOL_NAME = "runir.uns.prove_classifier"
@@ -105,7 +105,7 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
         }
 
     status = "success" if not any(found.values()) and failure_category is None else "failure"
-    return write_native_run(
+    return build_run_envelope(
         tool=TOOL_NAME,
         status=status,
         output_dir=Path(options.output_dir).resolve(),

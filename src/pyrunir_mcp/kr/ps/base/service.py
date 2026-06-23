@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pyrunir.kr.ps.base import GroundSketchSearchOptions, Sketch, prove_ground_solution
+from pyrunir.kr.ps.base import GroundSketchSearchOptions, prove_ground_solution
 from pyyggdrasil.execution import ExecutionContext
 
-from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key, state_evidence
+from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
 from pyrunir_mcp.json_types import JsonObject
-from pyrunir_mcp.kr.ps.base.core.features import create_base_policy_context
+from pyrunir_mcp.kr.ps.base.core.features import collect_features, create_base_policy_context
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description
 from pyrunir_mcp.kr.ps.base.schemas import ProvePolicyOptions
 from pyrunir_mcp.output.dictionaries import Dictionaries
@@ -15,15 +15,6 @@ from pyrunir_mcp.planning import load_grounded_search_context
 from pyrunir_mcp.kr.ps.proof import build_proof_run, make_search_options
 
 TOOL_NAME = "runir.ps.base.prove_policy"
-
-
-def collect_features(policy: Sketch) -> list[Feature]:
-    features_by_key: dict[str, Feature] = {}
-    for feature in policy.get_boolean_features():
-        features_by_key.setdefault(feature_key(feature), feature)
-    for feature in policy.get_numerical_features():
-        features_by_key.setdefault(feature_key(feature), feature)
-    return list(features_by_key.values())
 
 
 def prove_policy(options: ProvePolicyOptions) -> JsonObject:

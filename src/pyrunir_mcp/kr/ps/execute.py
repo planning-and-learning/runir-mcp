@@ -18,11 +18,10 @@ from typing import Protocol, TypeVar
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.proof import StateEvidence, failure_items, witness_artifacts
+from pyrunir_mcp.kr.ps.status import is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.writer import DEFAULT_FORMATS, write_run
 from pyrunir_mcp.tables import Table
-
-_SUCCESS = {"SOLVED", "SUCCESS"}
 
 SearchOptions = TypeVar("SearchOptions")
 
@@ -30,10 +29,6 @@ SearchOptions = TypeVar("SearchOptions")
 class Task(Protocol):
     @property
     def problem_path(self) -> Path: ...
-
-
-def is_success_status(status) -> bool:
-    return status.name in _SUCCESS
 
 
 def rollout_seeds(num_rollouts: int, random_seed: int, random_seed_start: int) -> list[int]:

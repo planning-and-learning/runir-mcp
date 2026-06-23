@@ -10,7 +10,7 @@ from pytyr.formalism.planning import Parser
 
 from pyrunir_mcp.kr.ps.ext.termination.schemas import ProveTerminationOptions
 from pyrunir_mcp.kr.ps.ext.termination.serialize import counterexample_to_data, status_name
-from pyrunir_mcp.output.run import RunItem, write_native_run
+from pyrunir_mcp.output.run import RunItem, build_run_envelope
 from pyrunir_mcp.output.termination import (
     TerminationDictionaries,
     TerminationEdge,
@@ -101,7 +101,7 @@ def prove_termination(options: ProveTerminationOptions) -> JsonObject:
         )
         items.append(RunItem(id=counterexample_id, category="structural_termination", task=module_name, counterexample=name))
 
-    return write_native_run(
+    return build_run_envelope(
         tool=TOOL_NAME,
         status="success" if program_result.is_terminating() else "failure",
         output_dir=Path(options.output_dir).resolve(),

@@ -8,10 +8,12 @@ from pyrunir.kr.dl.base.semantics import ConstructorRepositoryFactory as DLConst
 from pyrunir.kr.ps.base import GroundSketchProofResults as GroundPolicyProofResults
 from pyrunir.kr.ps.base import Repository as PolicyRepository
 from pyrunir.kr.ps.base import RepositoryFactory as PolicyRepositoryFactory
+from pyrunir.kr.ps.base import Sketch
 from pypddl.formalism import ParserOptions
 from pytyr.formalism.planning import Parser, PlanningDomain
 
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext
+from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,15 @@ class BasePolicyContext:
 class ExecutionFailure:
     task: LoadedSearchContext
     result: GroundPolicyProofResults
+
+
+def collect_features(policy: Sketch) -> list[Feature]:
+    features_by_key: dict[str, Feature] = {}
+    for feature in policy.get_boolean_features():
+        features_by_key.setdefault(feature_key(feature), feature)
+    for feature in policy.get_numerical_features():
+        features_by_key.setdefault(feature_key(feature), feature)
+    return list(features_by_key.values())
 
 
 def create_base_policy_context(domain_path: Path) -> BasePolicyContext:

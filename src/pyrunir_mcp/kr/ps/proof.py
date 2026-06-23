@@ -45,7 +45,7 @@ from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.policy import Cycle, counterexample_document, successors_document, trace_document
 from pyrunir_mcp.output.proof_witness import successor as build_successor, witness_state, witness_transition
-from pyrunir_mcp.output.run import RunItem, write_native_run
+from pyrunir_mcp.output.run import RunItem, build_run_envelope
 from pyrunir_mcp.planning import LoadedSearchContext
 
 
@@ -416,7 +416,7 @@ def build_proof_run(
                     successors=names.get("successors"),
                 )
             )
-    return write_native_run(
+    return build_run_envelope(
         tool=tool,
         status=status,
         output_dir=output_dir,
