@@ -159,9 +159,15 @@ idx|flags|f0|f1|f2
 0||2|1|F
 1|GOAL|1|0|T
 2||2|0|F
+
+[facts]
+state|atoms
+0|p0,p1
+1|p3
+2|p0
 ```
 
-Here move `a1` reaches a goal but has an empty `rule` — the missing guidance — while `a2` is the only move a rule (`r1`) selects. The full 1-step frontier is always emitted (never truncated — a missing move is exactly what this artifact is for). `[states]` carries the full feature vector of each successor (the absolute values behind each `delta`); a `GOAL` flag marks successors that satisfy the goal (`DEADEND` is not computed for off-graph successors).
+Here move `a1` reaches a goal but has an empty `rule` — the missing guidance — while `a2` is the only move a rule (`r1`) selects. The full 1-step frontier is always emitted (never truncated — a missing move is exactly what this artifact is for). `[states]` carries the full feature vector of each successor (the absolute values behind each `delta`) and `[facts]` its `fluent`/`derived` atoms — the same `[states]`/`[facts]` schema as the counterexample and trace; a `GOAL` flag marks successors that satisfy the goal (`DEADEND` is not computed for off-graph successors).
 
 ## The same tables in Markdown and JSON
 

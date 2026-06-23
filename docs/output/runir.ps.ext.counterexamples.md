@@ -132,9 +132,19 @@ Same purpose and categories as [base successors](runir.ps.base.counterexamples.m
 src|action|tgt|rule|flags|delta
 3|a5|9|r1|GOAL|f0:2>1 f1:1>0
 5|a6|11||DEADEND|f1:0>1
+
+[states]
+vtx|state|mem|flags|f0|f1
+9|20|m1|GOAL|1|0
+11|21|m1|DEADEND|2|1
+
+[facts]
+state|atoms
+20|p0,p1
+21|p0
 ```
 
-When several features change on one move, the `delta` cell lists them space-separated (`f0:2>1 f1:1>0`), changed features only — unchanged features are omitted.
+As in base, the `[successors]` rows are followed by a `[states]` table (the full feature vector of each successor target) and a `[facts]` table (its `fluent`/`derived` atoms). When several features change on one move, the `delta` cell lists them space-separated (`f0:2>1 f1:1>0`), changed features only — unchanged features are omitted.
 
 ## Section reference
 

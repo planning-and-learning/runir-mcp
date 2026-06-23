@@ -59,7 +59,10 @@ def test_execute_empty_policy_emits_singleton_trace_and_open_frontier(tmp_path):
     assert len(_section_rows(trace_text, "states")) == 1  # singleton trace
     assert _section_rows(trace_text, "transitions") == []  # no chosen action
 
-    successor_rows = _section_rows(successors.read_text(encoding="utf-8"), "successors")
+    successors_text = successors.read_text(encoding="utf-8")
+    successor_rows = _section_rows(successors_text, "successors")
     assert successor_rows  # the open state has applicable moves
     # src|action|tgt|rule|flags|delta -> the rule cell is empty for every move (the gap)
     assert all(row.split("|")[3] == "" for row in successor_rows)
+    # successor states carry their atoms (a [facts] section), like the trace/counterexample
+    assert _section_rows(successors_text, "facts")

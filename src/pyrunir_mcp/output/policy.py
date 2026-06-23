@@ -247,5 +247,5 @@ def successors_document(
 ) -> Document:
     _intern_features(feature_symbols, dicts)
     targets = [successor.target for successor in successors]
-    sections = [_successors_table(successors, dicts, ext=ext), _states_table("states", targets, dicts, ext=ext)]
+    sections = [_successors_table(successors, dicts, ext=ext), _states_table("states", targets, dicts, ext=ext), _facts_table(targets, dicts)]
     return _document(header, sections)
