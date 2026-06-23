@@ -9,7 +9,7 @@ Executes a base sketch policy on one grounded planning task. This is the cheap v
 | `domain_file` | string | required | Path to the planning domain PDDL file. |
 | `problem_file` | string | required | Path to one problem PDDL file. |
 | `sketch_file` | string | required | Sketch policy file. |
-| `output_dir` | string | required | Directory for normalized output and raw rollout dumps. |
+| `output_dir` | string | required | Directory for the normalized run output. |
 | `num_threads` | integer | `1` | Grounding/loading worker count. |
 | `random_seed` | integer | `0` | Seed used when `num_rollouts == 1`. |
 | `random_seed_start` | integer | `0` | First seed used when `num_rollouts > 1`. |
@@ -18,9 +18,6 @@ Executes a base sketch policy on one grounded planning task. This is the cheap v
 | `max_arity` | integer | `0` | Maximum sketch arity. |
 | `max_num_states` | integer or null | `null` | Per-subgoal state budget. |
 | `max_time_seconds` | number or null | `null` | Per-subgoal wall-clock budget in seconds. |
-| `dump_max_steps` | integer or null | `null` | Maximum path transitions dumped. |
-| `dump_max_states` | integer or null | `null` | Cap on dumped state objects. |
-| `dump_max_successors` | integer or null | `null` | Cap on 1-step successors dumped per witness. |
 
 ## Output
 
@@ -48,7 +45,7 @@ output_dir/
 The alias dictionaries (`features`/`rules`/`actions`/`atoms`) and the `counterexamples`/`traces`/`successors` files use the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md) — PSV/Markdown/JSON renderings, alias dictionaries, sectioned witness files, the section reference, and the flag vocabulary. This tool's specifics:
 
 - `source` is `find_ground_solution`; `seed` is the rollout seed.
-- Successors are emitted for `open_state`, `cycle`, and `deadend` witnesses, capped by `dump_max_successors`.
+- Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 
 It also writes the `failures` index below (execute-specific). Each artifact is written in all three formats (`.psv`, `.md`, `.json`) during experimentation, controlled by a `formats` option that later narrows to `["psv"]`. `summary.{psv,md,json}` is the run index/counts table; `manifest.json` holds run metadata (config, command, budgets) and stays JSON-only per the project output policy.
 

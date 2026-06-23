@@ -67,7 +67,6 @@ class Flag(StrEnum):
     WITNESS = "WITNESS"
     CYCLE = "CYCLE"
     DEADEND = "DEADEND"
-    TRUNC = "TRUNC"
 
 
 def resolve_flags(
@@ -78,7 +77,6 @@ def resolve_flags(
     witness: bool = False,
     cycle: bool = False,
     deadend: bool = False,
-    truncated: bool = False,
 ) -> tuple[Flag, ...]:
     """Map known state roles to flag tokens (empty when nothing notable applies)."""
     return tuple(
@@ -90,7 +88,6 @@ def resolve_flags(
             (witness, Flag.WITNESS),
             (cycle, Flag.CYCLE),
             (deadend, Flag.DEADEND),
-            (truncated, Flag.TRUNC),
         )
         if present
     )

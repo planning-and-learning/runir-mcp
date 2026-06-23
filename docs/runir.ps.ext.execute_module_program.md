@@ -39,6 +39,6 @@ output_dir/
 The dictionaries (`features`/`rules`/`actions`/`atoms`/`memory`) and the `counterexamples`/`traces`/`successors` files use the shared [module-program output format](output/runir.ps.ext.counterexamples.md). This tool's specifics:
 
 - `source` is `find_ground_solution`; `seed` is the rollout seed.
-- Successors are emitted for `open_state`, `cycle`, and `deadend` witnesses, capped by `dump_max_successors`.
+- Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 
 It also writes the `failures` index (one row per representative failure), identical in shape to `execute_policy`'s. Each artifact is written in all three formats during experimentation; `summary.{psv,md,json}` is the run index and `manifest.json` holds run metadata (JSON-only).

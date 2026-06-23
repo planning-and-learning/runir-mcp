@@ -51,9 +51,6 @@ class ExecutePolicyOptions:
     max_num_states: int | None = None
     max_time_seconds: float | None = None
     dump_dir: Path | None = None
-    dump_max_steps: int | None = None
-    dump_max_states: int | None = None
-    dump_max_successors: int | None = None
 
 
 @dataclass(frozen=True)

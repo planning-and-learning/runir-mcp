@@ -167,7 +167,7 @@ idx|flags|f0|f1|f2
 61|DEADEND|2|1|F
 ```
 
-Here the escape from state `1` reaches a goal but has an empty `rule` — the missing guidance — while rule `r1` steers state `2` into a deadend. The `[successors]` table is capped at the tool's successor limit (`execute_policy`: `dump_max_successors`); when the cut is applied, `@truncated T` is set in the header. `[states]` carries the full feature vector of each successor (the absolute values behind each `delta`).
+Here the escape from state `1` reaches a goal but has an empty `rule` — the missing guidance — while rule `r1` steers state `2` into a deadend. The full 1-step frontier is always emitted (never truncated — a missing move is exactly what this artifact is for). `[states]` carries the full feature vector of each successor (the absolute values behind each `delta`).
 
 ## The same tables in Markdown and JSON
 
@@ -216,4 +216,3 @@ The `flags` column holds a comma-separated set of state markers, empty when noth
 | `WITNESS` | The counterexample witness state. |
 | `CYCLE` | State participating in the cycle. |
 | `DEADEND` | Dead — the goal is unreachable from this state. |
-| `TRUNC` | Truncated — feature cells are left empty when the per-state cap (e.g. `execute_policy`'s `dump_max_states`) is hit. |

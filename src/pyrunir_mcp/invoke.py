@@ -240,8 +240,6 @@ def _base_execute(args: Args) -> ToolResult:
             max_num_states=args.optional_integer("max_num_states"),
             max_time_seconds=args.optional_number("max_time_seconds"),
             dump_dir=output_dir,
-            dump_max_steps=args.optional_integer("dump_max_steps"),
-            dump_max_states=args.optional_integer("dump_max_states"),
         )
     )
     return execute_result(tool="runir.ps.base.execute_policy", result=result, output_dir=output_dir)
@@ -263,8 +261,6 @@ def _ext_execute(args: Args) -> ToolResult:
             max_num_states=args.optional_integer("max_num_states"),
             max_time_seconds=args.optional_number("max_time_seconds"),
             dump_dir=output_dir,
-            dump_max_steps=args.optional_integer("dump_max_steps"),
-            dump_max_states=args.optional_integer("dump_max_states"),
         )
     )
     return execute_result(tool="runir.ps.ext.execute_module_program", result=result, output_dir=output_dir)

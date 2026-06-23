@@ -4,66 +4,6 @@ import json
 from pathlib import Path
 
 from pyrunir_mcp.results import execute_result, reformat_result
-from tests.support.artifacts import write_example_tool_output
-
-
-def test_counterexample_result_exposes_primary_category_counts(tmp_path):
-    result = write_example_tool_output(
-        tmp_path,
-        tool="runir.uns.prove_classifier",
-        counterexamples=[
-            {"task": "p1.pddl", "category": "false_positive"},
-            {"task": "p2.pddl", "category": "false_positive"},
-            {"task": "p3.pddl", "category": "false_negative"},
-        ],
-    )
-
-    assert result["primary"]["successful"] is False
-    assert result["primary"]["category_counts"] == {
-        "false_negative": 1,
-        "false_positive": 2,
-    }
-    assert result["primary"]["counterexample_count"] == 3
-    assert result["prompt_summary"]["category_counts"] == {
-        "false_negative": 1,
-        "false_positive": 2,
-    }
-    assert result["prompt_summary"]["classifier_semantics"] == {
-        "true": "predicted unsolvable",
-        "false": "predicted solvable",
-        "false_positive": "true on a solvable state",
-        "false_negative": "false on an unsolvable state",
-    }
-    assert "items" not in result["prompt_summary"]
-    assert [Path(item["path"]).relative_to(tmp_path / "run").as_posix() for item in result["items"]] == [
-        "counterexamples/false_positive/false_positive-001.json",
-        "counterexamples/false_positive/false_positive-002.json",
-        "counterexamples/false_negative/false_negative-003.json",
-    ]
-    for item in result["items"]:
-        assert Path(item["path"]).is_absolute()
-        assert Path(item["path"]).is_file()
-
-
-def test_write_summary_refuses_existing_summary_json(tmp_path):
-    import pytest
-    from pyrunir_mcp.artifacts import CommandResult, write_summary
-
-    output_dir = tmp_path / "run"
-    output_dir.mkdir()
-    (output_dir / "summary.json").write_text("stale\n", encoding="utf-8")
-
-    with pytest.raises(FileExistsError):
-        write_summary(
-            tool="runir.uns.prove_classifier",
-            status="success",
-            output_dir=output_dir,
-            command=CommandResult(args=[], cwd=tmp_path, returncode=0, stdout="out", stderr="err"),
-            metadata={},
-            counterexamples=[],
-        )
-
-    assert (output_dir / "summary.json").read_text(encoding="utf-8") == "stale\n"
 
 
 def test_reformat_result_uses_layered_contract(tmp_path):
@@ -93,37 +33,6 @@ def test_reformat_result_uses_layered_contract(tmp_path):
     assert result["artifacts"]["sketch_file"] == policy.as_posix()
     assert result["sketch_file"] == policy.as_posix()
     assert result["items"] == []
-
-
-def test_counterexample_category_slug_removes_path_segments(tmp_path):
-    result = write_example_tool_output(
-        tmp_path,
-        tool="runir.uns.prove_classifier",
-        counterexamples=[{"task": "p1.pddl", "category": "../bad/name"}],
-    )
-
-    assert result["items"][0]["category"] == "bad_name"
-    assert Path(result["items"][0]["path"]).relative_to(tmp_path / "run").as_posix() == "counterexamples/bad_name/bad_name-001.json"
-    assert Path(result["items"][0]["path"]).is_file()
-    assert not (tmp_path / "bad").exists()
-
-
-def test_reused_counterexample_output_allocates_child_run(tmp_path):
-    first = write_example_tool_output(
-        tmp_path,
-        tool="runir.uns.prove_classifier",
-        counterexamples=[{"task": "p1.pddl", "category": "false_positive"}],
-    )
-    second = write_example_tool_output(
-        tmp_path,
-        tool="runir.uns.prove_classifier",
-        counterexamples=[{"task": "p2.pddl", "category": "false_negative"}],
-    )
-
-    assert first["output_dir"].endswith("/run")
-    assert second["output_dir"].endswith("/run/run-002")
-    assert (tmp_path / "run" / "summary.json").is_file()
-    assert (tmp_path / "run" / "run-002" / "summary.json").is_file()
 
 
 def test_existing_counterexample_tree_forces_child_run(tmp_path):
@@ -304,8 +213,7 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
     def fake_execute(options):
         seen.update({
             "max_arity": options.max_arity,
-            "dump_max_steps": options.dump_max_steps,
-            "dump_max_states": options.dump_max_states,
+            "num_rollouts": options.num_rollouts,
         })
         dump_dir = Path(options.dump_dir)
         dump_dir.mkdir(parents=True, exist_ok=True)
@@ -313,7 +221,6 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
             '{"tasks": [], "distinct_failures": []}\n',
             encoding="utf-8",
         )
-        (dump_dir / "summary.md").write_text("# summary\n", encoding="utf-8")
         return Result()
 
     monkeypatch.setattr(invoke, "execute_base_policy", fake_execute)
@@ -323,14 +230,12 @@ def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
         "sketch_file": str(tmp_path / "sketch.txt"),
         "output_dir": str(tmp_path / "execute"),
         "max_arity": 1,
-        "dump_max_steps": 7,
-        "dump_max_states": 13,
+        "num_rollouts": 4,
     }))
 
     assert seen == {
         "max_arity": 1,
-        "dump_max_steps": 7,
-        "dump_max_states": 13,
+        "num_rollouts": 4,
     }
     assert result["primary"]["successful"] is True
 

@@ -33,8 +33,6 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         max_arity: int = 0,
         max_num_states: int | None = None,
         max_time_seconds: float | None = None,
-        dump_max_steps: int | None = None,
-        dump_max_states: int | None = None,
     ) -> dict:
         """Execute a base Runir sketch policy and write traces/manifests."""
         resolved_output_dir = fresh_output_dir(server_output_dir(config.output_root, output_dir))
@@ -52,8 +50,6 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
                 max_num_states=max_num_states,
                 max_time_seconds=max_time_seconds,
                 dump_dir=resolved_output_dir,
-                dump_max_steps=dump_max_steps,
-                dump_max_states=dump_max_states,
             )
         )
         return _result_payload(result, resolved_output_dir)
