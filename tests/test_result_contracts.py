@@ -35,34 +35,34 @@ def test_reformat_result_uses_layered_contract(tmp_path):
     assert result["items"] == []
 
 
-def test_existing_counterexample_tree_forces_child_run(tmp_path):
+def test_existing_failures_tree_forces_child_run(tmp_path):
     from pyrunir_mcp.artifacts import fresh_output_dir
 
     output_dir = tmp_path / "run"
-    stale_tree = output_dir / "counterexamples" / "open_state"
+    stale_tree = output_dir / "failures" / "open_state-001"
     stale_tree.mkdir(parents=True)
-    (stale_tree / "old.json").write_text("{}\n", encoding="utf-8")
+    (stale_tree / "meta.json").write_text("{}\n", encoding="utf-8")
 
     fresh = fresh_output_dir(output_dir)
 
     assert fresh == output_dir / "run-002"
-    assert (stale_tree / "old.json").is_file()
+    assert (stale_tree / "meta.json").is_file()
     assert (output_dir / "run-002" / ".pyrunir-mcp-output").is_file()
 
 
 
-def test_existing_traces_tree_forces_child_run(tmp_path):
+def test_existing_dicts_tree_forces_child_run(tmp_path):
     from pyrunir_mcp.artifacts import fresh_output_dir
 
     output_dir = tmp_path / "run"
-    stale_tree = output_dir / "traces" / "open_state"
+    stale_tree = output_dir / "dicts"
     stale_tree.mkdir(parents=True)
-    (stale_tree / "old.json").write_text("{}\n", encoding="utf-8")
+    (stale_tree / "features.psv").write_text("id|symbol\n", encoding="utf-8")
 
     fresh = fresh_output_dir(output_dir)
 
     assert fresh == output_dir / "run-002"
-    assert (stale_tree / "old.json").is_file()
+    assert (stale_tree / "features.psv").is_file()
     assert (output_dir / "run-002" / ".pyrunir-mcp-output").is_file()
 
 def test_partial_execute_output_forces_child_run(tmp_path):
@@ -141,15 +141,15 @@ def test_execute_result_reuses_service_written_failure_artifacts(tmp_path):
         failure = object()
 
     output_dir = tmp_path / "execute"
-    counterexample_path = output_dir / "counterexamples" / "open_state" / "open_state-001.json"
-    trace_path = output_dir / "traces" / "open_state" / "open_state-001.json"
-    counterexample_path.parent.mkdir(parents=True)
-    trace_path.parent.mkdir(parents=True)
-    counterexample_path.write_text(
-        json.dumps({"schema_version": 1, "id": "open_state-001", "trace_path": "traces/open_state/open_state-001.json"}) + "\n",
-        encoding="utf-8",
-    )
+    failure_dir = output_dir / "failures" / "open_state-001"
+    witness_path = failure_dir / "witness.json"
+    trace_path = failure_dir / "trace.json"
+    meta_path = failure_dir / "meta.json"
+    failure_dir.mkdir(parents=True)
+    witness_path.write_text(json.dumps({"schema_version": 1, "id": "open_state-001"}) + "\n", encoding="utf-8")
     trace_path.write_text(json.dumps({"schema_version": 1, "id": "open_state-001", "states": []}) + "\n", encoding="utf-8")
+    meta_path.write_text(json.dumps({"id": "open_state-001", "category": "open_state"}) + "\n", encoding="utf-8")
+    successors_path = failure_dir / "successors.psv"
     (output_dir / "manifest.json").write_text(
         json.dumps(
             {
@@ -169,9 +169,10 @@ def test_execute_result_reuses_service_written_failure_artifacts(tmp_path):
                         "status": "FAILURE",
                         "failure_category": "open_state",
                         "seed": 0,
-                        "counterexample_path": counterexample_path.as_posix(),
+                        "witness_path": witness_path.as_posix(),
                         "trace_path": trace_path.as_posix(),
-                        "successors_path": (output_dir / "successors" / "open_state" / "open_state-001.psv").as_posix(),
+                        "successors_path": successors_path.as_posix(),
+                        "meta_path": meta_path.as_posix(),
                         "trace_available": True,
                     }
                 ],
@@ -193,13 +194,14 @@ def test_execute_result_reuses_service_written_failure_artifacts(tmp_path):
             "problem_file": "p1.pddl",
             "task": "p1.pddl",
             "seed": 0,
-            "path": counterexample_path.as_posix(),
+            "path": witness_path.as_posix(),
             "trace_path": trace_path.as_posix(),
-            "successors_path": (output_dir / "successors" / "open_state" / "open_state-001.psv").as_posix(),
+            "successors_path": successors_path.as_posix(),
+            "meta_path": meta_path.as_posix(),
             "trace_available": True,
         }
     ]
-    assert json.loads(counterexample_path.read_text(encoding="utf-8"))["id"] == "open_state-001"
+    assert json.loads(witness_path.read_text(encoding="utf-8"))["id"] == "open_state-001"
     assert json.loads(trace_path.read_text(encoding="utf-8"))["id"] == "open_state-001"
 
 def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):

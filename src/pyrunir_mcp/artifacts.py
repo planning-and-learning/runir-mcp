@@ -17,9 +17,8 @@ _RUN_OUTPUT_NAMES = (
     "manifest.json",
     "summary.psv",
     "failures.psv",
-    "counterexamples",
-    "traces",
-    "successors",
+    "dicts",
+    "failures",
 )
 
 

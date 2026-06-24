@@ -20,7 +20,7 @@ Every artifact is rendered to `.psv`, `.md`, and `.json` by default. Set `PYRUNI
 - `psv` / `md` / `json`: write only that format.
 - `all` (or unset): write every format (the default).
 
-(The execute `manifest.json` — the machine-readable run index — is always written regardless of this setting.)
+(The execute `manifest.json` and the per-failure `failures/<id>/meta.json` — machine-readable run/failure metadata — are always written regardless of this setting.)
 
 ## Tool Documentation
 
@@ -34,4 +34,4 @@ Start with the index for shared result conventions, especially the distinction b
 
 ## Output Contract
 
-Proof and execution tools write layered artifacts under the requested `output_dir`. If that directory already contains output, the tool allocates a numbered child directory such as `run-002` instead of overwriting. The selected output directory contains a `.pyrunir-mcp-output` reservation marker. Results include `primary` orchestration fields, a structured `summary`, and `items` with absolute paths to per-counterexample files and, when available, path trace files. See [`docs/index.md`](docs/index.md) for the exact shared contract and the per-tool pages for argument tables.
+Proof and execution tools write a local, grouped tree under the requested `output_dir`: run-global alias dictionaries under `dicts/`, and everything for one failure local to `failures/<id>/` (its `meta.json`, `witness`, and — when available — `trace` and `successors`). If that directory already contains output, the tool allocates a numbered child directory such as `run-002` instead of overwriting. The selected output directory contains a `.pyrunir-mcp-output` reservation marker. Results include `primary` orchestration fields, a structured `summary`, and `items` with absolute paths to each failure's witness file and, when available, its trace. See [`docs/index.md`](docs/index.md) for the exact shared layout (including `meta.json`) and the per-tool pages for argument tables.

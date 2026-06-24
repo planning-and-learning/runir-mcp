@@ -470,31 +470,31 @@ def build_proof_run(
             max_deadend_transition_counterexamples=max_deadend_transition_counterexamples,
         ):
             counts[category] = counts.get(category, 0) + 1
-            counterexample_id = f"{category}-{counts[category]:03d}"
+            failure_id = f"{category}-{counts[category]:03d}"
             header = [
                 ("tool", tool),
-                ("id", counterexample_id),
+                ("id", failure_id),
                 ("category", category),
                 ("status", status_name(result.status)),
                 ("problem", task_name(task)),
             ]
-            counterexample, trace, successors = witness_artifacts(
+            witness_doc, trace, successors = witness_artifacts(
                 graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
             )
-            names = {"counterexample": f"counterexamples/{category}/{counterexample_id}"}
-            artifacts[names["counterexample"]] = counterexample
+            names = {"witness": f"failures/{failure_id}/witness"}
+            artifacts[names["witness"]] = witness_doc
             if trace is not None:
-                names["trace"] = f"traces/{category}/{counterexample_id}"
+                names["trace"] = f"failures/{failure_id}/trace"
                 artifacts[names["trace"]] = trace
             if successors is not None:
-                names["successors"] = f"successors/{category}/{counterexample_id}"
+                names["successors"] = f"failures/{failure_id}/successors"
                 artifacts[names["successors"]] = successors
             items.append(
                 RunItem(
-                    id=counterexample_id,
+                    id=failure_id,
                     category=category,
                     task=task_name(task),
-                    counterexample=names["counterexample"],
+                    witness=names["witness"],
                     trace=names.get("trace"),
                     successors=names.get("successors"),
                 )

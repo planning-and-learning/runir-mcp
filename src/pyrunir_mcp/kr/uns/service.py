@@ -21,10 +21,11 @@ from pytyr.planning import SearchStatus
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.uns.schemas import ProveClassifierOptions
 from pyrunir_mcp.kr.uns.serialize import feature_symbols, feature_values, fluent_facts
-from pyrunir_mcp.output.classifier import ClassifierRow, counterexamples_table
+from pyrunir_mcp.output.classifier import ClassifierRow, classifier_witness
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.run import RunItem, build_run_envelope
 from pyrunir_mcp.planning import build_ground_search_context
+from pyrunir_mcp.tables import Document
 
 TOOL_NAME = "runir.uns.prove_classifier"
 
@@ -48,12 +49,14 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
     dicts = Dictionaries()
 
     symbols = feature_symbols(classifier)
+    for symbol in symbols:  # fix the f0,f1,… column order up front (even when there are no mistakes)
+        dicts.feature(symbol)
     caps = {
         "false_positive": options.max_false_positive_counterexamples,
         "false_negative": options.max_false_negative_counterexamples,
     }
     found = {"false_positive": 0, "false_negative": 0}
-    rows: list[ClassifierRow] = []
+    artifacts: dict[str, Document] = {}
     items: list[RunItem] = []
     failure_category: str | None = None
 
@@ -84,17 +87,18 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
             found[category] += 1
             if found[category] > caps[category]:
                 continue
-            counterexample_id = f"{category}-{found[category]:03d}"
-            rows.append(
-                ClassifierRow(
-                    id=counterexample_id,
-                    category=category,
-                    state=int(label.state.get_index()),
-                    features=feature_values(classifier, eval_context),
-                    fluent=tuple(fluent_facts(label.state)),
-                )
+            failure_id = f"{category}-{found[category]:03d}"
+            row = ClassifierRow(
+                id=failure_id,
+                category=category,
+                state=int(label.state.get_index()),
+                features=feature_values(classifier, eval_context),
+                fluent=tuple(fluent_facts(label.state)),
             )
-            items.append(RunItem(id=counterexample_id, category=category, task=problem_path.name, counterexample="counterexamples"))
+            header = [("tool", TOOL_NAME), ("id", failure_id), ("category", category), ("problem", problem_path.name)]
+            name = f"failures/{failure_id}/witness"
+            artifacts[name] = classifier_witness(row, symbols, dicts, header)
+            items.append(RunItem(id=failure_id, category=category, task=problem_path.name, witness=name))
         per_task = {
             "task": problem_path.name,
             "status": "correct" if not any(found.values()) else "counterexample",
@@ -117,7 +121,7 @@ def prove_classifier(options: ProveClassifierOptions) -> JsonObject:
             "per_task": per_task,
         },
         dictionary_tables=dicts.tables(),
-        artifacts={"counterexamples": counterexamples_table(rows, symbols, dicts)},
+        artifacts=artifacts,
         items=items,
         failure_category=failure_category,
     )

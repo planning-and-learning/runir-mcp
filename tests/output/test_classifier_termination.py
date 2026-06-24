@@ -1,4 +1,4 @@
-from pyrunir_mcp.output.classifier import ClassifierRow, counterexamples_table
+from pyrunir_mcp.output.classifier import ClassifierRow, classifier_witness
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.termination import (
     TerminationDictionaries,
@@ -6,21 +6,22 @@ from pyrunir_mcp.output.termination import (
     TerminationVertex,
     counterexample_document,
 )
-from pyrunir_mcp.tables import render, render_document
+from pyrunir_mcp.tables import render_document
 
 
-def test_classifier_merged_table():
+def test_classifier_witness_document():
     dicts = Dictionaries()
-    rows = [
-        ClassifierRow("false_negative-001", "false_negative", 57, {"b_holding_target": True, "b_at_goal": False}, fluent=("at(robot roomA)", "holding(ball1)")),
-        ClassifierRow("false_positive-001", "false_positive", 12, {"b_holding_target": False, "b_at_goal": True}, fluent=()),
-    ]
-    table = counterexamples_table(rows, ["b_holding_target", "b_at_goal"], dicts)
-    assert render(table, "psv") == (
-        "id|category|state|f0|f1|atoms\n"
-        "false_negative-001|false_negative|57|T|F|p0,p1\n"
-        "false_positive-001|false_positive|12|F|T|"
+    row = ClassifierRow(
+        "false_negative-001", "false_negative", 57,
+        {"b_holding_target": True, "b_at_goal": False}, fluent=("at(robot roomA)", "holding(ball1)"),
     )
+    doc = classifier_witness(
+        row, ["b_holding_target", "b_at_goal"], dicts,
+        header=[("tool", "prove_classifier"), ("id", "false_negative-001"), ("category", "false_negative")],
+    )
+    psv = render_document(doc, "psv")
+    assert "[state]\nid|flags|f0|f1\ns57|WITNESS|T|F" in psv
+    assert "[facts]\nstate|atoms\ns57|p0,p1" in psv
 
 
 def test_termination_cycle_document():

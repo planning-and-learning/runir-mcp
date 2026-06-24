@@ -1,6 +1,6 @@
 # Output: base sketch-policy counterexamples, traces, and successors
 
-Shared output-file format for the base sketch-policy tools — [`runir.ps.base.execute_policy`](../runir.ps.base.execute_policy.md) and [`runir.ps.base.prove_policy`](../runir.ps.base.prove_policy.md). Both write the same alias dictionaries and counterexample/trace/successor files described here. Each tool's own index/summary layer (execute's `failures`/`manifest`, prove's `summary`) and tool-specific options live in that tool's doc.
+Shared output-file format for the base sketch-policy tools — [`runir.ps.base.execute_policy`](../runir.ps.base.execute_policy.md) and [`runir.ps.base.prove_policy`](../runir.ps.base.prove_policy.md). Both write the same alias dictionaries (under `dicts/`) and per-failure `witness`/`trace`/`successors` files (under `failures/<id>/`) described here. Each tool's own index/summary layer (execute's `failures`/`manifest`, prove's `summary`) and tool-specific options live in that tool's doc.
 
 Each structured artifact is built once as a logical table — or, for the sectioned witness/trace/successor files, a document of `@key value` headers plus named tables — and rendered through the shared renderer (`pyrunir_mcp.tables`) into the same data in three forms:
 
@@ -18,38 +18,38 @@ While we are still settling on the best representation, all three are emitted so
 - **Header lines** carry scalar metadata as `@key value`, one per line, before any table. The value is the opaque remainder of the line. Each tool adds its own keys (e.g. `execute_policy` adds `@seed`).
 - Boolean values render as `T`/`F`, numeric values as integers.
 - An empty optional value renders as an empty cell.
-- **Interning via run-global dictionaries.** Features, rules, actions, and atoms recur across every trace and counterexample in a run (these tools run a single problem, so the ground actions/atoms are shared too). Each is listed **once per run** in a top-level dictionary file and referenced everywhere by a short alias `<prefix><K>`. This bounds each value to one full occurrence per run, independent of trace count, trace length, or symbol size:
+- **Interning via run-global dictionaries.** Features, rules, actions, and atoms recur across every trace and witness in a run (these tools run a single problem, so the ground actions/atoms are shared too). Each is listed **once per run** in a dictionary file under `dicts/` and referenced everywhere by a short alias `<prefix><K>`. This bounds each value to one full occurrence per run, independent of trace count, trace length, or symbol size:
   - **Features → `fK`** — `features.*` (`id|symbol`; often long DL expressions). Used as `[state]`/`[states]` columns (`id|flags|f0|f1|…`) and as `delta` keys (`fK:before>after`).
   - **Rules → `rK`** — `rules.*` (`id|symbol`). Used in the `[transitions]` `rule` column.
   - **Actions → `aK`** — `actions.*` (`id|action`). Used in the `[transitions]` `action` column.
   - **Atoms → `pK`** — `atoms.*` (`id|kind|atom`, `kind` is `fluent`, `derived`, or `static`). Fluent/derived atoms are listed per state in `[facts]` as a comma-separated `pK` list. `static` atoms hold in every state, so they appear once in `atoms.*` and are never repeated in `[facts]`.
 
-  The alias is the `id` column of its dictionary file. Trace/counterexample files therefore carry no `@features`/`@rules`/`@actions` headers or `[atoms]` section — they reference the global dictionaries directly.
+  The alias is the `id` column of its dictionary file. Witness/trace/successor files therefore carry no `@features`/`@rules`/`@actions` headers or `[atoms]` section — they reference the global dictionaries directly.
 
 ## Dictionaries
 
-Four run-global files, each a single table mapping an alias `id` to its value. Every trace/counterexample references these aliases. Written in all three formats like the other artifacts.
+Four run-global files under `dicts/`, each a single table mapping an alias `id` to its value. Every witness/trace/successor references these aliases. Written in all three formats like the other artifacts.
 
 `features.*` is **ordered**, and that order is load-bearing: the row sequence defines the `f0,f1,…` indices and therefore the exact left-to-right column order of every `[state]`/`[states]` table. (`rules.*`, `actions.*`, `atoms.*` are likewise indexed by row order, but only `features.*` drives a column layout.)
 
 ```text
-# features.psv
+# dicts/features.psv
 id|symbol
 f0|n_undeliv
 f1|n_held
 f2|b_atgoal
 
-# rules.psv
+# dicts/rules.psv
 id|symbol
 r0|pickup_r1
 r1|deliver_r2
 
-# actions.psv
+# dicts/actions.psv
 id|action
 a0|(pickup ball1 roomA)
 a1|(drop ball1 roomB)
 
-# atoms.psv
+# dicts/atoms.psv
 id|kind|atom
 p0|fluent|at(robot roomA)
 p1|fluent|holding(ball1)
@@ -60,7 +60,7 @@ p4|static|ball(ball1)
 
 ## Counterexamples
 
-Files `counterexamples/<category>/<id>.{psv,md,json}` — the witness, a single state or a cycle. Scalar header lines carry metadata; sections carry the witness. Feature/rule/action/atom values appear as aliases that resolve against the run-global [dictionaries](#dictionaries).
+Files `failures/<id>/witness.{psv,md,json}` — the witness, a single state or a cycle. Scalar header lines carry metadata; sections carry the witness. Feature/rule/action/atom values appear as aliases that resolve against the run-global [dictionaries](#dictionaries).
 
 ```text
 @tool execute_policy
@@ -108,7 +108,7 @@ s2|p0
 
 ## Traces
 
-Files `traces/<category>/<id>.{psv,md,json}` — the path from the initial state to the witness. Same header convention, with `[states]`, `[transitions]`, and `[facts]` sections. There is no separate `chosen_actions` list — it is the `action` column of `[transitions]`.
+Files `failures/<id>/trace.{psv,md,json}` — the path from the initial state to the witness. Same header convention, with `[states]`, `[transitions]`, and `[facts]` sections. There is no separate `chosen_actions` list — it is the `action` column of `[transitions]`.
 
 ```text
 @tool execute_policy
@@ -136,7 +136,7 @@ s1|p1
 
 ## Successors
 
-Files `successors/<category>/<id>.{psv,md,json}` — the 1-step frontier of moves the policy *could* take, the signal for **what is missing to make progress**: each row is an available move with its feature change (`delta`) and whether any sketch rule selects it (`rule`). A move that advances toward the goal with an **empty `rule` cell** is the gap — no rule picks the progressing move.
+Files `failures/<id>/successors.{psv,md,json}` — the 1-step frontier of moves the policy *could* take, the signal for **what is missing to make progress**: each row is an available move with its feature change (`delta`) and whether any sketch rule selects it (`rule`). A move that advances toward the goal with an **empty `rule` cell** is the gap — no rule picks the progressing move.
 
 The frontier is built by **expanding every state along the trace/cycle with the planning successor generator** and marking each generated transition with the sketch rule that selects it (`rule`), or empty when none does. (The proof/execution graph holds only sketch-compatible transitions, so it can't surface the moves the policy *failed* to take — the generator can.) The `source` column is the state each successor branches from; with several trace states, rows for each appear under their own `source`.
 

@@ -7,7 +7,7 @@ from pyrunir_mcp.tables import Document, Table
 def test_write_run_emits_all_formats_and_nests(tmp_path):
     artifacts = {
         "summary": Table(name="summary", columns=["a", "b"], rows=[[1, 2]]),
-        "counterexamples/cycle/cycle-001": Document(
+        "failures/cycle-001/witness": Document(
             header=[("tool", "execute_policy")],
             sections=[Table(name="states", columns=["idx"], rows=[[0]])],
         ),
@@ -16,7 +16,7 @@ def test_write_run_emits_all_formats_and_nests(tmp_path):
 
     for ext in ("psv", "md", "json"):
         assert (tmp_path / f"summary.{ext}").exists()
-        assert (tmp_path / "counterexamples" / "cycle" / f"cycle-001.{ext}").exists()
+        assert (tmp_path / "failures" / "cycle-001" / f"witness.{ext}").exists()
 
     assert primary["summary"] == (tmp_path / "summary.psv").resolve().as_posix()
     assert (tmp_path / "summary.psv").read_text() == "a|b\n1|2\n"

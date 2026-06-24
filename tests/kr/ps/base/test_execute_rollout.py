@@ -4,6 +4,8 @@ trace ending at the stuck state (instead of the misleading single init vertex th
 
 from __future__ import annotations
 
+import json
+
 # A linear task: setA then setB then setC must all fire on x0 to reach the goal (c x0). The sketch
 # only has rules for the first two steps, so the policy advances s0 -> a -> a,b and then dead-ends
 # (the only move left, setC, matches no rule).
@@ -60,7 +62,7 @@ def test_rollout_emits_multistep_trace_to_the_real_stuck_state(tmp_path):
     )
     assert not result.is_successful
 
-    trace = (out / "traces" / "open_state" / "open_state-001.psv").read_text(encoding="utf-8")
+    trace = (out / "failures" / "open_state-001" / "trace.psv").read_text(encoding="utf-8")
     state_rows = _section_rows(trace, "states")
     transition_rows = _section_rows(trace, "transitions")
     # s0 -> (setA) -> (setB) -> stuck: three states, two committed steps (not a singleton init trace).
@@ -70,10 +72,16 @@ def test_rollout_emits_multistep_trace_to_the_real_stuck_state(tmp_path):
     assert set(state_rows[-1].split("|")[1].split(",")) == {"OPEN", "WITNESS"}  # terminal stuck state
 
     # The terminal's frontier shows why it's stuck: its only move (setC) matches no rule (blank rule).
-    successors = (out / "successors" / "open_state" / "open_state-001.psv").read_text(encoding="utf-8")
+    successors = (out / "failures" / "open_state-001" / "successors.psv").read_text(encoding="utf-8")
     successor_rows = _section_rows(successors, "successors")
     assert successor_rows
     assert all(row.split("|")[3] == "" for row in successor_rows)
+
+    # Everything is local to failures/<id>/, with a machine-readable meta.json indexing the files.
+    meta = json.loads((out / "failures" / "open_state-001" / "meta.json").read_text(encoding="utf-8"))
+    assert meta["id"] == "open_state-001"
+    assert meta["category"] == "open_state"
+    assert meta["files"] == {"witness": "witness.psv", "trace": "trace.psv", "successors": "successors.psv"}
 
 
 def test_classifier_flags_state_as_unsolvable(tmp_path):
@@ -99,7 +107,7 @@ def test_classifier_flags_state_as_unsolvable(tmp_path):
         )
     )
     assert not result.is_successful
-    counterexample = (out / "counterexamples" / "open_state" / "open_state-001.psv").read_text(encoding="utf-8")
-    state_rows = _section_rows(counterexample, "state")
+    witness = (out / "failures" / "open_state-001" / "witness.psv").read_text(encoding="utf-8")
+    state_rows = _section_rows(witness, "state")
     assert len(state_rows) == 1  # stops immediately: the initial state is classified unsolvable
     assert "DEADEND" in state_rows[0].split("|")[1].split(",")

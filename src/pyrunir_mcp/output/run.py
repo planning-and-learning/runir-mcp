@@ -7,25 +7,41 @@ layer returns. Execute tools keep their own `manifest.json`-driven path (see `re
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from pyrunir_mcp.artifacts import fresh_output_dir
 from pyrunir_mcp.json_types import JsonObject
-from pyrunir_mcp.output.writer import Artifact, write_run
+from pyrunir_mcp.output.writer import Artifact, resolve_formats, write_run
 from pyrunir_mcp.tables import Fmt, Table
 
 
 @dataclass(frozen=True)
 class RunItem:
-    """One counterexample, referencing the artifact names written under the output dir."""
+    """One failure, referencing the artifact names written under failures/<id>/."""
 
     id: str
     category: str
     task: str | None
-    counterexample: str  # artifact name (e.g. "counterexamples/cycle/cycle-001")
+    witness: str  # artifact name (e.g. "failures/cycle-001/witness")
     trace: str | None = None  # artifact name, when a path trace exists
     successors: str | None = None  # artifact name, when successors were dumped
+
+
+def _write_item_meta(output_dir: Path, item: RunItem, primary: Fmt) -> str:
+    """Write `failures/<id>/meta.json` (the item's index fields + the artifact filenames present) and
+    return its absolute path. Always JSON, regardless of the render formats."""
+    files = {
+        label: f"{label}.{primary}"
+        for label, name in (("witness", item.witness), ("trace", item.trace), ("successors", item.successors))
+        if name is not None
+    }
+    meta = {"id": item.id, "category": item.category, "task": item.task, "files": files}
+    path = output_dir / "failures" / item.id / "meta.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path.resolve().as_posix()
 
 
 def _summary_table(items: list[RunItem]) -> Table:
@@ -39,15 +55,16 @@ def _category_counts(items: list[RunItem]) -> dict[str, int]:
     return counts
 
 
-def _result_item(item: RunItem, paths: dict[str, str]) -> JsonObject:
+def _result_item(item: RunItem, paths: dict[str, str], meta_path: str) -> JsonObject:
     return {
         "id": item.id,
         "category": item.category,
         "task": item.task,
-        "path": paths[item.counterexample],
+        "path": paths[item.witness],
         "trace_path": paths[item.trace] if item.trace else None,
         "trace_available": item.trace is not None,
         "successors_path": paths[item.successors] if item.successors else None,
+        "meta_path": meta_path,
     }
 
 
@@ -82,9 +99,16 @@ def build_run_envelope(
     formats: tuple[Fmt, ...] | None = None,
 ) -> JsonObject:
     output_dir = fresh_output_dir(output_dir)
-    paths = write_run(output_dir, {**dictionary_tables, "summary": _summary_table(items), **artifacts}, formats)
+    # Dictionaries under dicts/; each failure's artifacts under failures/<id>/ (set by the caller).
+    paths = write_run(
+        output_dir,
+        {**{f"dicts/{name}": table for name, table in dictionary_tables.items()}, "summary": _summary_table(items), **artifacts},
+        formats,
+    )
+    primary = resolve_formats(formats)[0]
+    meta_paths = {item.id: _write_item_meta(output_dir, item, primary) for item in items}
 
-    result_items = [_result_item(item, paths) for item in items]
+    result_items = [_result_item(item, paths, meta_paths[item.id]) for item in items]
     category_counts = _category_counts(items)
     counts = {"counterexamples": len(items), "categories": len(category_counts)}
     output_path = output_dir.resolve().as_posix()

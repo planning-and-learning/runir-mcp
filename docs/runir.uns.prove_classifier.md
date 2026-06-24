@@ -17,7 +17,7 @@ Proves an unsolvability classifier against full reachable-state-space ground tru
 
 ## Output
 
-Classifier mistakes are single **witness states**, not path traces — there are no `traces/` or `successors/`, and because each witness is one state they collapse into a single merged `counterexamples` table (one row per mistake). The dictionaries and that table use the [unsolvability-classifier output format](output/runir.uns.prove_classifier.md); `summary.{psv,md,json}` carries run counts and `manifest.json` holds run metadata (JSON-only).
+Classifier mistakes are single **witness states**, not path traces — there are no `trace` or `successors` files, only a `witness`. Each mistake is one `failures/<id>/` directory (`meta.json` + `witness`), indexed by `failures.{psv,md,json}`. The dictionaries (under `dicts/`) and the witness files use the [unsolvability-classifier output format](output/runir.uns.prove_classifier.md); `summary.{psv,md,json}` carries run counts and `manifest.json` holds run metadata (JSON-only).
 
 Categories:
 
@@ -29,9 +29,14 @@ Categories:
 ```text
 output_dir/
   .pyrunir-mcp-output
-  manifest.json                        # run metadata: config (JSON only)
-  summary.{psv,md,json}                # run index/counts table
-  features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol
-  atoms.{psv,md,json}                  # run-global dictionary: p0,p1,… -> ground atom (+ kind)
-  counterexamples.{psv,md,json}        # one row per classifier mistake (false_positive / false_negative)
+  manifest.json                          # run metadata: config (JSON only)
+  summary.{psv,md,json}                  # run index/counts table
+  failures.{psv,md,json}                 # one row per classifier mistake (index)
+  dicts/
+    features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol
+    atoms.{psv,md,json}                  # run-global dictionary: p0,p1,… -> ground atom (+ kind)
+  failures/
+    <id>/                                # <id> = false_positive-001, false_negative-001, …
+      meta.json                          # per-failure metadata (see docs/index.md)
+      witness.{psv,md,json}              # the single misclassified state (feature valuations + facts)
 ```

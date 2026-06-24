@@ -66,8 +66,8 @@ def test_execute_empty_module_program_emits_trace_and_open_frontier(tmp_path):
     assert not result.is_successful  # an empty module program is stuck
 
     # The witness category may be open_state or cycle; the frontier is emitted either way.
-    successors = sorted(out.glob("successors/*/*.psv"))
-    traces = sorted(out.glob("traces/*/*.psv"))
+    successors = sorted(out.glob("failures/*/successors.psv"))
+    traces = sorted(out.glob("failures/*/trace.psv"))
     assert successors, "expected a successor frontier file"
     assert traces, "expected a trace file"
 

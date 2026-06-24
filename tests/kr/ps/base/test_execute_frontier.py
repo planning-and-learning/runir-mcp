@@ -50,8 +50,8 @@ def test_execute_empty_policy_emits_singleton_trace_and_open_frontier(tmp_path):
     )
     assert not result.is_successful  # an empty policy is stuck at the initial state
 
-    trace = out / "traces" / "open_state" / "open_state-001.psv"
-    successors = out / "successors" / "open_state" / "open_state-001.psv"
+    trace = out / "failures" / "open_state-001" / "trace.psv"
+    successors = out / "failures" / "open_state-001" / "successors.psv"
     assert trace.is_file()
     assert successors.is_file()
 

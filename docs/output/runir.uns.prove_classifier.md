@@ -2,7 +2,7 @@
 
 Output-file format for [`runir.uns.prove_classifier`](../runir.uns.prove_classifier.md).
 
-A counterexample is a single **witness state** where the classifier's prediction disagrees with reachable-state-space ground truth — no transitions, cycles, traces, or successors. Because every witness is just one state, the whole result is **one flat table**, `counterexamples.{psv,md,json}`, with one row per mistake. Both mistake types live in the same table, distinguished by a `category` column; splitting `false_positive`/`false_negative` into separate tables would only partition rows of identical schema.
+A counterexample is a single **witness state** where the classifier's prediction disagrees with reachable-state-space ground truth — no transitions, cycles, traces, or successors. Each mistake is one `failures/<id>/` directory (`meta.json` + `witness`, no `trace`/`successors`), indexed by `failures.{psv,md,json}`; the two mistake types are distinguished by the `category` (and the `<id>` prefix).
 
 It uses the same PSV/Markdown/JSON encoding and [conventions](runir.ps.base.counterexamples.md#conventions) as the policy tools, with a reduced schema: classifier features are all boolean.
 
@@ -13,7 +13,7 @@ A classifier predicts whether a state is **unsolvable** (`true`) or **solvable**
 
 ## Dictionaries
 
-No rules, actions, or memory — only features and atoms.
+Under `dicts/`. No rules, actions, or memory — only features and atoms.
 
 | Alias | File | Columns | Notes |
 |---|---|---|---|
@@ -21,38 +21,55 @@ No rules, actions, or memory — only features and atoms.
 | `pK` | `atoms.*` | `id\|kind\|atom` | `kind` is `fluent` (the reachable-state facts). |
 
 ```text
-# features.psv
+# dicts/features.psv
 id|symbol
 f0|b_holding_target
 f1|b_at_goal
 
-# atoms.psv
+# dicts/atoms.psv
 id|kind|atom
 p0|fluent|at(robot roomA)
 p1|fluent|holding(ball1)
 ```
 
-## Counterexamples
+## Failures
 
-`counterexamples.{psv,md,json}` — one row per witness state, both categories merged:
+`failures.{psv,md,json}` indexes the mistakes (one row each), each pointing into its `failures/<id>/` directory:
 
 ```text
-id|category|state|f0|f1|atoms
-false_negative-001|false_negative|57|T|F|p0,p1
-false_positive-001|false_positive|12|F|T|p3,p4
+id|category|problem|witness
+false_negative-001|false_negative|p01.pddl|failures/false_negative-001/witness.psv
+false_positive-001|false_positive|p01.pddl|failures/false_positive-001/witness.psv
 ```
 
 - `category` is the mistake type, which encodes the verdict: `false_positive` = predicted unsolvable on a solvable state, `false_negative` = predicted solvable on an unsolvable state.
-- `state` is the planning state index.
-- `f0|f1|…` are the boolean classifier features (order from `features.*`) — the input behind the wrong call, i.e. the repair signal.
-- `atoms` is the state's fluent atoms as a `pK` list.
 
-If fact sets get large, `atoms` can move to a companion `state|atoms` table instead of the inline column; default is inline.
+## Witness
+
+`failures/<id>/witness.{psv,md,json}` — the single misclassified state, in the same `[state]` + `[facts]` form as the policy tools (features are all boolean):
+
+```text
+@tool prove_classifier
+@id false_negative-001
+@category false_negative
+
+[state]
+id|flags|f0|f1
+s57|WITNESS|T|F
+
+[facts]
+state|atoms
+s57|p0,p1
+```
+
+- `f0|f1|…` are the boolean classifier features (order from `features.*`) — the input behind the wrong call, i.e. the repair signal.
+- `[facts]` carries the state's fluent atoms as a `pK` list.
 
 ## Section reference
 
 | Section | Columns | Notes |
 |---|---|---|
-| `counterexamples` | `id\|category\|state\|f0\|f1\|…\|atoms` | One row per witness; both categories merged via `category`; `fK` boolean feature columns; `atoms` a `pK` list. |
+| `[state]` | `id\|flags\|f0\|f1\|…` | The single misclassified state; `fK` boolean feature columns. |
+| `[facts]` | `state\|atoms` | The state's fluent atoms as a `pK` list. |
 
-`fK`/`pK` aliases resolve against the run-global dictionaries above. There is no `flags` column and no per-state `[facts]` section — the verdict is the `category` column and facts are the inline `atoms` column.
+`fK`/`pK` aliases resolve against the run-global [dictionaries](#dictionaries). The verdict is the `@category` header (and the `<id>` prefix).

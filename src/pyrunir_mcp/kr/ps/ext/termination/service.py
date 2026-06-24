@@ -85,12 +85,12 @@ def prove_termination(options: ProveTerminationOptions) -> JsonObject:
         if counterexample is None:
             continue
         data = counterexample_to_data(counterexample)
-        counterexample_id = f"structural_termination-{len(items) + 1:03d}"
-        name = f"counterexamples/structural_termination/{counterexample_id}"
+        failure_id = f"structural_termination-{len(items) + 1:03d}"
+        name = f"failures/{failure_id}/witness"
         artifacts[name] = counterexample_document(
             header=[
                 ("tool", TOOL_NAME),
-                ("id", counterexample_id),
+                ("id", failure_id),
                 ("category", "structural_termination"),
                 ("status", status_name(module_result.status)),
                 ("module", module_name),
@@ -99,7 +99,7 @@ def prove_termination(options: ProveTerminationOptions) -> JsonObject:
             edges=[_edge(edge) for edge in data["edges"]],
             dicts=dicts,
         )
-        items.append(RunItem(id=counterexample_id, category="structural_termination", task=module_name, counterexample=name))
+        items.append(RunItem(id=failure_id, category="structural_termination", task=module_name, witness=name))
 
     return build_run_envelope(
         tool=TOOL_NAME,

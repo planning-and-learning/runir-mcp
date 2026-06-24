@@ -15,7 +15,7 @@ A module-program proof node is a **vertex** = (planning state, memory location),
 
 ## Dictionaries
 
-Same idea as base, with two extra files (`modules`, `memory`) and richer `rules`:
+Same idea as base (all under `dicts/`), with two extra files (`modules`, `memory`) and richer `rules`:
 
 | Alias | File | Columns | Notes |
 |---|---|---|---|
@@ -27,32 +27,32 @@ Same idea as base, with two extra files (`modules`, `memory`) and richer `rules`
 | `mK` | `memory.*` | `id\|module\|memory` | A `(module, memory-state)` control location; `module` is the module alias `MK` (names repeat across modules). |
 
 ```text
-# features.psv
+# dicts/features.psv
 id|symbol
 f0|n_undeliv
 f1|n_held
 
-# rules.psv
+# dicts/rules.psv
 id|symbol|source|target
 r0|pickup|m0|m0
 r1|advance|m0|m1
 
-# actions.psv
+# dicts/actions.psv
 id|action
 a0|(pickup ball1 roomA)
 a1|(drop ball1 roomB)
 
-# atoms.psv
+# dicts/atoms.psv
 id|kind|atom
 p0|fluent|at(robot roomA)
 p1|fluent|holding(ball1)
 p2|static|adjacent(roomA roomB)
 
-# modules.psv
+# dicts/modules.psv
 id|module
 M0|deliver
 
-# memory.psv
+# dicts/memory.psv
 id|module|memory
 m0|M0|q_init
 m1|M0|q_done

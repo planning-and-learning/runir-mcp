@@ -21,7 +21,7 @@ from pyrunir_mcp.kr.ps.frontier import FrontierExpander
 from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, failure_items, witness_artifacts
 from pyrunir_mcp.kr.ps.status import is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.output.writer import Artifact, write_run
+from pyrunir_mcp.output.writer import Artifact, resolve_formats, write_run
 from pyrunir_mcp.tables import Document, Table
 
 # Produce (counterexample, trace, successors) docs for a base init-only open-state failure, or None to
@@ -80,13 +80,37 @@ class _Representative:
     status: str
     seed: int
     problem: str
-    counterexample: str | None
+    witness: str | None
     trace: str | None
     successors: str | None
 
 
 def _relative(name: str | None) -> str:
     return f"{name}.psv" if name else ""
+
+
+def _write_failure_meta(output_dir: Path, rep: _Representative, source: str) -> str:
+    """Write `failures/<id>/meta.json` (the failure's row fields + the artifact filenames present in
+    its directory) and return its absolute path. Always JSON, regardless of the render formats."""
+    primary = resolve_formats()[0]
+    files = {
+        label: f"{label}.{primary}"
+        for label, name in (("witness", rep.witness), ("trace", rep.trace), ("successors", rep.successors))
+        if name is not None
+    }
+    meta = {
+        "id": rep.id,
+        "category": rep.category,
+        "status": rep.status,
+        "seed": rep.seed,
+        "problem": rep.problem,
+        "source": source,
+        "files": files,
+    }
+    path = output_dir / "failures" / rep.id / "meta.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path.resolve().as_posix()
 
 
 def run_execute(
@@ -125,13 +149,14 @@ def run_execute(
                     representatives.setdefault((task.problem_path.name, category), (seed, task, result, witness))
         rollouts.append({"seed": seed, "status": "FAILURE" if seed_failed else "SUCCESS", "failure_category": seed_category, "executed_tasks": len(tasks)})
 
+    # Everything for one failure is local to `failures/<id>/`; <id> already encodes the category.
     artifacts: dict[str, Artifact] = {}
     reps: list[_Representative] = []
     for index, ((problem, category), (seed, task, result, witness)) in enumerate(representatives.items(), start=1):
-        counterexample_id = f"{category}-{index:03d}"
-        names: dict[str, str | None] = {"counterexample": None, "trace": None, "successors": None}
+        failure_id = f"{category}-{index:03d}"
+        names: dict[str, str | None] = {"witness": None, "trace": None, "successors": None}
         if witness is not None:
-            header = [("tool", tool), ("id", counterexample_id), ("category", category), ("status", result.status.name), ("problem", problem), ("seed", str(seed))]
+            header = [("tool", tool), ("id", failure_id), ("category", category), ("status", result.status.name), ("problem", problem), ("seed", str(seed))]
             # Base greedy `find_ground_solution` reports a single init vertex on a downstream failure
             # (the committed prefix is discarded upstream). When that happens, roll the policy forward
             # in Python to surface the real stuck state instead of the misleading init witness.
@@ -143,25 +168,26 @@ def run_execute(
                 docs = witness_artifacts(
                     result.graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
                 )
-            counterexample, trace, successors = docs
-            names["counterexample"] = f"counterexamples/{category}/{counterexample_id}"
-            artifacts[names["counterexample"]] = counterexample
+            witness_doc, trace, successors = docs
+            names["witness"] = f"failures/{failure_id}/witness"
+            artifacts[names["witness"]] = witness_doc
             if trace is not None:
-                names["trace"] = f"traces/{category}/{counterexample_id}"
+                names["trace"] = f"failures/{failure_id}/trace"
                 artifacts[names["trace"]] = trace
             if successors is not None:
-                names["successors"] = f"successors/{category}/{counterexample_id}"
+                names["successors"] = f"failures/{failure_id}/successors"
                 artifacts[names["successors"]] = successors
-        reps.append(_Representative(counterexample_id, category, result.status.name, seed, problem, names["counterexample"], names["trace"], names["successors"]))
+        reps.append(_Representative(failure_id, category, result.status.name, seed, problem, names["witness"], names["trace"], names["successors"]))
 
     artifacts["failures"] = Table(
         name="failures",
-        columns=["id", "category", "status", "seed", "problem", "source", "trace", "counterexample", "successors"],
-        rows=[[r.id, r.category, r.status, r.seed, r.problem, "find_ground_solution", _relative(r.trace), _relative(r.counterexample), _relative(r.successors)] for r in reps],
+        columns=["id", "category", "status", "seed", "problem", "source", "trace", "witness", "successors"],
+        rows=[[r.id, r.category, r.status, r.seed, r.problem, "find_ground_solution", _relative(r.trace), _relative(r.witness), _relative(r.successors)] for r in reps],
     )
     artifacts["summary"] = Table(name="summary", columns=["id", "category", "status", "seed", "problem"], rows=[[r.id, r.category, r.status, r.seed, r.problem] for r in reps])
 
-    paths = write_run(output_dir, {**dicts.tables(), **artifacts})
+    paths = write_run(output_dir, {**{f"dicts/{name}": table for name, table in dicts.tables().items()}, **artifacts})
+    meta_paths = {r.id: _write_failure_meta(output_dir, r, "find_ground_solution") for r in reps}
 
     manifest = {
         "tool": tool,
@@ -175,9 +201,10 @@ def run_execute(
                 "failure_category": r.category,
                 "problem_file": r.problem,
                 "seed": r.seed,
-                "counterexample_path": paths.get(r.counterexample),
+                "witness_path": paths.get(r.witness),
                 "trace_path": paths.get(r.trace),
                 "successors_path": paths.get(r.successors),
+                "meta_path": meta_paths[r.id],
                 "trace_available": r.trace is not None,
             }
             for r in reps
