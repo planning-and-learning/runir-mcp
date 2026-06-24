@@ -42,11 +42,20 @@ from pytyr.formalism.planning import GroundAction, Parser, PlanningDomain
 from pytyr.planning.ground import State
 
 from pyrunir_mcp.json_types import JsonObject
+from pyrunir_mcp.kr.ps.frontier import FrontierExpander
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.output.policy import Cycle, counterexample_document, successors_document, trace_document
+from pyrunir_mcp.output.policy import (
+    Cycle,
+    Successor,
+    WitnessTransition,
+    counterexample_document,
+    successors_document,
+    trace_document,
+)
 from pyrunir_mcp.output.proof_witness import successor as build_successor, witness_state, witness_transition
 from pyrunir_mcp.output.run import RunItem, build_run_envelope, status_category
 from pyrunir_mcp.planning import LoadedSearchContext
+from pyrunir_mcp.tables import Document
 
 
 ProofEdgeLabel: TypeAlias = StateGraphEdgeLabel | SketchProofEdgeLabel | ModuleProgramProofEdgeLabel
@@ -282,7 +291,7 @@ def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
     return out
 
 
-def _transitions(graph: ProofGraph, edges: list[int], evidence: StateEvidence | None, *, ext: bool) -> list:
+def _transitions(graph: ProofGraph, edges: list[int], evidence: StateEvidence | None, *, ext: bool) -> list[WitnessTransition]:
     transitions = []
     for step, edge in enumerate(edges):
         source = state_summary(graph, int(graph.get_source(edge)), evidence)
@@ -291,7 +300,7 @@ def _transitions(graph: ProofGraph, edges: list[int], evidence: StateEvidence | 
     return transitions
 
 
-def _successors(graph: ProofGraph, vertices: list[int], evidence: StateEvidence | None, *, exclude: set[int]) -> list:
+def _successors(graph: ProofGraph, vertices: list[int], evidence: StateEvidence | None, *, exclude: set[int]) -> list[Successor]:
     successors = []
     for vertex in vertices:
         source = state_summary(graph, vertex, evidence)
@@ -304,7 +313,17 @@ def _successors(graph: ProofGraph, vertices: list[int], evidence: StateEvidence 
     return successors
 
 
-def _trace_document(graph, path_edges, evidence, *, feature_symbols, dicts, ext, header, witness_vertices):
+def _trace_document(
+    graph: ProofGraph,
+    path_edges: list[int] | None,
+    evidence: StateEvidence | None,
+    *,
+    feature_symbols: list[str],
+    dicts: Dictionaries,
+    ext: bool,
+    header: list[tuple[str, str]],
+    witness_vertices: set[int],
+) -> Document | None:
     # `path_edges == []` means the witness IS an initial vertex: emit a singleton trace (one
     # state, no transitions). Only `None` (no path / not applicable) suppresses the trace.
     if path_edges is None:
@@ -325,13 +344,13 @@ def _trace_document(graph, path_edges, evidence, *, feature_symbols, dicts, ext,
 
 def _expand_frontier(
     graph: ProofGraph,
-    expander: Callable[[ProofGraph, list[int]], list] | None,
+    expander: FrontierExpander | None,
     evidence: StateEvidence | None,
     *,
     trace_vertices: list[int],
     graph_vertices: list[int],
     exclude: set[int],
-) -> list:
+) -> list[Successor]:
     """The 1-step frontier of the witness. With an `expander` (base sketch / ext module program)
     it expands every state on the trace via the successor generator + policy compatibility;
     without one it falls back to the graph's compatible out-edges of the witness vertices. The
@@ -348,7 +367,18 @@ def _expand_frontier(
     return expander(graph, vertices)
 
 
-def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, dicts, ext, header, expander=None):
+def witness_artifacts(
+    graph: ProofGraph,
+    category: str,
+    witness: FailureWitness,
+    evidence: StateEvidence | None,
+    *,
+    feature_symbols: list[str],
+    dicts: Dictionaries,
+    ext: bool,
+    header: list[tuple[str, str]],
+    expander: FrontierExpander | None = None,
+) -> tuple[Document, Document | None, Document | None]:
     """Return (counterexample, trace | None, successors | None) documents for one witness."""
     if category == "cycle":
         vertices = [int(vertex) for vertex in witness]
@@ -424,13 +454,13 @@ def build_proof_run(
     dicts: Dictionaries,
     ext: bool,
     evidence: StateEvidence | None = None,
-    expander: Callable[[ProofGraph, list[int]], list] | None = None,
+    expander: FrontierExpander | None = None,
     max_open_state_counterexamples: int = 1,
     max_deadend_transition_counterexamples: int = 1,
 ) -> JsonObject:
     graph = result.graph
     status = "success" if result.is_successful() else "failure"
-    artifacts: dict[str, object] = {}
+    artifacts: dict[str, Document] = {}
     items: list[RunItem] = []
     if not result.is_successful():
         counts: dict[str, int] = {}

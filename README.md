@@ -13,6 +13,15 @@ Set `PYRUNIR_MCP_ROLE` before launching the server. The server and invoke CLI fa
 
 The server rejects missing or unknown roles at startup.
 
+## Output format
+
+Every artifact is rendered to `.psv`, `.md`, and `.json` by default. Set `PYRUNIR_MCP_OUTPUT_FORMAT` to write a single format instead, so a consumer reads exactly one file per artifact (no adjacent duplicate renderings):
+
+- `psv` / `md` / `json`: write only that format.
+- `all` (or unset): write every format (the default).
+
+(The execute `manifest.json` — the machine-readable run index — is always written regardless of this setting.)
+
 ## Tool Documentation
 
 Per-tool calling arguments and normalized output structures are documented in [`docs/index.md`](docs/index.md). The individual tool pages cover:

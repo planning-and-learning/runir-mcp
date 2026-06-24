@@ -13,7 +13,7 @@ from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext, load_grounded_search_context
-from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, collect_features, create_base_policy_context
+from pyrunir_mcp.kr.ps.base.core.features import ExecutionFailure, collect_features, create_base_policy_context, intern_rules
 from pyrunir_mcp.kr.ps.base.core.policy_evaluation import execute_policy_on_tasks
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description, read_policy_description
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds, run_execute
@@ -79,6 +79,8 @@ def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, ta
     assert options.dump_dir is not None
     features = collect_features(policy)
     evidence = state_evidence(features, include_facts=True)
+    dicts = Dictionaries(ext=False)
+    intern_rules(policy, dicts)
     failing = run_execute(
         tool="execute_policy",
         ext=False,
@@ -88,7 +90,7 @@ def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, ta
         solve=lambda task, seed: find_ground_solution(task.search_context, policy, create_policy_search_options(options, seed)),
         feature_symbols=[feature_key(feature) for feature in features],
         evidence=evidence,
-        dicts=Dictionaries(ext=False),
+        dicts=dicts,
         manifest_metadata=_manifest_metadata(options),
         expander_factory=lambda task: make_frontier_expander(task.search_context, policy, evidence),
     )

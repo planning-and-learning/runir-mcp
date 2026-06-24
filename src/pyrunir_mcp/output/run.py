@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pyrunir_mcp.artifacts import fresh_output_dir
 from pyrunir_mcp.json_types import JsonObject
-from pyrunir_mcp.output.writer import DEFAULT_FORMATS, Artifact, write_run
+from pyrunir_mcp.output.writer import Artifact, write_run
 from pyrunir_mcp.tables import Fmt, Table
 
 
@@ -79,7 +79,7 @@ def build_run_envelope(
     items: list[RunItem],
     failure_category: str | None = None,
     category: str | None = None,
-    formats: tuple[Fmt, ...] = DEFAULT_FORMATS,
+    formats: tuple[Fmt, ...] | None = None,
 ) -> JsonObject:
     output_dir = fresh_output_dir(output_dir)
     paths = write_run(output_dir, {**dictionary_tables, "summary": _summary_table(items), **artifacts}, formats)

@@ -25,7 +25,13 @@ from pyrunir.datasets import GroundTaskSearchContext
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
 from pyrunir.kr.ps.base import GroundSketchProofGraph, Sketch
 from pyrunir.kr.ps.base.dl import GroundEvaluationContext
-from pyrunir.kr.ps.ext import GroundModuleProgramProofGraph, ModuleProgram, SuccessorExpander
+from pyrunir.kr.ps.ext import (
+    ExternalMemoryState,
+    GroundModuleProgramProofGraph,
+    InternalMemoryState,
+    ModuleProgram,
+    SuccessorExpander,
+)
 from pytyr.formalism.planning import GroundAction
 from pytyr.planning.ground import ConjunctiveGoalStrategy, Node, State
 
@@ -63,7 +69,7 @@ def _successor(
     action: GroundAction,
     rule: str | None,
     evidence: FeatureEvidence,
-    is_goal,
+    is_goal: Callable[[State], bool],
     *,
     module: str | None = None,
     memory: str | None = None,
@@ -110,9 +116,8 @@ def make_frontier_expander(
     return expand
 
 
-def _memory_name(memory_state) -> str:
-    view = memory_state.value if hasattr(memory_state, "value") else memory_state
-    return str(view.get_name())
+def _memory_name(memory_state: InternalMemoryState | ExternalMemoryState) -> str:
+    return str(memory_state.value.get_name())
 
 
 def make_ext_frontier_expander(

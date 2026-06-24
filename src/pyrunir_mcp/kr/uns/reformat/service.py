@@ -6,11 +6,8 @@ from pathlib import Path
 from pypddl.formalism import ParserOptions
 from pyrunir.kr.dl.uns import ConstructorRepositoryFactory as UnsDLRepositoryFactory
 from pyrunir.kr.uns import RepositoryFactory
-from pyrunir.kr.uns.dl import parse_classifier
+from pyrunir.kr.uns.dl import ClassifierFactory, parse_classifier
 from pytyr.formalism.planning import Parser
-
-
-EMPTY_CLASSIFIER = '(:classifier (:symbol c0) (:description "") (:features) (:expression (or)))'
 
 
 @dataclass(frozen=True)
@@ -38,8 +35,10 @@ def _repositories(domain_path: Path):
 
 
 def create_empty_classifier(options: CreateEmptyClassifierOptions) -> ReformatClassifierResult:
+    # The empty-classifier template comes from runir's ClassifierFactory (the single source of
+    # truth, like base/ext), not a hardcoded string. It is domain-free (no features, empty DNF).
     options.classifier_file.parent.mkdir(parents=True, exist_ok=True)
-    options.classifier_file.write_text(EMPTY_CLASSIFIER + "\n", encoding="utf-8")
+    options.classifier_file.write_text(ClassifierFactory.create_empty_description() + "\n", encoding="utf-8")
     return ReformatClassifierResult(classifier_file=options.classifier_file, num_features=0)
 
 

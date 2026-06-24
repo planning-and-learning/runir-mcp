@@ -49,6 +49,8 @@ def test_create_empty_classifier_writes_empty_classifier(tmp_path):
 
     result = service.create_empty_classifier(CreateEmptyClassifierOptions(classifier_file=classifier))
 
+    from pyrunir.kr.uns.dl import ClassifierFactory
+
     assert result.classifier_file == classifier
     assert result.num_features == 0
-    assert classifier.read_text(encoding="utf-8") == service.EMPTY_CLASSIFIER + "\n"
+    assert classifier.read_text(encoding="utf-8") == ClassifierFactory.create_empty_description() + "\n"

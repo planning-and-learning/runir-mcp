@@ -17,10 +17,11 @@ from pathlib import Path
 from typing import Protocol, TypeVar
 
 from pyrunir_mcp.json_types import JsonObject
-from pyrunir_mcp.kr.ps.proof import StateEvidence, failure_items, witness_artifacts
+from pyrunir_mcp.kr.ps.frontier import FrontierExpander
+from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, failure_items, witness_artifacts
 from pyrunir_mcp.kr.ps.status import is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.output.writer import DEFAULT_FORMATS, write_run
+from pyrunir_mcp.output.writer import Artifact, write_run
 from pyrunir_mcp.tables import Table
 
 SearchOptions = TypeVar("SearchOptions")
@@ -58,7 +59,7 @@ def configure_search_options(
     return search_options
 
 
-def _result_failure(result) -> tuple[str | None, int | list[int] | None]:
+def _result_failure(result: ProofResult) -> tuple[str | None, int | list[int] | None]:
     """The failure category and graph witness for a rollout result (None when it succeeded)."""
     items = failure_items(result, max_open_state_counterexamples=1, max_deadend_transition_counterexamples=1)
     if items:
@@ -91,18 +92,18 @@ def run_execute(
     output_dir: Path,
     seeds: list[int],
     tasks: list[Task],
-    solve: Callable[[Task, int], object],
+    solve: Callable[[Task, int], ProofResult],
     feature_symbols: list[str],
     evidence: StateEvidence,
     dicts: Dictionaries,
     manifest_metadata: JsonObject,
-    expander_factory: Callable[[Task], object] | None = None,
-) -> tuple[Task, object] | None:
+    expander_factory: Callable[[Task], FrontierExpander] | None = None,
+) -> tuple[Task, ProofResult] | None:
     """Run rollouts and write the new-format artifacts. Returns the first failing (task, result)."""
     rollouts: list[JsonObject] = []
     task_rows: list[JsonObject] = []
-    representatives: dict[tuple[str, str], tuple[int, Task, object, int | list[int] | None]] = {}
-    first_failure: tuple[Task, object] | None = None
+    representatives: dict[tuple[str, str], tuple[int, Task, ProofResult, int | list[int] | None]] = {}
+    first_failure: tuple[Task, ProofResult] | None = None
 
     for seed in seeds:
         seed_failed, seed_category = False, None
@@ -119,7 +120,7 @@ def run_execute(
                     representatives.setdefault((task.problem_path.name, category), (seed, task, result, witness))
         rollouts.append({"seed": seed, "status": "FAILURE" if seed_failed else "SUCCESS", "failure_category": seed_category, "executed_tasks": len(tasks)})
 
-    artifacts: dict[str, object] = {}
+    artifacts: dict[str, Artifact] = {}
     reps: list[_Representative] = []
     for index, ((problem, category), (seed, task, result, witness)) in enumerate(representatives.items(), start=1):
         counterexample_id = f"{category}-{index:03d}"
@@ -147,7 +148,7 @@ def run_execute(
     )
     artifacts["summary"] = Table(name="summary", columns=["id", "category", "status", "seed", "problem"], rows=[[r.id, r.category, r.status, r.seed, r.problem] for r in reps])
 
-    paths = write_run(output_dir, {**dicts.tables(), **artifacts}, DEFAULT_FORMATS)
+    paths = write_run(output_dir, {**dicts.tables(), **artifacts})
 
     manifest = {
         "tool": tool,

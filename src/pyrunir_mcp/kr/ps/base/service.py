@@ -7,7 +7,7 @@ from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
 from pyrunir_mcp.json_types import JsonObject
-from pyrunir_mcp.kr.ps.base.core.features import collect_features, create_base_policy_context
+from pyrunir_mcp.kr.ps.base.core.features import collect_features, create_base_policy_context, intern_rules
 from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description
 from pyrunir_mcp.kr.ps.base.schemas import ProvePolicyOptions
 from pyrunir_mcp.kr.ps.frontier import make_frontier_expander
@@ -31,6 +31,8 @@ def prove_policy(options: ProvePolicyOptions) -> JsonObject:
     result = prove_ground_solution(task.search_context, policy, search_options)
 
     evidence = state_evidence(features, include_facts=True)
+    dicts = Dictionaries(ext=False)
+    intern_rules(policy, dicts)
     return build_proof_run(
         tool=TOOL_NAME,
         output_dir=Path(options.output_dir).resolve(),
@@ -47,7 +49,7 @@ def prove_policy(options: ProvePolicyOptions) -> JsonObject:
         task=task,
         result=result,
         feature_symbols=[feature_key(feature) for feature in features],
-        dicts=Dictionaries(ext=False),
+        dicts=dicts,
         ext=False,
         evidence=evidence,
         expander=make_frontier_expander(task.search_context, policy, evidence),
