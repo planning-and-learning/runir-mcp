@@ -47,8 +47,8 @@ def write_run(
 
     `formats` defaults to the `PYRUNIR_MCP_OUTPUT_FORMAT` selection (see `resolve_formats`).
     `artifacts` maps a logical name (may contain `/` to nest, e.g.
-    `counterexamples/cycle/cycle-001`) to a `Table` or `Document`. Returns each logical name
-    mapped to its primary (first-format) absolute path, for the manifest/envelope to reference.
+    `failures/cycle-001/witness` or `dicts/features`) to a `Table` or `Document`. Returns each
+    logical name mapped to its primary (first-format) absolute path, for the manifest/envelope to reference.
     """
     formats = resolve_formats(formats)
     output_dir.mkdir(parents=True, exist_ok=True)
