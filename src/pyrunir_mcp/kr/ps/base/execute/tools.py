@@ -25,6 +25,7 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         problem_file: str,
         sketch_file: str,
         output_dir: str,
+        classifier_file: str | None = None,
         num_threads: int = 1,
         random_seed: int = 0,
         random_seed_start: int = 0,
@@ -34,13 +35,18 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         max_num_states: int | None = None,
         max_time_seconds: float | None = None,
     ) -> dict:
-        """Execute a base Runir sketch policy and write traces/manifests."""
+        """Execute a base Runir sketch policy and write traces/manifests.
+
+        `classifier_file` is an optional unsolvability classifier used to flag dead states in the
+        failure trace; when omitted, the empty classifier is used (no state marked unsolvable).
+        """
         resolved_output_dir = fresh_output_dir(server_output_dir(config.output_root, output_dir))
         result = execute_policy(
             ExecutePolicyOptions(
                 domain_file=Path(domain_file).resolve(),
                 problem_file=Path(problem_file).resolve(),
                 sketch_file=Path(sketch_file).resolve(),
+                classifier_file=Path(classifier_file).resolve() if classifier_file else None,
                 num_threads=num_threads,
                 random_seed=random_seed,
                 random_seed_start=random_seed_start,

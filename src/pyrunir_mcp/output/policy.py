@@ -221,13 +221,17 @@ def _successors_table(successors: list[Successor], dicts: Dictionaries, *, ext: 
 def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | None:
     rows: list[list[JsonValue]] = []
     for state in states:
-        atoms = ",".join(
+        # Atoms are interned in first-appearance order, so a state's list would otherwise read in
+        # an arbitrary order (e.g. p12 before p1). Sort each row by alias index for a stable,
+        # readable `p0,p1,p2,…` ordering that aligns across states.
+        aliases = [
             dicts.atom(kind, atom)
             for kind, group in (("fluent", state.fluent), ("derived", state.derived))
             for atom in group
-        )
-        if atoms:
-            rows.append([_state_id(state.state), atoms])
+        ]
+        if aliases:
+            aliases.sort(key=lambda alias: int(alias[1:]))
+            rows.append([_state_id(state.state), ",".join(aliases)])
     return Table(name="facts", columns=["state", "atoms"], rows=rows) if rows else None
 
 

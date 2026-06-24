@@ -22,7 +22,11 @@ from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, failure_items, w
 from pyrunir_mcp.kr.ps.status import is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.writer import Artifact, write_run
-from pyrunir_mcp.tables import Table
+from pyrunir_mcp.tables import Document, Table
+
+# Produce (counterexample, trace, successors) docs for a base init-only open-state failure, or None to
+# fall back to the default graph witness. Keyword args mirror what `witness_artifacts` consumes.
+RolloutFallback = Callable[..., tuple[Document, Document | None, Document | None] | None]
 
 SearchOptions = TypeVar("SearchOptions")
 
@@ -98,6 +102,7 @@ def run_execute(
     dicts: Dictionaries,
     manifest_metadata: JsonObject,
     expander_factory: Callable[[Task], FrontierExpander] | None = None,
+    rollout_fallback: RolloutFallback | None = None,
 ) -> tuple[Task, ProofResult] | None:
     """Run rollouts and write the new-format artifacts. Returns the first failing (task, result)."""
     rollouts: list[JsonObject] = []
@@ -127,10 +132,18 @@ def run_execute(
         names: dict[str, str | None] = {"counterexample": None, "trace": None, "successors": None}
         if witness is not None:
             header = [("tool", tool), ("id", counterexample_id), ("category", category), ("status", result.status.name), ("problem", problem), ("seed", str(seed))]
-            expander = expander_factory(task) if expander_factory is not None else None
-            counterexample, trace, successors = witness_artifacts(
-                result.graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
-            )
+            # Base greedy `find_ground_solution` reports a single init vertex on a downstream failure
+            # (the committed prefix is discarded upstream). When that happens, roll the policy forward
+            # in Python to surface the real stuck state instead of the misleading init witness.
+            docs: tuple[Document, Document | None, Document | None] | None = None
+            if rollout_fallback is not None and category == "open_state" and result.graph.get_num_vertices() == 1:
+                docs = rollout_fallback(task, header=header, evidence=evidence, feature_symbols=feature_symbols, dicts=dicts)
+            if docs is None:
+                expander = expander_factory(task) if expander_factory is not None else None
+                docs = witness_artifacts(
+                    result.graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
+                )
+            counterexample, trace, successors = docs
             names["counterexample"] = f"counterexamples/{category}/{counterexample_id}"
             artifacts[names["counterexample"]] = counterexample
             if trace is not None:
