@@ -19,6 +19,7 @@ from pyrunir_mcp.kr.ps.ext.core.policy_evaluation import execute_policy_on_tasks
 from pyrunir_mcp.kr.ps.ext.core.policy_io import parse_module_program_description, read_module_program_description
 from pyrunir_mcp.kr.ps.ext.rules import collect_features, intern_rules
 from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander
 from pyrunir_mcp.output.dictionaries import Dictionaries
 
 
@@ -79,6 +80,7 @@ def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, ta
     features = collect_features(policy)
     dicts = Dictionaries(ext=True)
     intern_rules(policy, dicts)
+    evidence = state_evidence(features, include_facts=True)
     failing = run_execute(
         tool="execute_module_program",
         ext=True,
@@ -87,9 +89,10 @@ def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, ta
         tasks=tasks,
         solve=lambda task, seed: find_ground_solution(task.search_context, policy, create_policy_search_options(options, seed)),
         feature_symbols=[feature_key(feature) for feature in features],
-        evidence=state_evidence(features, include_facts=True),
+        evidence=evidence,
         dicts=dicts,
         manifest_metadata=_manifest_metadata(options),
+        expander_factory=lambda task: make_ext_frontier_expander(task.search_context, policy, evidence),
     )
     return ExecutionFailure(task=failing[0], result=failing[1]) if failing else None
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from pyrunir_mcp.json_types import JsonObject, JsonValue
+from pyrunir_mcp.output.run import status_category
 
 
 class ExecuteResultLike(Protocol):
@@ -174,6 +175,7 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
         "successful": status == "success",
         "failing_task": failing_task,
         "status": failing_status,
+        "category": "success" if status == "success" else status_category(failing_status or "FAILURE"),
         "failure_category": failure_category,
         "task_statuses": task_statuses,
         "task_count": len(task_items),

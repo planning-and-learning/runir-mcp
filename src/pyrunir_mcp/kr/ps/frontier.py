@@ -1,14 +1,20 @@
-"""Successor-frontier expansion for base sketch witnesses.
+"""Successor-frontier expansion for policy witnesses (base sketch + ext module program).
 
-The proof/execution graph holds only sketch-compatible transitions, so a stuck (open) state
+The proof/execution graph holds only policy-compatible transitions, so a stuck (open) state
 has no out-edges there and the graph cannot surface the moves a policy *failed* to take. To
 expose the full 1-step frontier — every applicable move and which rule (if any) selects it —
 we expand each state on the trace with the pytyr successor generator and mark compatibility
-with pyrunir's `Sketch.is_compatible_with`. A successor that advances toward the goal with an
-empty `rule` is the gap.
+with the policy:
 
-Base only: `pyrunir.kr.ps.ext` exposes no compatibility primitive, so the module-program
-witnesses pass no expander (see `proof.witness_artifacts`).
+- base: `Sketch.is_compatible_with(GroundEvaluationContext(source, target))`;
+- ext:  `pyrunir.kr.ps.ext.SuccessorExpander`, whose `matching_rule(...)` replays the
+  module-program executor's per-rule applicability (memory match + conditions + effects, DoRule
+  action match) at the vertex's memory state + registers, and whose `apply(...)` returns the
+  resulting proof node so each taken move can report the module + memory it lands in.
+
+A successor that advances toward the goal with an empty `rule` is the gap. Successors are
+off-graph planning moves (no proof vertex), so they are emitted state-indexed; ext additionally
+carries the resulting `mod`/`mem` per taken move (see `proof.witness_artifacts`).
 """
 
 from __future__ import annotations
@@ -17,8 +23,9 @@ from collections.abc import Callable
 
 from pyrunir.datasets import GroundTaskSearchContext
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
-from pyrunir.kr.ps.base import Sketch
+from pyrunir.kr.ps.base import GroundSketchProofGraph, Sketch
 from pyrunir.kr.ps.base.dl import GroundEvaluationContext
+from pyrunir.kr.ps.ext import GroundModuleProgramProofGraph, ModuleProgram, SuccessorExpander
 from pytyr.formalism.planning import GroundAction
 from pytyr.planning.ground import ConjunctiveGoalStrategy, Node, State
 
@@ -26,8 +33,9 @@ from pyrunir_mcp.kr.ps.feature_evidence import FeatureEvidence
 from pyrunir_mcp.output.policy import Successor
 from pyrunir_mcp.output.proof_witness import successor as build_successor
 
-# Expand every state on a trace/cycle into its 1-step successor frontier.
-FrontierExpander = Callable[[list[State]], list[Successor]]
+# Expand the deduped trace/cycle vertices of a proof graph into their 1-step successor frontier.
+ProofGraph = GroundSketchProofGraph | GroundModuleProgramProofGraph
+FrontierExpander = Callable[[ProofGraph, list[int]], list[Successor]]
 
 
 def _format_ground_action(action: GroundAction) -> str:
@@ -36,19 +44,51 @@ def _format_ground_action(action: GroundAction) -> str:
     return f"{inner.get_name()}({arguments})"
 
 
+def _goal_test(search_context: GroundTaskSearchContext) -> Callable[[State], bool]:
+    goal = ConjunctiveGoalStrategy(search_context.task)
+    seed_state = search_context.state_repository.get_initial_state()
+
+    def is_goal(state: State) -> bool:
+        try:
+            return bool(goal.is_dynamic_goal_satisfied(seed_state, state))
+        except RuntimeError:
+            return False
+
+    return is_goal
+
+
+def _successor(
+    source_state: State,
+    target_state: State,
+    action: GroundAction,
+    rule: str | None,
+    evidence: FeatureEvidence,
+    is_goal,
+    *,
+    module: str | None = None,
+    memory: str | None = None,
+) -> Successor:
+    source = {"state_index": int(source_state.get_index()), **evidence(source_state)}
+    target = {"state_index": int(target_state.get_index()), "is_goal": is_goal(target_state), **evidence(target_state)}
+    if module is not None:
+        target["module"] = module
+        target["memory_state"] = memory
+    edge = {"action": _format_ground_action(action), "module_rule": rule}
+    return build_successor(source, edge, target)
+
+
 def make_frontier_expander(
     search_context: GroundTaskSearchContext,
     sketch: Sketch,
     evidence: FeatureEvidence,
 ) -> FrontierExpander:
-    """Build an expander that, given the states along a trace/cycle, returns every 1-step
-    successor of each — tagged with the sketch rule that selects it (or empty = the gap)."""
+    """Base sketch: every 1-step successor of each trace vertex's state, tagged with the sketch
+    rule that selects it (empty = the gap)."""
     generator = search_context.successor_generator
     rules = list(sketch.get_rules())
     builder = Builder()
     denotations = DenotationRepositoryFactory().create()
-    goal = ConjunctiveGoalStrategy(search_context.task)
-    seed_state = search_context.state_repository.get_initial_state()
+    is_goal = _goal_test(search_context)
 
     def compatible_rule(source_state: State, target_state: State) -> str | None:
         context = GroundEvaluationContext(source_state, target_state, builder, denotations)
@@ -57,25 +97,71 @@ def make_frontier_expander(
                 return str(rule.get_symbol()).strip()
         return None
 
-    def is_goal(state: State) -> bool:
-        try:
-            return bool(goal.is_dynamic_goal_satisfied(seed_state, state))
-        except RuntimeError:
-            return False
-
-    def expand(states: list[State]) -> list[Successor]:
+    def expand(graph: GroundSketchProofGraph, vertices: list[int]) -> list[Successor]:
         successors: list[Successor] = []
-        for source_state in states:
-            source = {"state_index": int(source_state.get_index()), **evidence(source_state)}
+        for vertex in vertices:
+            source_state = graph.get_vertex_property(int(vertex)).state
             for labeled in generator.get_labeled_successor_nodes(Node(source_state, 0.0)):
                 target_state = labeled.node.get_state()
-                target = {
-                    "state_index": int(target_state.get_index()),
-                    "is_goal": is_goal(target_state),
-                    **evidence(target_state),
-                }
-                edge = {"action": _format_ground_action(labeled.label), "module_rule": compatible_rule(source_state, target_state)}
-                successors.append(build_successor(source, edge, target))
+                rule = compatible_rule(source_state, target_state)
+                successors.append(_successor(source_state, target_state, labeled.label, rule, evidence, is_goal))
+        return successors
+
+    return expand
+
+
+def _memory_name(memory_state) -> str:
+    view = memory_state.value if hasattr(memory_state, "value") else memory_state
+    return str(view.get_name())
+
+
+def make_ext_frontier_expander(
+    search_context: GroundTaskSearchContext,
+    program: ModuleProgram,
+    evidence: FeatureEvidence,
+) -> FrontierExpander:
+    """Module program: every 1-step successor of each trace vertex's state, tagged with the module
+    rule (at the vertex's memory state + registers) that selects it (empty = the gap), and — for a
+    taken move — the module + resulting memory the rule lands in. The `SuccessorExpander` is the
+    same engine the executor/prover uses, built once with the program's modules so Call rules can
+    resolve their callee."""
+    generator = search_context.successor_generator
+    builder = Builder()
+    denotations = DenotationRepositoryFactory().create()
+    is_goal = _goal_test(search_context)
+    initial_state = search_context.state_repository.get_initial_state()
+    expander = SuccessorExpander(search_context, initial_state, list(program.get_modules()), builder, denotations)
+
+    def expand(graph: GroundModuleProgramProofGraph, vertices: list[int]) -> list[Successor]:
+        successors: list[Successor] = []
+        for vertex in vertices:
+            label = graph.get_vertex_property(int(vertex))
+            source_state = label.state
+            memory = label.memory_state
+            memory = memory.value if hasattr(memory, "value") else memory
+            concept_registers = label.concept_registers
+            role_registers = label.role_registers
+            module = label.module
+            for labeled in generator.get_labeled_successor_nodes(Node(source_state, 0.0)):
+                target_state = labeled.node.get_state()
+                rule_variant = expander.matching_rule(
+                    module, memory, concept_registers, role_registers, source_state, labeled.label, target_state
+                )
+                rule: str | None = None
+                res_module: str | None = None
+                res_memory: str | None = None
+                if rule_variant is not None:
+                    rule = str(rule_variant.get_symbol()).strip()
+                    applied = expander.apply(
+                        module, memory, concept_registers, role_registers, source_state, rule_variant, labeled.label, target_state
+                    )
+                    if applied is not None:
+                        _edge, node = applied
+                        res_module = str(node.module.get_name())
+                        res_memory = _memory_name(node.memory_state)
+                successors.append(
+                    _successor(source_state, target_state, labeled.label, rule, evidence, is_goal, module=res_module, memory=res_memory)
+                )
         return successors
 
     return expand

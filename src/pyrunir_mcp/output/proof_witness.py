@@ -11,10 +11,10 @@ from pyrunir_mcp.json_types import JsonObject, JsonValue
 from pyrunir_mcp.output.policy import Successor, WitnessState, WitnessTransition, resolve_flags
 
 
-def _memory(state: JsonObject) -> tuple[str, str, str] | None:
+def _memory(state: JsonObject) -> tuple[str, str] | None:
     if "memory_state" not in state:
         return None
-    return (str(state.get("module", "")), str(state["memory_state"]), str(state.get("memory_kind", "")))
+    return (str(state.get("module", "")), str(state["memory_state"]))
 
 
 def _delta(before: JsonObject, after: JsonObject) -> dict[str, tuple[JsonValue, JsonValue]]:

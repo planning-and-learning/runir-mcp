@@ -8,21 +8,23 @@ This format **mirrors the [base sketch-policy output format](runir.ps.base.count
 
 A module-program proof node is a **vertex** = (planning state, memory location), where a memory location is a `(module, memory-state)` pair. Consequences:
 
-- A new **`memory` dictionary** interns the memory locations, alias `mK`.
-- **`rules`** are module rules: each carries the memory-state transition it performs.
-- State rows are keyed by **`vtx`** (the vertex), and carry both the planning **`state`** (where facts/features come from) and the memory location **`mem`**. The same planning state can appear under several memory locations, so `[transitions]`, `[cycle]`, and `[successors]` reference `vtx`, while `[facts]` stays keyed by `state` (shared across vertices).
+- A new **`modules` dictionary** interns the modules, alias `MK`.
+- A new **`memory` dictionary** interns the memory states, alias `mK`. A memory-state name is only unique within a module (two modules can both have a `source` state), so each memory alias is keyed by `(module, memory-state)` and its row references the module alias `MK`.
+- **`rules`** are module rules: each carries the memory-state transition it performs (`source`/`target` memory aliases).
+- State rows are keyed by **`vertex`** (the vertex), and carry the planning **`state`** (where facts/features come from) plus the memory location as two columns — **`module`** (module alias `MK`) and **`memory`** (memory alias `mK`). The same planning state can appear under several memory locations, so `[transitions]` and `[cycle]` reference vertices, while `[facts]` stays keyed by `state` (shared across vertices). Ids are prefixed for readability: planning states render as `sK` (e.g. `s42`) and vertices as `vK` (e.g. `v3`) — these are id prefixes on the raw indices, not dictionary-backed aliases.
 
 ## Dictionaries
 
-Same idea as base, with one extra file (`memory`) and richer `rules`:
+Same idea as base, with two extra files (`modules`, `memory`) and richer `rules`:
 
 | Alias | File | Columns | Notes |
 |---|---|---|---|
 | `fK` | `features.*` | `id\|symbol` | Module-program and per-module features; ordered, drives `[state]`/`[states]` columns. |
-| `rK` | `rules.*` | `id\|symbol\|src\|tgt` | Module rule; `src`/`tgt` are memory aliases (`mK`), so the module is recoverable from them. |
+| `rK` | `rules.*` | `id\|symbol\|source\|target` | Module rule; `source`/`target` are memory aliases (`mK`). |
 | `aK` | `actions.*` | `id\|action` | Ground actions. |
 | `pK` | `atoms.*` | `id\|kind\|atom` | `kind` is `fluent`/`derived`/`static`. |
-| `mK` | `memory.*` | `id\|module\|memory\|kind` | A `(module, memory-state)` control location; `kind` e.g. `initial`/`accepting`/inner. |
+| `MK` | `modules.*` | `id\|module` | A module, by name. |
+| `mK` | `memory.*` | `id\|module\|memory` | A `(module, memory-state)` control location; `module` is the module alias `MK` (names repeat across modules). |
 
 ```text
 # features.psv
@@ -31,7 +33,7 @@ f0|n_undeliv
 f1|n_held
 
 # rules.psv
-id|symbol|src|tgt
+id|symbol|source|target
 r0|pickup|m0|m0
 r1|advance|m0|m1
 
@@ -46,10 +48,14 @@ p0|fluent|at(robot roomA)
 p1|fluent|holding(ball1)
 p2|static|adjacent(roomA roomB)
 
+# modules.psv
+id|module
+M0|deliver
+
 # memory.psv
-id|module|memory|kind
-m0|deliver|q_init|initial
-m1|deliver|q_done|accepting
+id|module|memory
+m0|M0|q_init
+m1|M0|q_done
 ```
 
 ## Counterexamples
@@ -60,12 +66,12 @@ Header lines are as in base (`@tool`, `@id`, `@category`, …). Sections carry t
 
 ```text
 [state]
-vtx|state|mem|flags|f0|f1
-7|42|m1|WITNESS|3|0
+vertex|state|module|memory|flags|f0|f1
+v7|s42|M0|m1|WITNESS|3|0
 
 [facts]
 state|atoms
-42|p0,p1,p2
+s42|p0,p1,p2
 ```
 
 **Cycle witness** — a `[cycle]` descriptor (over vertices) plus the states and transitions on the cycle:
@@ -73,30 +79,30 @@ state|atoms
 ```text
 [cycle]
 key|value
-cycle_vertex_indices|3,5,3
-cycle_state_indices|10,11,10
+cycle_vertex_indices|v3,v5,v3
+cycle_state_indices|s10,s11,s10
 
 [states]
-vtx|state|mem|flags|f0|f1
-3|10|m0|CYCLE|2|1
-5|11|m1|CYCLE|2|0
+vertex|state|module|memory|flags|f0|f1
+v3|s10|M0|m0|CYCLE|2|1
+v5|s11|M0|m1|CYCLE|2|0
 
 [transitions]
-step|src|tgt|rule|action|delta
-0|3|5|r1|a1|f1:1>0
-1|5|3|r0|a0|f1:0>1
+step|source|target|rule|action|delta
+0|v3|v5|r1|a1|f1:1>0
+1|v5|v3|r0|a0|f1:0>1
 
 [facts]
 state|atoms
-10|p1
-11|p0
+s10|p1
+s11|p0
 ```
 
-`[transitions]` `src`/`tgt` are **vertex** indices; the planning-state path is read from the `[states]` table's `state` column.
+`[transitions]` `source`/`target` are **vertex** ids (`vK`); the planning-state path is read from the `[states]` table's `state` column.
 
 ## Traces
 
-Same as base, with the `vtx|state|mem|flags|…` state columns and vertex-indexed transitions:
+Same as base, with the `vertex|state|module|memory|flags|…` state columns and vertex-indexed transitions:
 
 ```text
 @tool execute_module_program
@@ -105,56 +111,56 @@ Same as base, with the `vtx|state|mem|flags|…` state columns and vertex-indexe
 @problem p01.pddl
 
 [states]
-vtx|state|mem|flags|f0|f1
-0|0|m0|INIT|3|0
-1|1|m0||2|1
-3|10|m1|CYCLE|2|0
+vertex|state|module|memory|flags|f0|f1
+v0|s0|M0|m0|INIT|3|0
+v1|s1|M0|m0||2|1
+v3|s10|M0|m1|CYCLE|2|0
 
 [transitions]
-step|src|tgt|rule|action|delta
-0|0|1|r0|a0|f1:0>1
-1|1|3|r1|a1|f0:3>2 f1:1>0
+step|source|target|rule|action|delta
+0|v0|v1|r0|a0|f1:0>1
+1|v1|v3|r1|a1|f0:3>2 f1:1>0
 
 [facts]
 state|atoms
-0|p0
-1|p1
+s0|p0
+s1|p1
 ```
 
 ## Successors
 
-> **Note:** module programs do not yet emit the generator-expanded frontier that base sketches do. Determining which module rule permits a `(state, memory)` transition needs a compatibility primitive that `pyrunir.kr.ps.ext` does not currently expose, so ext successors remain the witness's **graph-derived compatible transitions** (the moves already in the proof graph), not the full applicable-move frontier. The schema below is unchanged; only the source of the rows differs.
+Same purpose and categories as [base successors](runir.ps.base.counterexamples.md#successors) — the 1-step frontier from each state on the trace/cycle, the gap visible as an advancing move with an empty `rule`. The frontier is built by expanding each vertex's planning state with the successor generator and asking pyrunir which **module rule** (at that vertex's memory state + registers) selects the move, via `pyrunir.kr.ps.ext.SuccessorExpander`: `matching_rule(...)` replays the executor's per-rule applicability (memory match + conditions + effects, DoRule action/argument match) and `apply(...)` returns the resulting proof node, so a taken move also reports the **module + resulting memory** it lands in.
 
-Same purpose and categories as [base successors](runir.ps.base.counterexamples.md#successors) — the 1-step frontier from the witness, the gap visible as an advancing successor with an empty `rule`. `src`/`tgt` are vertices:
+Because the generated successors are off-graph (no proof vertex), `source`/`target` are **planning-state ids** (`sK`) like base. For a taken move, `module`/`memory` give the resulting memory location; a gap leaves `rule`/`module`/`memory` blank:
 
 ```text
 [successors]
-src|action|tgt|rule|flags|delta
-3|a5|9|r1|GOAL|f0:2>1 f1:1>0
-5|a6|11||DEADEND|f1:0>1
+source|action|target|rule|module|memory|flags|delta
+s10|a5|s20|r1|M0|m2|GOAL|f0:2>1 f1:1>0
+s10|a6|s21||||DEADEND|f1:0>1
 
 [states]
-vtx|state|mem|flags|f0|f1
-9|20|m1|GOAL|1|0
-11|21|m1|DEADEND|2|1
+id|flags|f0|f1
+s20|GOAL|1|0
+s21|DEADEND|2|1
 
 [facts]
 state|atoms
-20|p0,p1
-21|p0
+s20|p0,p1
+s21|p0
 ```
 
-As in base, the `[successors]` rows are followed by a `[states]` table (the full feature vector of each successor target) and a `[facts]` table (its `fluent`/`derived` atoms). When several features change on one move, the `delta` cell lists them space-separated (`f0:2>1 f1:1>0`), changed features only — unchanged features are omitted.
+As in base, the `[successors]` rows are followed by a `[states]` table (the full feature vector of each successor target, state-indexed) and a `[facts]` table (its `fluent`/`derived` atoms). A move that progresses with an empty `rule` is the gap — no module rule selects it. (Load/Call rules are internal memory steps and never select a planning move, so they never appear as a successor's `rule`.)
 
 ## Section reference
 
 | Section | Columns | Notes |
 |---|---|---|
-| `[state]` | `vtx\|state\|mem\|flags\|f0\|f1\|…` | Single witness vertex; `vtx` vertex index, `state` planning state, `mem` is `mK`. |
-| `[states]` | `vtx\|state\|mem\|flags\|f0\|f1\|…` | Vertices, wide; feature column order from `features.*`. |
-| `[transitions]` | `step\|src\|tgt\|rule\|action\|delta` | `src`/`tgt` are **vertex** indices; `rule` is `rK` (module rule). |
-| `[facts]` | `state\|atoms` | Keyed by **planning state** (shared across vertices); `pK` list of fluent/derived atoms. |
-| `[cycle]` | `key\|value` | `cycle_vertex_indices` and `cycle_state_indices`. |
-| `[successors]` | `src\|action\|tgt\|rule\|flags\|delta` | `src`/`tgt` are vertices; cycle/deadend scoping as in base. |
+| `[state]` | `vertex\|state\|module\|memory\|flags\|f0\|f1\|…` | Single witness vertex; `vertex` is `vK`, `state` is `sK`, `module` is `MK`, `memory` is `mK`. |
+| `[states]` | `vertex\|state\|module\|memory\|flags\|f0\|f1\|…` | Vertices, wide; feature column order from `features.*`. |
+| `[transitions]` | `step\|source\|target\|rule\|action\|delta` | `source`/`target` are **vertex** ids (`vK`); `rule` is `rK` (module rule). |
+| `[facts]` | `state\|atoms` | Keyed by **planning state** (`sK`, shared across vertices); `pK` list of fluent/derived atoms. |
+| `[cycle]` | `key\|value` | `cycle_vertex_indices` (`vK`) and `cycle_state_indices` (`sK`). |
+| `[successors]` | `source\|action\|target\|rule\|module\|memory\|flags\|delta` | Off-graph: `source`/`target` are planning states (`sK`); `module`/`memory` are the resulting memory of a taken move (blank for a gap). |
 
 `fK`/`rK`/`aK`/`pK`/`mK` aliases resolve against the run-global [dictionaries](#dictionaries). The `flags` vocabulary is the [same as base](runir.ps.base.counterexamples.md#section-reference).

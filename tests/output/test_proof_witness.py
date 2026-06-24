@@ -49,8 +49,8 @@ def test_open_state_counterexample_document():
         ext=False,
     )
     psv = render_document(doc, "psv")
-    assert "[state]\nidx|flags|f0|f1\n11|OPEN,WITNESS|3|F" in psv
-    assert "[facts]\nstate|atoms\n11|p0" in psv
+    assert "[state]\nid|flags|f0|f1\ns11|OPEN,WITNESS|3|F" in psv
+    assert "[facts]\nstate|atoms\ns11|p0" in psv
 
 
 def test_trace_transitions_alias_and_delta():
@@ -68,12 +68,12 @@ def test_trace_transitions_alias_and_delta():
     )
     psv = render_document(doc, "psv")
     # base transition: src/tgt are state indices (10 -> 11), aliased rule/action, feature delta
-    assert "0|10|11|r0|a0|f0:3>2" in psv
+    assert "0|s10|s11|r0|a0|f0:3>2" in psv
 
 
 def test_ext_transition_uses_vertex_endpoints():
-    src = {**BASE_STATE, "memory_state": "q0", "module": "m", "memory_kind": "initial"}
-    tgt = {**OPEN_STATE, "memory_state": "q1", "module": "m", "memory_kind": "accepting", "feature_values": {"n_undeliv": 2, "b_goal": False}}
+    src = {**BASE_STATE, "memory_state": "q0", "module": "m"}
+    tgt = {**OPEN_STATE, "memory_state": "q1", "module": "m", "feature_values": {"n_undeliv": 2, "b_goal": False}}
     transition = witness_transition({"action": "(a)", "module_rule": "r"}, step=0, source=src, target=tgt, ext=True)
     assert transition.source == 0 and transition.target == 1  # vertex indices, not state indices
 
@@ -86,4 +86,4 @@ def test_successor_targets_and_gap():
     doc = successors_document(header=[("tool", "prove_policy")], feature_symbols=["n_undeliv", "b_goal"], successors=[succ], dicts=dicts, ext=False)
     psv = render_document(doc, "psv")
     # goal-reaching successor with an empty rule cell = the missing-guidance gap
-    assert "10|a0|20||GOAL|f0:3>2 f1:F>T" in psv
+    assert "s10|a0|s20||GOAL|f0:3>2 f1:F>T" in psv

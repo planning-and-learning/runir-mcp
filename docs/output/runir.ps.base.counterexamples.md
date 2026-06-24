@@ -19,7 +19,7 @@ While we are still settling on the best representation, all three are emitted so
 - Boolean values render as `T`/`F`, numeric values as integers.
 - An empty optional value renders as an empty cell.
 - **Interning via run-global dictionaries.** Features, rules, actions, and atoms recur across every trace and counterexample in a run (these tools run a single problem, so the ground actions/atoms are shared too). Each is listed **once per run** in a top-level dictionary file and referenced everywhere by a short alias `<prefix><K>`. This bounds each value to one full occurrence per run, independent of trace count, trace length, or symbol size:
-  - **Features → `fK`** — `features.*` (`id|symbol`; often long DL expressions). Used as `[state]`/`[states]` columns (`idx|flags|f0|f1|…`) and as `delta` keys (`fK:before>after`).
+  - **Features → `fK`** — `features.*` (`id|symbol`; often long DL expressions). Used as `[state]`/`[states]` columns (`id|flags|f0|f1|…`) and as `delta` keys (`fK:before>after`).
   - **Rules → `rK`** — `rules.*` (`id|symbol`). Used in the `[transitions]` `rule` column.
   - **Actions → `aK`** — `actions.*` (`id|action`). Used in the `[transitions]` `action` column.
   - **Atoms → `pK`** — `atoms.*` (`id|kind|atom`, `kind` is `fluent`, `derived`, or `static`). Fluent/derived atoms are listed per state in `[facts]` as a comma-separated `pK` list. `static` atoms hold in every state, so they appear once in `atoms.*` and are never repeated in `[facts]`.
@@ -74,12 +74,12 @@ Files `counterexamples/<category>/<id>.{psv,md,json}` — the witness, a single 
 
 ```text
 [state]
-idx|flags|f0|f1|f2
-42|WITNESS|3|0|F
+id|flags|f0|f1|f2
+s42|WITNESS|3|0|F
 
 [facts]
 state|atoms
-42|p0,p1,p2
+s42|p0,p1,p2
 ```
 
 **Cycle witness** — a `[cycle]` descriptor plus the states and transitions on the cycle:
@@ -87,23 +87,23 @@ state|atoms
 ```text
 [cycle]
 key|value
-cycle_state_indices|1,2,1
+cycle_state_indices|s1,s2,s1
 cycle_transition_steps|0,1
 
 [states]
-idx|flags|f0|f1|f2
-1|CYCLE|2|1|F
-2|CYCLE|2|0|F
+id|flags|f0|f1|f2
+s1|CYCLE|2|1|F
+s2|CYCLE|2|0|F
 
 [transitions]
-step|src|tgt|rule|action|delta
-0|1|2|r1|a1|f1:1>0
-1|2|1|r0|a0|f1:0>1
+step|source|target|rule|action|delta
+0|s1|s2|r1|a1|f1:1>0
+1|s2|s1|r0|a0|f1:0>1
 
 [facts]
 state|atoms
-1|p1
-2|p0
+s1|p1
+s2|p0
 ```
 
 ## Traces
@@ -118,27 +118,27 @@ Files `traces/<category>/<id>.{psv,md,json}` — the path from the initial state
 @problem p01.pddl
 
 [states]
-idx|flags|f0|f1|f2
-0|INIT|3|0|F
-1||2|1|F
-2|CYCLE|2|0|F
+id|flags|f0|f1|f2
+s0|INIT|3|0|F
+s1||2|1|F
+s2|CYCLE|2|0|F
 
 [transitions]
-step|src|tgt|rule|action|delta
-0|0|1|r0|a0|f1:0>1
-1|1|2|r1|a1|f0:3>2 f1:1>0
+step|source|target|rule|action|delta
+0|s0|s1|r0|a0|f1:0>1
+1|s1|s2|r1|a1|f0:3>2 f1:1>0
 
 [facts]
 state|atoms
-0|p0
-1|p1
+s0|p0
+s1|p1
 ```
 
 ## Successors
 
 Files `successors/<category>/<id>.{psv,md,json}` — the 1-step frontier of moves the policy *could* take, the signal for **what is missing to make progress**: each row is an available move with its feature change (`delta`) and whether any sketch rule selects it (`rule`). A move that advances toward the goal with an **empty `rule` cell** is the gap — no rule picks the progressing move.
 
-The frontier is built by **expanding every state along the trace/cycle with the planning successor generator** and marking each generated transition with the sketch rule that selects it (`rule`), or empty when none does. (The proof/execution graph holds only sketch-compatible transitions, so it can't surface the moves the policy *failed* to take — the generator can.) The `src` column is the state each successor branches from; with several trace states, rows for each appear under their own `src`.
+The frontier is built by **expanding every state along the trace/cycle with the planning successor generator** and marking each generated transition with the sketch rule that selects it (`rule`), or empty when none does. (The proof/execution graph holds only sketch-compatible transitions, so it can't surface the moves the policy *failed* to take — the generator can.) The `source` column is the state each successor branches from; with several trace states, rows for each appear under their own `source`.
 
 Emitted for `open_state`, `cycle`, and `deadend` (named `deadend_transition` in proof). For the common case where the policy is stuck immediately (an initial open state), the trace is a single state and the frontier is exactly that state's applicable moves — all with an empty `rule` when no rule fires.
 
@@ -149,22 +149,22 @@ Emitted for `open_state`, `cycle`, and `deadend` (named `deadend_transition` in 
 @problem p01.pddl
 
 [successors]
-src|action|tgt|rule|flags|delta
-0|a0|0|||
-0|a1|1||GOAL|f0:2>1 f2:F>T
-0|a2|2|r1||f1:0>1
+source|action|target|rule|flags|delta
+s0|a0|s0|||
+s0|a1|s1||GOAL|f0:2>1 f2:F>T
+s0|a2|s2|r1||f1:0>1
 
 [states]
-idx|flags|f0|f1|f2
-0||2|1|F
-1|GOAL|1|0|T
-2||2|0|F
+id|flags|f0|f1|f2
+s0||2|1|F
+s1|GOAL|1|0|T
+s2||2|0|F
 
 [facts]
 state|atoms
-0|p0,p1
-1|p3
-2|p0
+s0|p0,p1
+s1|p3
+s2|p0
 ```
 
 Here move `a1` reaches a goal but has an empty `rule` — the missing guidance — while `a2` is the only move a rule (`r1`) selects. The full 1-step frontier is always emitted (never truncated — a missing move is exactly what this artifact is for). `[states]` carries the full feature vector of each successor (the absolute values behind each `delta`) and `[facts]` its `fluent`/`derived` atoms — the same `[states]`/`[facts]` schema as the counterexample and trace; a `GOAL` flag marks successors that satisfy the goal (`DEADEND` is not computed for off-graph successors).
@@ -176,18 +176,18 @@ The `.md` and `.json` files carry the identical data, rendered from the same log
 Markdown (`.md`) — columns padded to align:
 
 ```text
-| step | src | tgt | rule | action | delta         |
-| ---- | --- | --- | ---- | ------ | ------------- |
-| 0    | 0   | 1   | r0   | a0     | f1:0>1        |
-| 1    | 1   | 2   | r1   | a1     | f0:3>2 f1:1>0 |
+| step | source | target | rule | action | delta         |
+| ---- | ------ | ------ | ---- | ------ | ------------- |
+| 0    | s0     | s1     | r0   | a0     | f1:0>1        |
+| 1    | s1     | s2     | r1   | a1     | f0:3>2 f1:1>0 |
 ```
 
 JSON (`.json`) — one record per row, native types:
 
 ```json
 [
-  {"step": 0, "src": 0, "tgt": 1, "rule": "r0", "action": "a0", "delta": "f1:0>1"},
-  {"step": 1, "src": 1, "tgt": 2, "rule": "r1", "action": "a1", "delta": "f0:3>2 f1:1>0"}
+  {"step": 0, "source": "s0", "target": "s1", "rule": "r0", "action": "a0", "delta": "f1:0>1"},
+  {"step": 1, "source": "s1", "target": "s2", "rule": "r1", "action": "a1", "delta": "f0:3>2 f1:1>0"}
 ]
 ```
 
@@ -197,12 +197,12 @@ In the `.json` file the whole sectioned document is one object with the header i
 
 | Section | Columns | Notes |
 |---|---|---|
-| `[state]` | `idx\|flags\|f0\|f1\|…` | Single witness state; one `fK` feature column (alias order from `features.*`). |
-| `[states]` | `idx\|flags\|f0\|f1\|…` | Feature vectors, wide; one `fK` feature column (alias order from `features.*`). |
-| `[transitions]` | `step\|src\|tgt\|rule\|action\|delta` | `src`/`tgt` are state indices; `rule` is `rK`, `action` is `aK`; `delta` is space-separated `fK:before>after`, changed features only. |
-| `[facts]` | `state\|atoms` | `atoms` is a comma-separated `pK` list referencing `atoms.*`; lists only the per-state `fluent`/`derived` atoms. `static` atoms hold everywhere and are not repeated here. |
-| `[cycle]` | `key\|value` | Cycle descriptor: state-index path and transition steps. |
-| `[successors]` | `src\|action\|tgt\|rule\|flags\|delta` | 1-step successor frontier branching from `src`, expanded with the planning successor generator for every state along the trace/cycle. `rule` is the sketch rule that selects the move, empty when none does (the gap). |
+| `[state]` | `id\|flags\|f0\|f1\|…` | Single witness state; `id` is the planning-state id `sK`; one `fK` feature column (alias order from `features.*`). |
+| `[states]` | `id\|flags\|f0\|f1\|…` | Feature vectors, wide; `id` is `sK`; one `fK` feature column (alias order from `features.*`). |
+| `[transitions]` | `step\|source\|target\|rule\|action\|delta` | `source`/`target` are state ids (`sK`); `rule` is `rK`, `action` is `aK`; `delta` is space-separated `fK:before>after`, changed features only. |
+| `[facts]` | `state\|atoms` | Keyed by state id `sK`; `atoms` is a comma-separated `pK` list referencing `atoms.*`; lists only the per-state `fluent`/`derived` atoms. `static` atoms hold everywhere and are not repeated here. |
+| `[cycle]` | `key\|value` | Cycle descriptor: state-id path (`sK`) and transition steps. |
+| `[successors]` | `source\|action\|target\|rule\|flags\|delta` | 1-step successor frontier branching from `source` (`sK`), expanded with the planning successor generator for every state along the trace/cycle. `rule` is the sketch rule that selects the move, empty when none does (the gap). |
 
 All `fK`/`rK`/`aK`/`pK` aliases resolve against the run-global [dictionaries](#dictionaries).
 

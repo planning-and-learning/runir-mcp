@@ -14,6 +14,7 @@ from pytyr.formalism.planning import Parser
 from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.kr.ps.ext.rules import collect_features, intern_rules
+from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander
 from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.ext.schemas import ProveModuleProgramOptions
@@ -51,6 +52,7 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
     dicts = Dictionaries(ext=True)
     intern_rules(program, dicts)
 
+    evidence = state_evidence(features, include_facts=True)
     return build_proof_run(
         tool=TOOL_NAME,
         output_dir=Path(options.output_dir).resolve(),
@@ -70,7 +72,8 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
         feature_symbols=[feature_key(feature) for feature in features],
         dicts=dicts,
         ext=True,
-        evidence=state_evidence(features, include_facts=True),
+        evidence=evidence,
+        expander=make_ext_frontier_expander(task.search_context, program, evidence),
         max_open_state_counterexamples=options.max_open_state_counterexamples,
         max_deadend_transition_counterexamples=options.max_deadend_transition_counterexamples,
     )

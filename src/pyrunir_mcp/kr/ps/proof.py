@@ -45,7 +45,7 @@ from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.policy import Cycle, counterexample_document, successors_document, trace_document
 from pyrunir_mcp.output.proof_witness import successor as build_successor, witness_state, witness_transition
-from pyrunir_mcp.output.run import RunItem, build_run_envelope
+from pyrunir_mcp.output.run import RunItem, build_run_envelope, status_category
 from pyrunir_mcp.planning import LoadedSearchContext
 
 
@@ -223,8 +223,10 @@ def state_summary(
     if evidence is not None:
         out.update(evidence(state))
     if isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
-        out["memory_state"] = str(label.memory_state)
-        out["module"] = str(label.module_.get_name())
+        memory = label.memory_state
+        memory_view = memory.value if hasattr(memory, "value") else memory
+        out["memory_state"] = str(memory_view.get_name())
+        out["module"] = str(label.module.get_name())
     if isinstance(label, GroundAnnotatedStateGraphVertexLabel | LiftedAnnotatedStateGraphVertexLabel):
         out["is_initial"] = bool(label.is_initial)
         out["is_goal"] = bool(label.is_goal)
@@ -323,25 +325,27 @@ def _trace_document(graph, path_edges, evidence, *, feature_symbols, dicts, ext,
 
 def _expand_frontier(
     graph: ProofGraph,
-    expander: Callable[[list[State]], list] | None,
+    expander: Callable[[ProofGraph, list[int]], list] | None,
     evidence: StateEvidence | None,
     *,
     trace_vertices: list[int],
     graph_vertices: list[int],
     exclude: set[int],
 ) -> list:
-    """The 1-step frontier of the witness. With an `expander` (base) it expands every state
-    on the trace via the successor generator + sketch compatibility; without one (ext) it
-    falls back to the graph's compatible out-edges of the witness vertices."""
+    """The 1-step frontier of the witness. With an `expander` (base sketch / ext module program)
+    it expands every state on the trace via the successor generator + policy compatibility;
+    without one it falls back to the graph's compatible out-edges of the witness vertices. The
+    expander receives the graph and the deduped trace vertices so it can read each vertex's
+    state (and, for ext, memory state + registers)."""
     if expander is None:
         return _successors(graph, graph_vertices, evidence, exclude=exclude)
     seen: set[int] = set()
-    states: list[State] = []
+    vertices: list[int] = []
     for vertex in trace_vertices:
-        if vertex not in seen:
-            seen.add(vertex)
-            states.append(_label_state(graph.get_vertex_property(int(vertex))))
-    return expander(states)
+        if int(vertex) not in seen:
+            seen.add(int(vertex))
+            vertices.append(int(vertex))
+    return expander(graph, vertices)
 
 
 def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, dicts, ext, header, expander=None):
@@ -397,6 +401,10 @@ def witness_artifacts(graph, category, witness, evidence, *, feature_symbols, di
             graph_vertices=[vertex], exclude=set(),
         )
 
+    # Successors are generator-expanded 1-step planning moves; they are off-graph (no proof
+    # vertex), so their `tgt` is the planning state index. For module programs (ext) each taken
+    # move also carries the module + resulting memory (`mod`/`mem`) its rule lands in; a gap leaves
+    # them blank.
     successor_doc = (
         successors_document(header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=ext)
         if successors
@@ -416,7 +424,7 @@ def build_proof_run(
     dicts: Dictionaries,
     ext: bool,
     evidence: StateEvidence | None = None,
-    expander: Callable[[list[State]], list] | None = None,
+    expander: Callable[[ProofGraph, list[int]], list] | None = None,
     max_open_state_counterexamples: int = 1,
     max_deadend_transition_counterexamples: int = 1,
 ) -> JsonObject:
@@ -464,6 +472,7 @@ def build_proof_run(
     return build_run_envelope(
         tool=tool,
         status=status,
+        category=status_category(status_name(result.status)),
         output_dir=output_dir,
         metadata=metadata,
         dictionary_tables=dicts.tables(),

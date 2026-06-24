@@ -28,13 +28,26 @@ def test_dictionaries_base_rules_single_column():
 
 def test_dictionaries_ext_rules_carry_src_tgt():
     dicts = Dictionaries(ext=True)
-    m0 = dicts.memory("deliver", "q_init", "initial")
-    m1 = dicts.memory("deliver", "q_done", "accepting")
+    deliver = dicts.module("deliver")
+    m0 = dicts.memory(deliver, "q_init")
+    m1 = dicts.memory(deliver, "q_done")
     assert dicts.rule("advance", m0, m1) == "r0"
     tables = dicts.tables()
-    assert tables["rules"].columns == ["id", "symbol", "src", "tgt"]
+    assert tables["rules"].columns == ["id", "symbol", "source", "target"]
     assert tables["rules"].rows == [["r0", "advance", "m0", "m1"]]
-    assert tables["memory"].rows == [["m0", "deliver", "q_init", "initial"], ["m1", "deliver", "q_done", "accepting"]]
+    assert tables["modules"].rows == [["M0", "deliver"]]
+    assert tables["memory"].columns == ["id", "module", "memory"]
+    assert tables["memory"].rows == [["m0", "M0", "q_init"], ["m1", "M0", "q_done"]]
+
+
+def test_dictionaries_memory_names_disambiguated_by_module():
+    dicts = Dictionaries(ext=True)
+    a = dicts.module("a")
+    b = dicts.module("b")
+    # same memory-state name "source" in two modules -> distinct aliases
+    assert dicts.memory(a, "source") == "m0"
+    assert dicts.memory(b, "source") == "m1"
+    assert dicts.memory(a, "source") == "m0"  # idempotent
 
 
 def test_dictionaries_omits_empty_tables():

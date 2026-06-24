@@ -51,6 +51,23 @@ def _result_item(item: RunItem, paths: dict[str, str]) -> JsonObject:
     }
 
 
+_STATUS_CATEGORY = {
+    "SUCCESS": "success",
+    "OUT_OF_TIME": "timeout",
+    "OUT_OF_STATES": "resource_limit",
+    "OUT_OF_MEMORY": "resource_limit",
+    "FAILURE": "counterexample",
+}
+
+
+def status_category(status_name: str) -> str:
+    """Map a proof/execution status enum name to the coarse run `category` consumers branch on:
+    `success` / `timeout` / `resource_limit` / `counterexample`. A genuine proof failure (a found
+    counterexample) is `counterexample`; resource exhaustion is kept distinct so callers can retry
+    or accept rather than treat it as a real defect."""
+    return _STATUS_CATEGORY.get(status_name.upper(), "counterexample")
+
+
 def build_run_envelope(
     *,
     tool: str,
@@ -61,6 +78,7 @@ def build_run_envelope(
     artifacts: dict[str, Artifact],
     items: list[RunItem],
     failure_category: str | None = None,
+    category: str | None = None,
     formats: tuple[Fmt, ...] = DEFAULT_FORMATS,
 ) -> JsonObject:
     output_dir = fresh_output_dir(output_dir)
@@ -83,6 +101,8 @@ def build_run_envelope(
     passthrough = {key: metadata[key] for key in ("program_status", "nonterminating_modules") if key in metadata}
     primary = {
         "successful": status == "success",
+        "status": status,
+        "category": category or ("success" if status == "success" else "counterexample"),
         "failure_category": failure_category or (result_items[0]["category"] if result_items else None),
         "counterexample_count": len(result_items),
         "category_counts": category_counts,

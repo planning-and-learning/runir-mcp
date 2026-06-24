@@ -26,18 +26,19 @@ def iter_module_rules(program: ModuleProgram) -> list[tuple[Module, ModuleRule]]
     return rules
 
 
-def _declared_features(value: ModuleProgram | Module) -> list[Feature]:
+def _declared_features(module: Module) -> list[Feature]:
     features: list[Feature] = []
-    features.extend(cast(list[Feature], value.get_concept_features()))
-    features.extend(cast(list[Feature], value.get_boolean_features()))
-    features.extend(cast(list[Feature], value.get_numerical_features()))
+    features.extend(cast(list[Feature], module.get_concept_features()))
+    features.extend(cast(list[Feature], module.get_boolean_features()))
+    features.extend(cast(list[Feature], module.get_numerical_features()))
     return features
 
 
 def collect_features(program: ModuleProgram) -> list[Feature]:
+    # Features are declared on the modules; the ModuleProgram is just the wiring of modules.
     features_by_key: dict[str, Feature] = {}
-    for value in (program, *program.get_modules()):
-        for feature in _declared_features(value):
+    for module in program.get_modules():
+        for feature in _declared_features(module):
             features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
 
@@ -49,7 +50,7 @@ def intern_rules(program: ModuleProgram, dicts: Dictionaries) -> None:
         symbol = str(rule.get_symbol()).strip()
         if not symbol:
             continue
-        module_name = str(module.get_name())
-        source = dicts.memory(module_name, str(rule.get_source().get_name()), "")
-        target = dicts.memory(module_name, str(rule.get_target().get_name()), "")
+        module_alias = dicts.module(str(module.get_name()))
+        source = dicts.memory(module_alias, str(rule.get_source().get_name()))
+        target = dicts.memory(module_alias, str(rule.get_target().get_name()))
         dicts.rule(symbol, source, target)

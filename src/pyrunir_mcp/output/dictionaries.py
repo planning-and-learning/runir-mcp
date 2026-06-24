@@ -1,7 +1,7 @@
 """Run-global alias dictionaries (interning).
 
 Each distinct symbol/value is listed once and referenced everywhere by a short alias
-`<prefix><index>` (`f`eatures, `r`ules, `a`ctions, `p` atoms, `m`emory, `v`ariables). See
+`<prefix><index>` (`f`eatures, `r`ules, `a`ctions, `p` atoms, `M`odules, `m`emory, `v`ariables). See
 docs/output/runir.ps.base.counterexamples.md#conventions.
 """
 
@@ -48,17 +48,18 @@ class Dictionary:
 class Dictionaries:
     """The dictionaries shared by the policy and classifier families.
 
-    `ext=True` gives module-program `rules` (`symbol|src|tgt`) and populates `memory`; base
+    `ext=True` gives module-program `rules` (`symbol|source|target`) and populates `modules`/`memory`; base
     policy and classifier runs simply leave the unused dictionaries empty (omitted on render).
     """
 
     def __init__(self, *, ext: bool = False) -> None:
         self._ext = ext
         self.features = Dictionary("f", ["symbol"])
-        self.rules = Dictionary("r", ["symbol", "src", "tgt"] if ext else ["symbol"])
+        self.rules = Dictionary("r", ["symbol", "source", "target"] if ext else ["symbol"])
         self.actions = Dictionary("a", ["action"])
         self.atoms = Dictionary("p", ["kind", "atom"])
-        self.memories = Dictionary("m", ["module", "memory", "kind"])
+        self.modules = Dictionary("M", ["module"])
+        self.memories = Dictionary("m", ["module", "memory"])
 
     def feature(self, symbol: str) -> str:
         return self.features.intern(symbol, [symbol])
@@ -69,8 +70,13 @@ class Dictionaries:
     def atom(self, kind: str, atom: str) -> str:
         return self.atoms.intern((kind, atom), [kind, atom])
 
-    def memory(self, module: str, memory: str, kind: str) -> str:
-        return self.memories.intern((module, memory, kind), [module, memory, kind])
+    def module(self, module: str) -> str:
+        return self.modules.intern(module, [module])
+
+    def memory(self, module_alias: str, memory: str) -> str:
+        """Intern a memory state, keyed by (module alias, name). Names are only unique within a
+        module, so the module alias (`M…`, from `module()`) disambiguates collisions."""
+        return self.memories.intern((module_alias, memory), [module_alias, memory])
 
     def rule(self, symbol: str, src: str | None = None, tgt: str | None = None) -> str:
         """Intern a rule, keyed by symbol. `src`/`tgt` are memory aliases for ext rules; ext
@@ -93,6 +99,7 @@ class Dictionaries:
             "rules": self.rules,
             "actions": self.actions,
             "atoms": self.atoms,
+            "modules": self.modules,
             "memory": self.memories,
         }
         return {name: table for name, dictionary in named.items() if (table := dictionary.table(name)) is not None}

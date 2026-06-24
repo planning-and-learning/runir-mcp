@@ -886,7 +886,7 @@ wheels = [
 
 [[package]]
 name = "pyrunir"
-version = "0.0.12"
+version = "0.0.13"
 source = { editable = "../runir" }
 dependencies = [
     { name = "pytyr" },
@@ -903,7 +903,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "pyrunir-mcp"
-version = "0.0.12"
+version = "0.0.13"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
