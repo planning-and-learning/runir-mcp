@@ -11,7 +11,7 @@ A module-program proof node is a **vertex** = (planning state, memory location),
 - A new **`modules` dictionary** interns the modules, alias `MK`.
 - A new **`memory` dictionary** interns the memory states, alias `mK`. A memory-state name is only unique within a module (two modules can both have a `source` state), so each memory alias is keyed by `(module, memory-state)` and its row references the module alias `MK`.
 - **`rules`** are module rules: each carries the memory-state transition it performs (`source`/`target` memory aliases).
-- State rows are keyed by **`vertex`** (the vertex), and carry the planning **`state`** (where facts/features and `hstar` come from) plus the memory location as two columns — **`module`** (module alias `MK`) and **`memory`** (memory alias `mK`). The same planning state can appear under several memory locations, so `[transitions]` and `[cycle]` reference vertices, while `[facts]` stays keyed by `state` (shared across vertices). Ids are prefixed for readability: planning states render as `sK` (e.g. `s42`) and vertices as `vK` (e.g. `v3`) — these are id prefixes on the raw indices, not dictionary-backed aliases.
+- State rows are keyed by **`vertex`** (the vertex), and carry the planning **`state`** (where facts/features and `hstar`/`hlmcut` come from) plus the memory location as two columns — **`module`** (module alias `MK`) and **`memory`** (memory alias `mK`). The same planning state can appear under several memory locations, so `[transitions]` and `[cycle]` reference vertices, while `[facts]` stays keyed by `state` (shared across vertices). Ids are prefixed for readability: planning states render as `sK` (e.g. `s42`) and vertices as `vK` (e.g. `v3`) — these are id prefixes on the raw indices, not dictionary-backed aliases.
 
 ## Dictionaries
 
@@ -66,8 +66,8 @@ Header lines are as in base (`@tool`, `@id`, `@category`, …). Sections carry t
 
 ```text
 [state]
-vertex|state|module|memory|flags|hstar|f0|f1
-v7|s42|M0|m1|WITNESS|7|3|0
+vertex|state|module|memory|flags|hstar|hlmcut|f0|f1
+v7|s42|M0|m1|WITNESS|7|5|3|0
 
 [facts]
 state|atoms
@@ -83,9 +83,9 @@ cycle_vertex_indices|v3,v5,v3
 cycle_state_indices|s10,s11,s10
 
 [states]
-vertex|state|module|memory|flags|hstar|f0|f1
-v3|s10|M0|m0|CYCLE|inf|2|1
-v5|s11|M0|m1|CYCLE|inf|2|0
+vertex|state|module|memory|flags|hstar|hlmcut|f0|f1
+v3|s10|M0|m0|CYCLE|inf|inf|2|1
+v5|s11|M0|m1|CYCLE|inf|inf|2|0
 
 [transitions]
 step|source|target|rule|action|delta
@@ -102,7 +102,7 @@ s11|p0
 
 ## Traces
 
-Same as base, with the `vertex|state|module|memory|flags|hstar|…` state columns and vertex-indexed transitions:
+Same as base, with the `vertex|state|module|memory|flags|hstar|hlmcut|…` state columns and vertex-indexed transitions:
 
 ```text
 @tool execute_module_program
@@ -111,10 +111,10 @@ Same as base, with the `vertex|state|module|memory|flags|hstar|…` state column
 @problem p01.pddl
 
 [states]
-vertex|state|module|memory|flags|hstar|f0|f1
-v0|s0|M0|m0|INIT|2|3|0
-v1|s1|M0|m0||1|2|1
-v3|s10|M0|m1|CYCLE|inf|2|0
+vertex|state|module|memory|flags|hstar|hlmcut|f0|f1
+v0|s0|M0|m0|INIT|2|2|3|0
+v1|s1|M0|m0||1|1|2|1
+v3|s10|M0|m1|CYCLE|inf|inf|2|0
 
 [transitions]
 step|source|target|rule|action|delta
@@ -140,9 +140,9 @@ s10|a5|s20|r1|M0|m2|GOAL|f0:2>1 f1:1>0
 s10|a6|s21||||DEADEND|f1:0>1
 
 [states]
-id|flags|hstar|f0|f1
-s20|GOAL|0|1|0
-s21|DEADEND|inf|2|1
+id|flags|hstar|hlmcut|f0|f1
+s20|GOAL|0|0|1|0
+s21|DEADEND|inf|inf|2|1
 
 [facts]
 state|atoms
@@ -150,17 +150,17 @@ s20|p0,p1
 s21|p0
 ```
 
-As in base, the `[successors]` rows are followed by a `[states]` table (`hstar` plus the full feature vector of each successor target, state-indexed) and a `[facts]` table (its `fluent`/`derived` atoms). A move that progresses with an empty `rule` is the gap — no module rule selects it. (Load/Call rules are internal memory steps and never select a planning move, so they never appear as a successor's `rule`.)
+As in base, the `[successors]` rows are followed by a `[states]` table (`hstar`, `hlmcut`, plus the full feature vector of each successor target, state-indexed) and a `[facts]` table (its `fluent`/`derived` atoms). A move that progresses with an empty `rule` is the gap — no module rule selects it. (Load/Call rules are internal memory steps and never select a planning move, so they never appear as a successor's `rule`.)
 
 ## Section reference
 
 | Section | Columns | Notes |
 |---|---|---|
-| `[state]` | `vertex\|state\|module\|memory\|flags\|hstar\|f0\|f1\|…` | Single witness vertex; `vertex` is `vK`, `state` is `sK`, `module` is `MK`, `memory` is `mK`; `hstar` is shortest remaining plan length for the planning state, `inf` for proven deadends, empty if inconclusive. |
-| `[states]` | `vertex\|state\|module\|memory\|flags\|hstar\|f0\|f1\|…` | Vertices, wide; `hstar` follows the same semantics as `[state]`; feature column order from `features.*`. |
+| `[state]` | `vertex\|state\|module\|memory\|flags\|hstar\|hlmcut\|f0\|f1\|…` | Single witness vertex; `vertex` is `vK`, `state` is `sK`, `module` is `MK`, `memory` is `mK`; `hstar` is shortest remaining plan length for the planning state, `inf` for proven deadends, empty if inconclusive; `hlmcut` is the LM-cut admissible lower bound for the same planning state. |
+| `[states]` | `vertex\|state\|module\|memory\|flags\|hstar\|hlmcut\|f0\|f1\|…` | Vertices, wide; `hstar` and `hlmcut` follow the same semantics as `[state]`; feature column order from `features.*`. |
 | `[transitions]` | `step\|source\|target\|rule\|action\|delta` | `source`/`target` are **vertex** ids (`vK`); `rule` is `rK` (module rule). |
 | `[facts]` | `state\|atoms` | Keyed by **planning state** (`sK`, shared across vertices); `pK` list of fluent/derived atoms. |
 | `[cycle]` | `key\|value` | `cycle_vertex_indices` (`vK`) and `cycle_state_indices` (`sK`). |
 | `[successors]` | `source\|action\|target\|rule\|module\|memory\|flags\|delta` | Off-graph: `source`/`target` are planning states (`sK`); `module`/`memory` are the resulting memory of a taken move (blank for a gap). |
 
-`fK`/`rK`/`aK`/`pK`/`mK` aliases resolve against the run-global [dictionaries](#dictionaries). `hstar` is a literal value and is not interned. The `flags` vocabulary is the [same as base](runir.ps.base.counterexamples.md#section-reference).
+`fK`/`rK`/`aK`/`pK`/`mK` aliases resolve against the run-global [dictionaries](#dictionaries). `hstar` and `hlmcut` are literal values and are not interned. The `flags` vocabulary is the [same as base](runir.ps.base.counterexamples.md#section-reference).

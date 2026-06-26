@@ -24,6 +24,7 @@ class WitnessState:
     derived: tuple[str, ...] = ()
     flags: tuple[str, ...] = ()
     hstar: JsonValue = ""
+    hlmcut: JsonValue = ""
     vertex: int | None = None
     memory: tuple[str, str] | None = None  # (module, memory) for ext
 
@@ -156,7 +157,7 @@ def _state_row(state: WitnessState, dicts: Dictionaries, *, ext: bool, features:
     else:
         leading = [_state_id(state.state), _flags(state.flags)]
     if include_hstar:
-        leading.append(state.hstar)
+        leading.extend([state.hstar, state.hlmcut])
     return [*leading, *values]
 
 
@@ -165,7 +166,7 @@ def _states_table(name: str, states: list[WitnessState], dicts: Dictionaries, *,
     aliases = [f"f{index}" for index in range(len(features))]
     leading = ["vertex", "state", "module", "memory", "flags"] if ext else ["id", "flags"]
     if include_hstar:
-        leading.append("hstar")
+        leading.extend(["hstar", "hlmcut"])
     rows = [_state_row(state, dicts, ext=ext, features=features, include_hstar=include_hstar) for state in states]
     return Table(name=name, columns=[*leading, *aliases], rows=rows)
 

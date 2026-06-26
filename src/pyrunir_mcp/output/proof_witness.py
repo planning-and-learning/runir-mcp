@@ -8,6 +8,7 @@ live proof graph; the graph traversal that produces the dicts lives in `proof.py
 from __future__ import annotations
 
 from pyrunir_mcp.json_types import JsonObject, JsonValue
+from pyrunir_mcp.kr.ps.hstar import HeuristicSentinel
 from pyrunir_mcp.output.policy import Successor, WitnessState, WitnessTransition, resolve_flags
 
 
@@ -22,6 +23,16 @@ def _delta(before: JsonObject, after: JsonObject) -> dict[str, tuple[JsonValue, 
     return {key: (before[key], after[key]) for key in before if key in after and before[key] != after[key]}
 
 
+def _is_deadend_value(value: JsonValue) -> bool:
+    if isinstance(value, HeuristicSentinel):
+        return value is HeuristicSentinel.DEADEND
+    return value == HeuristicSentinel.DEADEND.value
+
+
+def _is_deadend(state: JsonObject) -> bool:
+    return bool(state.get("is_unsolvable")) or _is_deadend_value(state.get("hstar")) or _is_deadend_value(state.get("hlmcut"))
+
+
 def witness_state(
     state: JsonObject,
     *,
@@ -32,7 +43,7 @@ def witness_state(
     flags = resolve_flags(
         initial=bool(state.get("is_initial")),
         goal=bool(state.get("is_goal")),
-        deadend=bool(state.get("is_unsolvable")),
+        deadend=_is_deadend(state),
         open_state=open_state,
         witness=witness,
         cycle=cycle,
@@ -40,6 +51,7 @@ def witness_state(
     return WitnessState(
         state=int(state["state_index"]),
         hstar=state.get("hstar", ""),
+        hlmcut=state.get("hlmcut", ""),
         features=state.get("feature_values", {}),
         fluent=tuple(state.get("fluent_facts", ())),
         derived=tuple(state.get("derived_atoms", ())),

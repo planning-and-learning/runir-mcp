@@ -1,3 +1,4 @@
+from pyrunir_mcp.kr.ps.hstar import HeuristicSentinel
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.policy import counterexample_document, successors_document, trace_document
 from pyrunir_mcp.output.proof_witness import successor, witness_state, witness_transition
@@ -34,6 +35,8 @@ def test_witness_state_flags_and_facts():
 def test_witness_state_deadend_and_initial_flags():
     assert witness_state(BASE_STATE).flags == ("INIT",)
     assert witness_state({**OPEN_STATE, "is_unsolvable": True}, witness=True).flags == ("WITNESS", "DEADEND")
+    assert witness_state({**OPEN_STATE, "hstar": HeuristicSentinel.DEADEND}, witness=True).flags == ("WITNESS", "DEADEND")
+    assert witness_state({**OPEN_STATE, "hlmcut": HeuristicSentinel.DEADEND}, witness=True).flags == ("WITNESS", "DEADEND")
 
 
 def test_open_state_counterexample_document():
@@ -49,7 +52,7 @@ def test_open_state_counterexample_document():
         ext=False,
     )
     psv = render_document(doc, "psv")
-    assert "[state]\nid|flags|hstar|f0|f1\ns11|OPEN,WITNESS||3|F" in psv
+    assert "[state]\nid|flags|hstar|hlmcut|f0|f1\ns11|OPEN,WITNESS|||3|F" in psv
     assert "[facts]\nstate|atoms\ns11|p0" in psv
 
 
@@ -87,4 +90,4 @@ def test_successor_targets_and_gap():
     psv = render_document(doc, "psv")
     # goal-reaching successor with an empty rule cell = the missing-guidance gap
     assert "s10|a0|s20||GOAL|f0:3>2 f1:F>T" in psv
-    assert "[states]\nid|flags|hstar|f0|f1" in psv
+    assert "[states]\nid|flags|hstar|hlmcut|f0|f1" in psv

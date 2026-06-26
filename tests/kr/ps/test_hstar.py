@@ -4,7 +4,7 @@ from pyyggdrasil.execution import ExecutionContext
 from pytyr.planning.ground import Node as GroundNode
 from pytyr.planning.lifted import Node
 
-from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions, HStarSentinel
+from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions, HeuristicSentinel
 from pyrunir_mcp.planning import build_ground_search_context, load_lifted_search_context
 
 DOMAIN = """(define (domain seq)
@@ -56,6 +56,9 @@ def test_hstar_uses_lifted_start_state_option(tmp_path):
     assert evaluator.evaluate(initial) == 2
     assert evaluator.evaluate(after_first) == 1
     assert evaluator.evaluate(goal) == 0
+    assert evaluator.evaluate_lmcut(initial) == 2
+    assert evaluator.evaluate_lmcut(after_first) == 1
+    assert evaluator.evaluate_lmcut(goal) == 0
 
 
 def test_hstar_marks_lifted_deadend_as_inf(tmp_path):
@@ -63,7 +66,9 @@ def test_hstar_marks_lifted_deadend_as_inf(tmp_path):
     context = load_lifted_search_context(domain, problem, ExecutionContext(1)).search_context
     evaluator = HStarEvaluator(context, HStarOptions(max_num_states=100, max_time_seconds=3.0))
 
-    assert evaluator.evaluate(context.state_repository.get_initial_state()) == HStarSentinel.DEADEND
+    initial = context.state_repository.get_initial_state()
+    assert evaluator.evaluate(initial) == HeuristicSentinel.DEADEND
+    assert evaluator.evaluate_lmcut(initial) == HeuristicSentinel.DEADEND
 
 
 def test_hstar_converts_ground_state_into_lifted_repository(tmp_path):
@@ -78,6 +83,8 @@ def test_hstar_converts_ground_state_into_lifted_repository(tmp_path):
 
     assert evaluator.evaluate(ground_initial) == 2
     assert evaluator.evaluate(ground_after_first) == 1
+    assert evaluator.evaluate_lmcut(ground_initial) == 2
+    assert evaluator.evaluate_lmcut(ground_after_first) == 1
 
 
 def test_hstar_budget_exhaustion_is_unknown_not_inf(tmp_path):
@@ -85,4 +92,4 @@ def test_hstar_budget_exhaustion_is_unknown_not_inf(tmp_path):
     context = load_lifted_search_context(domain, problem, ExecutionContext(1)).search_context
     evaluator = HStarEvaluator(context, HStarOptions(max_num_states=0, max_time_seconds=3.0))
 
-    assert evaluator.evaluate(context.state_repository.get_initial_state()) == HStarSentinel.UNKNOWN
+    assert evaluator.evaluate(context.state_repository.get_initial_state()) == HeuristicSentinel.UNKNOWN

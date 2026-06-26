@@ -15,7 +15,7 @@ from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
 from pyrunir.kr.dl.base.semantics import GroundEvaluationContext as BaseGroundEvaluationContext
 from pyrunir.kr.dl.ext.semantics import GroundEvaluationContext as ExtGroundEvaluationContext
 from pyrunir_mcp.json_types import JsonObject, JsonValue
-from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarSentinel, HStarValue
+from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HeuristicSentinel, HStarValue, LMCutValue
 
 Feature: TypeAlias = (
     BaseBooleanFeature
@@ -91,8 +91,8 @@ def state_facts(state: GroundState) -> JsonObject:
 
 
 
-def hstar_json_value(value: HStarValue) -> JsonValue:
-    if isinstance(value, HStarSentinel):
+def heuristic_json_value(value: HStarValue | LMCutValue) -> JsonValue:
+    if isinstance(value, HeuristicSentinel):
         return value.value
     return value
 
@@ -106,7 +106,8 @@ def state_evidence(
     def evidence(state: GroundState) -> JsonObject:
         data: JsonObject = {"feature_values": evaluate_features(state, features)}
         if hstar is not None:
-            data["hstar"] = hstar_json_value(hstar.evaluate(state))
+            data["hstar"] = heuristic_json_value(hstar.evaluate(state))
+            data["hlmcut"] = heuristic_json_value(hstar.evaluate_lmcut(state))
         if include_facts:
             data.update(state_facts(state))
         return data

@@ -14,7 +14,7 @@ All other execution arguments are identical: `domain_file`, `problem_file`, `out
 
 ## Output
 
-Same normalized structure as `runir.ps.base.execute_policy`, with `tool: "runir.ps.ext.execute_module_program"`. `hstar` has the same semantics as base: shortest remaining lifted plan length in number of actions, `inf` for proven deadends, and empty when the per-state A*+LM-cut timeout/state budget is exhausted. The dictionaries (under `dicts/`) and the per-failure witness, trace, and successors files (under `failures/<id>/`) use the shared [module-program output format](output/runir.ps.ext.counterexamples.md) (vertices carry their `(module, memory-state)` location).
+Same normalized structure as `runir.ps.base.execute_policy`, with `tool: "runir.ps.ext.execute_module_program"`. `hstar` has the same semantics as base: shortest remaining lifted plan length in number of actions, `inf` for proven deadends, and empty when the per-state A*+LM-cut timeout/state budget is exhausted. `hlmcut` reports the raw LM-cut heuristic value for the same lifted planning state as an admissible lower bound, including when exact `hstar` is too costly. The dictionaries (under `dicts/`) and the per-failure witness, trace, and successors files (under `failures/<id>/`) use the shared [module-program output format](output/runir.ps.ext.counterexamples.md) (vertices carry their `(module, memory-state)` location).
 
 ## Output Directory
 

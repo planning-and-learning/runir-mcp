@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isinf
 from datetime import timedelta
 from enum import StrEnum
 from typing import TypeAlias
@@ -13,12 +14,13 @@ from pytyr.planning.lifted.astar_eager import Options, find_solution
 
 from pyrunir_mcp.kr.ps.converter import GroundToLiftedStateConverter
 
-class HStarSentinel(StrEnum):
+class HeuristicSentinel(StrEnum):
     DEADEND = "inf"
     UNKNOWN = ""
 
 
-HStarValue: TypeAlias = int | HStarSentinel
+HStarValue: TypeAlias = int | float | HeuristicSentinel
+LMCutValue: TypeAlias = int | float | HeuristicSentinel
 
 
 @dataclass(frozen=True)
@@ -33,14 +35,31 @@ class HStarEvaluator:
         self._options = options
         self._heuristic = LMCutHeuristic(search_context.task, search_context.execution_context)
         self._converter = GroundToLiftedStateConverter(search_context)
-        self._cache: dict[int, HStarValue] = {}
+        self._hstar_cache: dict[int, HStarValue] = {}
+        self._hlmcut_cache: dict[int, LMCutValue] = {}
 
     def evaluate(self, state: LiftedState | GroundState) -> HStarValue:
-        lifted_state = state if isinstance(state, LiftedState) else self._converter.convert(state)
+        lifted_state = self._lifted_state(state)
         state_index = int(lifted_state.get_index())
-        if state_index not in self._cache:
-            self._cache[state_index] = self._compute(lifted_state)
-        return self._cache[state_index]
+        if state_index not in self._hstar_cache:
+            self._hstar_cache[state_index] = self._compute(lifted_state)
+        return self._hstar_cache[state_index]
+
+    def evaluate_lmcut(self, state: LiftedState | GroundState) -> LMCutValue:
+        lifted_state = self._lifted_state(state)
+        state_index = int(lifted_state.get_index())
+        if state_index not in self._hlmcut_cache:
+            self._hlmcut_cache[state_index] = self._compute_lmcut(lifted_state)
+        return self._hlmcut_cache[state_index]
+
+    def _lifted_state(self, state: LiftedState | GroundState) -> LiftedState:
+        return state if isinstance(state, LiftedState) else self._converter.convert(state)
+
+    def _compute_lmcut(self, state: LiftedState) -> LMCutValue:
+        value = float(self._heuristic.evaluate(state))
+        if isinf(value):
+            return HeuristicSentinel.DEADEND
+        return int(value) if value.is_integer() else value
 
     def _compute(self, state: LiftedState) -> HStarValue:
         options = Options()
@@ -58,5 +77,5 @@ class HStarEvaluator:
         if result.status == SearchStatus.SOLVED:
             return int(result.plan.get_length())
         if result.status == SearchStatus.UNSOLVABLE:
-            return HStarSentinel.DEADEND
-        return HStarSentinel.UNKNOWN
+            return HeuristicSentinel.DEADEND
+        return HeuristicSentinel.UNKNOWN
