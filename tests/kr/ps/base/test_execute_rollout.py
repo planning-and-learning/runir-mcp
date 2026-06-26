@@ -1,6 +1,6 @@
 """The greedy rollout fallback turns a base `execute` downstream failure into a real multi-step
 trace ending at the stuck state (instead of the misleading single init vertex that
-`find_ground_solution` reports). See kr/ps/base/rollout.py."""
+`find_solution` reports). See kr/ps/base/rollout.py."""
 
 from __future__ import annotations
 
@@ -25,13 +25,37 @@ PROBLEM = """(define (problem p)
 """
 
 SKETCH = """(:sketch
-  (:features
-    (:numerical (:symbol na) (:description "count a") (:expression (n_count (c_atomic_state "a"))))
-    (:numerical (:symbol nb) (:description "count b") (:expression (n_count (c_atomic_state "b"))))
-    (:numerical (:symbol nc) (:description "count c") (:expression (n_count (c_atomic_state "c")))))
-  (:rules
-    (:rule (:symbol setA) (:description "do a") (:expression (:conditions (:equal_zero na)) (:effects (:increases na))))
-    (:rule (:symbol setB) (:description "do b") (:expression (:conditions (:greater_zero na)) (:effects (:increases nb))))))
+    (:features
+        (:numerical
+            (:symbol na)
+            (:expression (n_count (c_atomic_state "a")))
+        )
+        (:numerical
+            (:symbol nb)
+            (:expression (n_count (c_atomic_state "b")))
+        )
+        (:numerical
+            (:symbol nc)
+            (:expression (n_count (c_atomic_state "c")))
+        )
+    )
+    (:rules
+        (:rule
+            (:symbol setA)
+            (:expression
+                (:conditions (equal_zero na))
+                (:effects (increases na))
+            )
+        )
+        (:rule
+            (:symbol setB)
+            (:expression
+                (:conditions (greater_zero na))
+                (:effects (increases nb))
+            )
+        )
+    )
+)
 """
 
 
@@ -94,8 +118,8 @@ def test_classifier_flags_state_as_unsolvable(tmp_path):
     domain, problem, sketch = _write_task(tmp_path)
     classifier = tmp_path / "clf.txt"
     classifier.write_text(
-        '(:classifier (:symbol c0) (:description "") (:features '
-        '(:boolean (:symbol any) (:description "") (:expression (b_nonempty (c_top))))) '
+        '(:classifier (:symbol c0) (:features '
+        '(:boolean (:symbol any) (:expression (b_nonempty (c_top))))) '
         "(:expression (or (and any))))\n",
         encoding="utf-8",
     )

@@ -39,6 +39,7 @@ def witness_state(
     )
     return WitnessState(
         state=int(state["state_index"]),
+        hstar=state.get("hstar", ""),
         features=state.get("feature_values", {}),
         fluent=tuple(state.get("fluent_facts", ())),
         derived=tuple(state.get("derived_atoms", ())),

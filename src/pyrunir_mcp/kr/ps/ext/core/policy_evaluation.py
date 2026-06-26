@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions as GroundPolicySearchOptions, ModuleProgram as Policy, find_ground_solution
+from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions as PolicySearchOptions, ModuleProgram as Policy, find_ground_solution
 
 from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext
 from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure
@@ -10,10 +10,10 @@ from pyrunir_mcp.kr.ps.status import is_success_status
 def execute_policy_on_tasks(
     policy: Policy,
     execute_tasks: list[LoadedSearchContext],
-    options: GroundPolicySearchOptions | None = None,
+    options: PolicySearchOptions | None = None,
 ) -> ExecutionFailure | None:
     num_tasks = len(execute_tasks)
-    search_options = options or GroundPolicySearchOptions()
+    search_options = options or PolicySearchOptions()
 
     for index, task in enumerate(execute_tasks, start=1):
         result = find_ground_solution(task.search_context, policy, search_options)

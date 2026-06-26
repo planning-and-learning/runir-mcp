@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pyrunir.kr.dl.ext import ConstructorRepository as ExtDLConstructorRepository
 from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtDLConstructorRepositoryFactory
-from pyrunir.kr.ps.ext import GroundModuleProgramProofResults as GroundPolicyProofResults
+from pyrunir.kr.ps.ext import GroundModuleProgramProofResults as PolicyProofResults
 from pyrunir.kr.ps.ext import Repository as PolicyRepository
 from pyrunir.kr.ps.ext import RepositoryFactory as PolicyRepositoryFactory
 from pypddl.formalism import ParserOptions
@@ -24,7 +24,7 @@ class ModuleProgramContext:
 @dataclass(frozen=True)
 class ExecutionFailure:
     task: LoadedSearchContext
-    result: GroundPolicyProofResults
+    result: PolicyProofResults
 
 
 def create_module_program_context(domain_path: Path) -> ModuleProgramContext:

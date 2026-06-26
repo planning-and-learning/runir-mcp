@@ -11,7 +11,7 @@ def test_prove_classifier_accepts_frozen_options(monkeypatch, tmp_path):
     classifier = tmp_path / "classifier.txt"
     output = tmp_path / "out"
     domain.write_text("(define (domain d))\n", encoding="utf-8")
-    classifier.write_text('(:classifier (:symbol c0) (:description "") (:features) (:expression (or)))\n', encoding="utf-8")
+    classifier.write_text('(:classifier (:symbol c0) (:features) (:expression (or)))\n', encoding="utf-8")
 
     descriptions = []
 

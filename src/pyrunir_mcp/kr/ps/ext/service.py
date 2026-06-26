@@ -14,12 +14,13 @@ from pytyr.formalism.planning import Parser
 from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.kr.ps.ext.rules import collect_features, intern_rules
-from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander
 from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.ext.schemas import ProveModuleProgramOptions
+from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.planning import load_grounded_search_context
+from pyrunir_mcp.planning import load_grounded_search_context, load_lifted_search_context
 from pyrunir_mcp.kr.ps.proof import build_proof_run, make_search_options
 
 TOOL_NAME = "runir.ps.ext.prove_module_program"
@@ -47,12 +48,14 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
 
     execution_context = ExecutionContext(options.num_threads)
     task = load_grounded_search_context(domain_path, problem_path, execution_context)
+    hstar_task = load_lifted_search_context(domain_path, problem_path, execution_context)
     result = prove_ground_solution(task.search_context, program, search_options)
 
     dicts = Dictionaries(ext=True)
     intern_rules(program, dicts)
 
-    evidence = state_evidence(features, include_facts=True)
+    hstar = HStarEvaluator(hstar_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
+    evidence = state_evidence(features, include_facts=True, hstar=hstar)
     return build_proof_run(
         tool=TOOL_NAME,
         output_dir=Path(options.output_dir).resolve(),
@@ -63,6 +66,8 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
             "num_threads": options.num_threads,
             "max_num_states": options.max_num_states,
             "max_time_seconds": options.max_time_seconds,
+            "hstar_max_num_states": options.hstar_max_num_states,
+            "hstar_max_time_seconds": options.hstar_max_time_seconds,
             "max_arity": options.max_arity,
             "max_open_state_counterexamples": options.max_open_state_counterexamples,
             "max_deadend_transition_counterexamples": options.max_deadend_transition_counterexamples,

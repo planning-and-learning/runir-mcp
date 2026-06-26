@@ -20,6 +20,7 @@ carries the resulting `mod`/`mem` per taken move (see `proof.witness_artifacts`)
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TypeAlias
 
 from pyrunir.datasets import GroundTaskSearchContext
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
@@ -40,8 +41,8 @@ from pyrunir_mcp.output.policy import Successor
 from pyrunir_mcp.output.proof_witness import successor as build_successor
 
 # Expand the deduped trace/cycle vertices of a proof graph into their 1-step successor frontier.
-ProofGraph = GroundSketchProofGraph | GroundModuleProgramProofGraph
-FrontierExpander = Callable[[ProofGraph, list[int]], list[Successor]]
+ProofGraph: TypeAlias = GroundSketchProofGraph | GroundModuleProgramProofGraph
+FrontierExpander: TypeAlias = Callable[[ProofGraph, list[int]], list[Successor]]
 
 
 def _format_ground_action(action: GroundAction) -> str:
@@ -170,3 +171,4 @@ def make_ext_frontier_expander(
         return successors
 
     return expand
+

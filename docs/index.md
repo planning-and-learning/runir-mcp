@@ -53,7 +53,7 @@ relative artifact filenames present:
   "status": "CYCLE",
   "seed": 0,
   "problem": "p01.pddl",
-  "source": "find_ground_solution",
+  "source": "find_solution",
   "files": {"witness": "witness.psv", "trace": "trace.psv", "successors": "successors.psv"}
 }
 ```

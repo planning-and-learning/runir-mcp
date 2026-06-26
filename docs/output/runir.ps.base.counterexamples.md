@@ -17,9 +17,10 @@ While we are still settling on the best representation, all three are emitted so
 - Cells never contain newlines; multi-line action strings are reduced to their first line.
 - **Header lines** carry scalar metadata as `@key value`, one per line, before any table. The value is the opaque remainder of the line. Each tool adds its own keys (e.g. `execute_policy` adds `@seed`).
 - Boolean values render as `T`/`F`, numeric values as integers.
+- The fixed `hstar` state column is not a feature alias. It is the length, in number of actions, of a shortest plan from that state to the goal, computed by converting the reported state into the lifted task and running A* guided by LM-cut. `inf` means the state is proven dead (no plan exists). An empty `hstar` cell means the computation was inconclusive because its timeout or state budget was reached; it must not be read as a deadend.
 - An empty optional value renders as an empty cell.
 - **Interning via run-global dictionaries.** Features, rules, actions, and atoms recur across every trace and witness in a run (these tools run a single problem, so the ground actions/atoms are shared too). Each is listed **once per run** in a dictionary file under `dicts/` and referenced everywhere by a short alias `<prefix><K>`. This bounds each value to one full occurrence per run, independent of trace count, trace length, or symbol size:
-  - **Features → `fK`** — `features.*` (`id|symbol`; often long DL expressions). Used as `[state]`/`[states]` columns (`id|flags|f0|f1|…`) and as `delta` keys (`fK:before>after`).
+  - **Features → `fK`** — `features.*` (`id|symbol`; often long DL expressions). Used as `[state]`/`[states]` feature columns after the fixed `hstar` column (`id|flags|hstar|f0|f1|…`) and as `delta` keys (`fK:before>after`).
   - **Rules → `rK`** — `rules.*` (`id|symbol`). Used in the `[transitions]` `rule` column.
   - **Actions → `aK`** — `actions.*` (`id|action`). Used in the `[transitions]` `action` column.
   - **Atoms → `pK`** — `atoms.*` (`id|kind|atom`, `kind` is `fluent`, `derived`, or `static`). Fluent/derived atoms are listed per state in `[facts]` as a comma-separated `pK` list. `static` atoms hold in every state, so they appear once in `atoms.*` and are never repeated in `[facts]`.
@@ -74,8 +75,8 @@ Files `failures/<id>/witness.{psv,md,json}` — the witness, a single state or a
 
 ```text
 [state]
-id|flags|f0|f1|f2
-s42|WITNESS|3|0|F
+id|flags|hstar|f0|f1|f2
+s42|WITNESS|7|3|0|F
 
 [facts]
 state|atoms
@@ -91,9 +92,9 @@ cycle_state_indices|s1,s2,s1
 cycle_transition_steps|0,1
 
 [states]
-id|flags|f0|f1|f2
-s1|CYCLE|2|1|F
-s2|CYCLE|2|0|F
+id|flags|hstar|f0|f1|f2
+s1|CYCLE|inf|2|1|F
+s2|CYCLE|inf|2|0|F
 
 [transitions]
 step|source|target|rule|action|delta
@@ -118,10 +119,10 @@ Files `failures/<id>/trace.{psv,md,json}` — the path from the initial state to
 @problem p01.pddl
 
 [states]
-id|flags|f0|f1|f2
-s0|INIT|3|0|F
-s1||2|1|F
-s2|CYCLE|2|0|F
+id|flags|hstar|f0|f1|f2
+s0|INIT|2|3|0|F
+s1||1|2|1|F
+s2|CYCLE|inf|2|0|F
 
 [transitions]
 step|source|target|rule|action|delta
@@ -155,10 +156,10 @@ s0|a1|s1||GOAL|f0:2>1 f2:F>T
 s0|a2|s2|r1||f1:0>1
 
 [states]
-id|flags|f0|f1|f2
-s0||2|1|F
-s1|GOAL|1|0|T
-s2||2|0|F
+id|flags|hstar|f0|f1|f2
+s0||2|2|1|F
+s1|GOAL|0|1|0|T
+s2|||2|0|F
 
 [facts]
 state|atoms
@@ -167,7 +168,7 @@ s1|p3
 s2|p0
 ```
 
-Here move `a1` reaches a goal but has an empty `rule` — the missing guidance — while `a2` is the only move a rule (`r1`) selects. The full 1-step frontier is always emitted (never truncated — a missing move is exactly what this artifact is for). `[states]` carries the full feature vector of each successor (the absolute values behind each `delta`) and `[facts]` its `fluent`/`derived` atoms — the same `[states]`/`[facts]` schema as the counterexample and trace; a `GOAL` flag marks successors that satisfy the goal (`DEADEND` is not computed for off-graph successors).
+Here move `a1` reaches a goal but has an empty `rule` — the missing guidance — while `a2` is the only move a rule (`r1`) selects. The full 1-step frontier is always emitted (never truncated — a missing move is exactly what this artifact is for). `[states]` carries `hstar` plus the full feature vector of each successor (the absolute values behind each `delta`) and `[facts]` its `fluent`/`derived` atoms — the same `[states]`/`[facts]` schema as the counterexample and trace; a `GOAL` flag marks successors that satisfy the goal; `hstar=inf` is the deadend signal for any successor whose h* computation proves no plan exists.
 
 ## The same tables in Markdown and JSON
 
@@ -197,14 +198,14 @@ In the `.json` file the whole sectioned document is one object with the header i
 
 | Section | Columns | Notes |
 |---|---|---|
-| `[state]` | `id\|flags\|f0\|f1\|…` | Single witness state; `id` is the planning-state id `sK`; one `fK` feature column (alias order from `features.*`). |
-| `[states]` | `id\|flags\|f0\|f1\|…` | Feature vectors, wide; `id` is `sK`; one `fK` feature column (alias order from `features.*`). |
+| `[state]` | `id\|flags\|hstar\|f0\|f1\|…` | Single witness state; `id` is the planning-state id `sK`; `hstar` is shortest remaining plan length, `inf` for proven deadends, empty if inconclusive; one `fK` feature column (alias order from `features.*`). |
+| `[states]` | `id\|flags\|hstar\|f0\|f1\|…` | State annotations and feature vectors, wide; `id` is `sK`; `hstar` follows the same semantics as `[state]`; one `fK` feature column (alias order from `features.*`). |
 | `[transitions]` | `step\|source\|target\|rule\|action\|delta` | `source`/`target` are state ids (`sK`); `rule` is `rK`, `action` is `aK`; `delta` is space-separated `fK:before>after`, changed features only. |
 | `[facts]` | `state\|atoms` | Keyed by state id `sK`; `atoms` is a comma-separated `pK` list referencing `atoms.*`; lists only the per-state `fluent`/`derived` atoms. `static` atoms hold everywhere and are not repeated here. |
 | `[cycle]` | `key\|value` | Cycle descriptor: state-id path (`sK`) and transition steps. |
 | `[successors]` | `source\|action\|target\|rule\|flags\|delta` | 1-step successor frontier branching from `source` (`sK`), expanded with the planning successor generator for every state along the trace/cycle. `rule` is the sketch rule that selects the move, empty when none does (the gap). |
 
-All `fK`/`rK`/`aK`/`pK` aliases resolve against the run-global [dictionaries](#dictionaries).
+All `fK`/`rK`/`aK`/`pK` aliases resolve against the run-global [dictionaries](#dictionaries). `hstar` is a literal value and is not interned.
 
 The `flags` column holds a comma-separated set of state markers, empty when nothing notable applies (an unremarkable, alive state) or the status was not evaluated. `GOAL`/`DEADEND` are the status exceptions worth flagging:
 

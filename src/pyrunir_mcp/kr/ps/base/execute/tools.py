@@ -34,6 +34,8 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         max_arity: int = 0,
         max_num_states: int | None = None,
         max_time_seconds: float | None = None,
+        hstar_max_num_states: int = 100_000,
+        hstar_max_time_seconds: float = 3.0,
     ) -> dict:
         """Execute a base Runir sketch policy and write traces/manifests.
 
@@ -55,6 +57,8 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
                 max_arity=max_arity,
                 max_num_states=max_num_states,
                 max_time_seconds=max_time_seconds,
+                hstar_max_num_states=hstar_max_num_states,
+                hstar_max_time_seconds=hstar_max_time_seconds,
                 dump_dir=resolved_output_dir,
             )
         )

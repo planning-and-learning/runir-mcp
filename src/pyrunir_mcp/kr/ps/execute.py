@@ -18,7 +18,7 @@ from typing import Protocol, TypeVar
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.frontier import FrontierExpander
-from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, failure_items, witness_artifacts
+from pyrunir_mcp.kr.ps.proof import CounterexampleKind, ProofResult, StateEvidence, failure_items, witness_artifacts
 from pyrunir_mcp.kr.ps.status import is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.writer import Artifact, resolve_formats, write_run
@@ -28,7 +28,19 @@ from pyrunir_mcp.tables import Document, Table
 # fall back to the default graph witness. Keyword args mirror what `witness_artifacts` consumes.
 RolloutFallback = Callable[..., tuple[Document, Document | None, Document | None] | None]
 
-SearchOptions = TypeVar("SearchOptions")
+class BrfsSearchOptions(Protocol):
+    random_seed: int
+    shuffle_labeled_succ_nodes: bool
+    max_num_states: int
+    max_time: timedelta
+
+
+class SearchOptions(Protocol):
+    brfs_options: BrfsSearchOptions
+    max_arity: int
+
+
+SearchOptionsT = TypeVar("SearchOptionsT", bound=SearchOptions)
 
 
 class Task(Protocol):
@@ -43,14 +55,14 @@ def rollout_seeds(num_rollouts: int, random_seed: int, random_seed_start: int) -
 
 
 def configure_search_options(
-    search_options: SearchOptions,
+    search_options: SearchOptionsT,
     *,
     random_seed: int,
     shuffle_labeled_succ_nodes: bool,
     max_arity: int,
     max_num_states: int | None,
     max_time_seconds: float | None,
-) -> SearchOptions:
+) -> SearchOptionsT:
     """Apply the shared base/ext greedy-execution knobs onto a family-specific options object
     (both expose `brfs_options` and `max_arity`)."""
     search_options.brfs_options.random_seed = random_seed
@@ -63,7 +75,7 @@ def configure_search_options(
     return search_options
 
 
-def _result_failure(result: ProofResult) -> tuple[str | None, int | list[int] | None]:
+def _result_failure(result: ProofResult) -> tuple[CounterexampleKind | str | None, int | list[int] | None]:
     """The failure category and graph witness for a rollout result (None when it succeeded)."""
     items = failure_items(result, max_open_state_counterexamples=1, max_deadend_transition_counterexamples=1)
     if items:
@@ -139,7 +151,8 @@ def run_execute(
         for index, task in enumerate(tasks, start=1):
             result = solve(task, seed)
             print(f"[seed {seed}] [{index}/{len(tasks)}] {task.problem_path.name}: {result.status.name}", flush=True)
-            category, witness = _result_failure(result)
+            kind, witness = _result_failure(result)
+            category = kind.value if isinstance(kind, CounterexampleKind) else kind
             task_rows.append({"problem_file": task.problem_path.name, "status": result.status.name, "failure_category": category, "seed": seed})
             if not is_success_status(result.status):
                 seed_failed, seed_category = True, category
@@ -157,16 +170,19 @@ def run_execute(
         names: dict[str, str | None] = {"witness": None, "trace": None, "successors": None}
         if witness is not None:
             header = [("tool", tool), ("id", failure_id), ("category", category), ("status", result.status.name), ("problem", problem), ("seed", str(seed))]
-            # Base greedy `find_ground_solution` reports a single init vertex on a downstream failure
+            # Base greedy `find_solution` reports a single init vertex on a downstream failure
             # (the committed prefix is discarded upstream). When that happens, roll the policy forward
             # in Python to surface the real stuck state instead of the misleading init witness.
             docs: tuple[Document, Document | None, Document | None] | None = None
-            if rollout_fallback is not None and category == "open_state" and result.graph.get_num_vertices() == 1:
+            kind = CounterexampleKind(category) if category in CounterexampleKind._value2member_map_ else None
+            if rollout_fallback is not None and kind == CounterexampleKind.OPEN_STATE and result.graph.get_num_vertices() == 1:
                 docs = rollout_fallback(task, header=header, evidence=evidence, feature_symbols=feature_symbols, dicts=dicts)
             if docs is None:
+                if kind is None:
+                    raise RuntimeError(f"Cannot build witness artifacts for non-counterexample category: {category}")
                 expander = expander_factory(task) if expander_factory is not None else None
                 docs = witness_artifacts(
-                    result.graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
+                    result.graph, kind, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
                 )
             witness_doc, trace, successors = docs
             names["witness"] = f"failures/{failure_id}/witness"
@@ -182,12 +198,12 @@ def run_execute(
     artifacts["failures"] = Table(
         name="failures",
         columns=["id", "category", "status", "seed", "problem", "source", "trace", "witness", "successors"],
-        rows=[[r.id, r.category, r.status, r.seed, r.problem, "find_ground_solution", _relative(r.trace), _relative(r.witness), _relative(r.successors)] for r in reps],
+        rows=[[r.id, r.category, r.status, r.seed, r.problem, "find_solution", _relative(r.trace), _relative(r.witness), _relative(r.successors)] for r in reps],
     )
     artifacts["summary"] = Table(name="summary", columns=["id", "category", "status", "seed", "problem"], rows=[[r.id, r.category, r.status, r.seed, r.problem] for r in reps])
 
     paths = write_run(output_dir, {**{f"dicts/{name}": table for name, table in dicts.tables().items()}, **artifacts})
-    meta_paths = {r.id: _write_failure_meta(output_dir, r, "find_ground_solution") for r in reps}
+    meta_paths = {r.id: _write_failure_meta(output_dir, r, "find_solution") for r in reps}
 
     manifest = {
         "tool": tool,

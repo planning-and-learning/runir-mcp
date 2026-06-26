@@ -13,11 +13,15 @@ Proves an extended module program on one grounded planning task.
 | `num_threads` | integer | `1` | Grounding/loading worker count. |
 | `max_num_states` | integer | `100000` | Proof search state budget. |
 | `max_time_seconds` | number | `5.0` | Proof wall-clock budget in seconds. |
+| `hstar_max_num_states` | integer | `100000` | Per-state A*+LM-cut state budget for computing `hstar`. |
+| `hstar_max_time_seconds` | number | `3.0` | Per-state A*+LM-cut wall-clock budget for computing `hstar`. |
 | `max_open_state_counterexamples` | integer | `1` | Maximum number of `open_state` counterexamples to write. |
 | `max_deadend_transition_counterexamples` | integer | `1` | Maximum number of `deadend_transition` counterexamples to write. |
 | `max_arity` | integer | `0` | Maximum module-program arity. |
 
 ## Output
+
+`hstar` values in witness, trace, and successor state rows are computed by converting each reported state into the lifted task and running A* guided by LM-cut. The value is shortest remaining plan length in number of actions, not action cost. `inf` means the state is proven dead; an empty cell means the h* computation exhausted `hstar_max_time_seconds` or `hstar_max_num_states` before proving a value.
 
 Counterexample output is bounded by category: at most `max_open_state_counterexamples` open states, at most `max_deadend_transition_counterexamples` deadend transitions, and exactly one cycle counterexample if a cycle exists. Cycle witnesses are not counted against the open/deadend bounds.
 
@@ -28,7 +32,7 @@ The dictionaries (under `dicts/`) and the per-failure witness, trace, and succes
 ```text
 output_dir/
   .pyrunir-mcp-output
-  manifest.json                          # run metadata: config, budgets (JSON only)
+  manifest.json                          # run metadata: config, proof budgets, hstar budgets (JSON only)
   summary.{psv,md,json}                  # run index/counts table
   dicts/
     features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol

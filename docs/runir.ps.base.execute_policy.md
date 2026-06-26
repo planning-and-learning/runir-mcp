@@ -18,17 +18,19 @@ Executes a base sketch policy on one grounded planning task. This is the cheap v
 | `max_arity` | integer | `0` | Maximum sketch arity. |
 | `max_num_states` | integer or null | `null` | Per-subgoal state budget. |
 | `max_time_seconds` | number or null | `null` | Per-subgoal wall-clock budget in seconds. |
+| `hstar_max_num_states` | integer | `100000` | Per-state A*+LM-cut state budget for computing `hstar`. |
+| `hstar_max_time_seconds` | number | `3.0` | Per-state A*+LM-cut wall-clock budget for computing `hstar`. |
 
 ## Output
 
-Returns normalized execution output with one task entry per rollout seed and representative failure entries. State rows always carry feature values and (for witness/cycle states) `fluent`/`derived` facts. Transition rows always carry concrete action labels and the matched rule symbol. The on-disk encoding of the dictionaries, counterexamples, traces, and successors is the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md).
+Returns normalized execution output with one task entry per rollout seed and representative failure entries. `hstar` values in witness, trace, and successor state rows are computed by converting each reported state into the lifted task and running A* guided by LM-cut; the value is shortest remaining plan length in number of actions, not action cost. `inf` means the state is proven dead; an empty cell means the h* computation exhausted `hstar_max_time_seconds` or `hstar_max_num_states` before proving a value. State rows always carry feature values and (for witness/cycle states) `fluent`/`derived` facts. Transition rows always carry concrete action labels and the matched rule symbol. The on-disk encoding of the dictionaries, counterexamples, traces, and successors is the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md).
 
 ## Output Directory
 
 ```text
 output_dir/
   .pyrunir-mcp-output
-  manifest.json                          # run metadata: config, command, budgets (JSON only)
+  manifest.json                          # run metadata: config, command, rollout budgets, hstar budgets (JSON only)
   summary.{psv,md,json}                  # run index/counts table
   failures.{psv,md,json}                 # one row per representative failure (index)
   dicts/
@@ -52,7 +54,7 @@ Everything for one failure is local to `failures/<id>/`; the run-global alias di
 
 The alias dictionaries under `dicts/` (`features`/`rules`/`actions`/`atoms`) and the per-failure `witness`/`trace`/`successors` files use the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md) — PSV/Markdown/JSON renderings, alias dictionaries, sectioned witness files, the section reference, and the flag vocabulary. This tool's specifics:
 
-- `source` is `find_ground_solution`; `seed` is the rollout seed.
+- `source` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 
 It also writes the `failures` index below (execute-specific). Each artifact is written in all three formats (`.psv`, `.md`, `.json`) during experimentation, controlled by a `formats` option that later narrows to `["psv"]`. `summary.{psv,md,json}` is the run index/counts table; `manifest.json` holds run metadata (config, command, budgets) and stays JSON-only per the project output policy.
@@ -68,12 +70,12 @@ Files `failures.psv` / `failures.md` / `failures.json` — one row per represent
 | `status` | Execution status that produced the failure (e.g. `CYCLE`). |
 | `seed` | Rollout seed. |
 | `problem` | Problem file path. |
-| `source` | Counterexample source (e.g. `find_ground_solution`). |
+| `source` | Counterexample source (e.g. `find_solution`). |
 | `trace` | Relative path to the trace file, or empty if none. |
 | `witness` | Relative path to the witness file. |
 | `successors` | Relative path to the successors file, or empty if none. |
 
 ```text
 id|category|status|seed|problem|source|trace|witness|successors
-cycle-001|cycle|CYCLE|0|p01.pddl|find_ground_solution|failures/cycle-001/trace.psv|failures/cycle-001/witness.psv|failures/cycle-001/successors.psv
+cycle-001|cycle|CYCLE|0|p01.pddl|find_solution|failures/cycle-001/trace.psv|failures/cycle-001/witness.psv|failures/cycle-001/successors.psv
 ```

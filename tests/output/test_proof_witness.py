@@ -49,7 +49,7 @@ def test_open_state_counterexample_document():
         ext=False,
     )
     psv = render_document(doc, "psv")
-    assert "[state]\nid|flags|f0|f1\ns11|OPEN,WITNESS|3|F" in psv
+    assert "[state]\nid|flags|hstar|f0|f1\ns11|OPEN,WITNESS||3|F" in psv
     assert "[facts]\nstate|atoms\ns11|p0" in psv
 
 
@@ -87,3 +87,4 @@ def test_successor_targets_and_gap():
     psv = render_document(doc, "psv")
     # goal-reaching successor with an empty rule cell = the missing-guidance gap
     assert "s10|a0|s20||GOAL|f0:3>2 f1:F>T" in psv
+    assert "[states]\nid|flags|hstar|f0|f1" in psv

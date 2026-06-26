@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pyrunir.kr.ps.base import (
-    GroundSketchSearchOptions as GroundPolicySearchOptions,
+    GroundSketchSearchOptions as PolicySearchOptions,
     Sketch as Policy,
     find_ground_solution,
 )
@@ -20,6 +20,7 @@ from pyrunir_mcp.kr.ps.base.core.policy_io import parse_policy_description, read
 from pyrunir_mcp.kr.ps.base.rollout import rollout_artifacts
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds, run_execute
 from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions
 from pyrunir_mcp.kr.ps.frontier import make_frontier_expander
 from pyrunir_mcp.output.dictionaries import Dictionaries
 
@@ -41,6 +42,8 @@ class ExecutePolicyOptions:
     # Per-subgoal sub-search budget for greedy execution. None => library default.
     max_num_states: int | None = None
     max_time_seconds: float | None = None
+    hstar_max_num_states: int = 100_000
+    hstar_max_time_seconds: float = 3.0
     dump_dir: Path | None = None
 
 
@@ -60,9 +63,9 @@ def _file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def create_policy_search_options(options: ExecutePolicyOptions, random_seed: int | None = None) -> GroundPolicySearchOptions:
+def create_policy_search_options(options: ExecutePolicyOptions, random_seed: int | None = None) -> PolicySearchOptions:
     return configure_search_options(
-        GroundPolicySearchOptions(),
+        PolicySearchOptions(),
         random_seed=options.random_seed if random_seed is None else random_seed,
         shuffle_labeled_succ_nodes=options.shuffle_labeled_succ_nodes,
         max_arity=options.max_arity,
@@ -78,13 +81,16 @@ def _manifest_metadata(options: ExecutePolicyOptions) -> JsonObject:
         "sketch_file": str(options.sketch_file),
         "sketch_sha256": _file_sha256(options.sketch_file),
         "classifier_file": str(options.classifier_file) if options.classifier_file else None,
+        "hstar_max_num_states": options.hstar_max_num_states,
+        "hstar_max_time_seconds": options.hstar_max_time_seconds,
     }
 
 
 def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, context: ExecuteContext) -> ExecutionFailure | None:
     assert options.dump_dir is not None
     features = collect_features(policy)
-    evidence = state_evidence(features, include_facts=True)
+    hstar = HStarEvaluator(context.lifted_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
+    evidence = state_evidence(features, include_facts=True, hstar=hstar)
     dicts = Dictionaries(ext=False)
     intern_rules(policy, dicts)
     # Built once over the SAME parse/repositories as the grounding (see create_execute_context), so the
@@ -103,7 +109,7 @@ def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, co
         manifest_metadata=_manifest_metadata(options),
         expander_factory=lambda task: make_frontier_expander(task.search_context, policy, evidence),
         rollout_fallback=lambda task, *, header, evidence, feature_symbols, dicts: rollout_artifacts(
-            task.search_context, policy, features, classifier, evidence,
+            context.task.search_context, policy, features, classifier, evidence,
             feature_symbols=feature_symbols, dicts=dicts, header=header,
         ),
     )

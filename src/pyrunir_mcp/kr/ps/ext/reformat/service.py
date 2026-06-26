@@ -33,11 +33,10 @@ class ReformatPolicyResult:
 
 EMPTY_MODULE_PROGRAM = """\
 (:program
-    (:entry "empty")
+    (:entry empty)
     (:module
         (:symbol empty)
         (:arguments)
-        (:description "")
         (:registers)
         (:entry m0)
         (:memory m0)

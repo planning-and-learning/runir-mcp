@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pyrunir.kr.ps.ext import (
-    GroundModuleProgramSearchOptions as GroundPolicySearchOptions,
+    GroundModuleProgramSearchOptions as PolicySearchOptions,
     ModuleProgram as Policy,
     find_ground_solution,
 )
@@ -13,12 +13,18 @@ from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds, run_execute
-from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext, load_grounded_search_context
+from pyrunir_mcp.kr.ps.ext.core.data_loader import (
+    LoadedLiftedSearchContext,
+    LoadedSearchContext,
+    load_grounded_search_context,
+    load_lifted_search_context,
+)
 from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure, create_module_program_context
 from pyrunir_mcp.kr.ps.ext.core.policy_evaluation import execute_policy_on_tasks
 from pyrunir_mcp.kr.ps.ext.core.policy_io import parse_module_program_description, read_module_program_description
 from pyrunir_mcp.kr.ps.ext.rules import collect_features, intern_rules
 from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions
 from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander
 from pyrunir_mcp.output.dictionaries import Dictionaries
 
@@ -36,6 +42,8 @@ class ExecutePolicyOptions:
     max_arity: int = 0
     max_num_states: int | None = None
     max_time_seconds: float | None = None
+    hstar_max_num_states: int = 100_000
+    hstar_max_time_seconds: float = 3.0
     dump_dir: Path | None = None
 
 
@@ -55,9 +63,9 @@ def _module_program_sha256(module_program_file: Path) -> str:
     return hashlib.sha256(module_program_file.read_bytes()).hexdigest()
 
 
-def create_policy_search_options(options: ExecutePolicyOptions, random_seed: int | None = None) -> GroundPolicySearchOptions:
+def create_policy_search_options(options: ExecutePolicyOptions, random_seed: int | None = None) -> PolicySearchOptions:
     return configure_search_options(
-        GroundPolicySearchOptions(),
+        PolicySearchOptions(),
         random_seed=options.random_seed if random_seed is None else random_seed,
         shuffle_labeled_succ_nodes=options.shuffle_labeled_succ_nodes,
         max_arity=options.max_arity,
@@ -72,15 +80,20 @@ def _manifest_metadata(options: ExecutePolicyOptions) -> JsonObject:
         "problem_file": str(options.problem_file),
         "module_program_file": str(options.module_program_file),
         "module_program_sha256": _module_program_sha256(options.module_program_file),
+        "hstar_max_num_states": options.hstar_max_num_states,
+        "hstar_max_time_seconds": options.hstar_max_time_seconds,
     }
 
 
-def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, tasks: list[LoadedSearchContext]) -> ExecutionFailure | None:
+def _execute_policy_with_dumps(
+    options: ExecutePolicyOptions, policy: Policy, tasks: list[LoadedSearchContext], hstar_task: LoadedLiftedSearchContext
+) -> ExecutionFailure | None:
     assert options.dump_dir is not None
     features = collect_features(policy)
     dicts = Dictionaries(ext=True)
     intern_rules(policy, dicts)
-    evidence = state_evidence(features, include_facts=True)
+    hstar = HStarEvaluator(hstar_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
+    evidence = state_evidence(features, include_facts=True, hstar=hstar)
     failing = run_execute(
         tool="execute_module_program",
         ext=True,
@@ -115,5 +128,6 @@ def execute_policy(options: ExecutePolicyOptions) -> ExecutePolicyResult:
     if options.dump_dir is None:
         failure = _execute_policy_rollouts_without_dumps(options, policy, tasks)
     else:
-        failure = _execute_policy_with_dumps(options, policy, tasks)
+        hstar_task = load_lifted_search_context(options.domain_file, options.problem_file, execution_context)
+        failure = _execute_policy_with_dumps(options, policy, tasks, hstar_task)
     return ExecutePolicyResult(policy=policy, tasks=tasks, failure=failure, dump_dir=options.dump_dir)

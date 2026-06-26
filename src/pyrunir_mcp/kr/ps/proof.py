@@ -1,26 +1,22 @@
 from __future__ import annotations
 
+from collections import deque
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
-from collections.abc import Callable
-from typing import Literal, TypeAlias, cast
-from collections import deque
+from enum import StrEnum
+from typing import TypeAlias, cast
 
 from pypddl.formalism import ParserOptions
 from pyrunir.datasets import (
     GroundAnnotatedStateGraphVertexLabel,
     GroundStateGraphVertexLabel,
-    LiftedAnnotatedStateGraphVertexLabel,
-    LiftedStateGraphVertexLabel,
     StateGraphEdgeLabel,
 )
 from pyrunir.kr.ps.base import (
     GroundSketchProofGraph,
     GroundSketchProofResults,
     GroundSketchSearchOptions,
-    LiftedSketchProofGraph,
-    LiftedSketchProofResults,
-    LiftedSketchSearchOptions,
     Rule as SketchRule,
     SketchProofEdgeLabel,
     SketchProofStatus,
@@ -30,16 +26,12 @@ from pyrunir.kr.ps.ext import (
     GroundModuleProgramProofVertexLabel,
     GroundModuleProgramProofResults,
     GroundModuleProgramSearchOptions,
-    LiftedModuleProgramProofGraph,
-    LiftedModuleProgramProofVertexLabel,
-    LiftedModuleProgramProofResults,
-    LiftedModuleProgramSearchOptions,
     ModuleProgramProofEdgeLabel,
     ModuleProgramProofStatus,
     RuleVariant as ModuleRule,
 )
 from pytyr.formalism.planning import GroundAction, Parser, PlanningDomain
-from pytyr.planning.ground import State
+from pytyr.planning.ground import State as GroundState
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.frontier import FrontierExpander
@@ -59,37 +51,23 @@ from pyrunir_mcp.tables import Document
 
 
 ProofEdgeLabel: TypeAlias = StateGraphEdgeLabel | SketchProofEdgeLabel | ModuleProgramProofEdgeLabel
-ProofGraph: TypeAlias = (
-    GroundSketchProofGraph
-    | LiftedSketchProofGraph
-    | GroundModuleProgramProofGraph
-    | LiftedModuleProgramProofGraph
-)
-ProofVertexLabel: TypeAlias = (
-    GroundAnnotatedStateGraphVertexLabel
-    | LiftedAnnotatedStateGraphVertexLabel
-    | GroundModuleProgramProofVertexLabel
-    | LiftedModuleProgramProofVertexLabel
-    | GroundStateGraphVertexLabel
-    | LiftedStateGraphVertexLabel
-)
-ProofResult: TypeAlias = (
-    GroundSketchProofResults
-    | LiftedSketchProofResults
-    | GroundModuleProgramProofResults
-    | LiftedModuleProgramProofResults
-)
+ProofGraph: TypeAlias = GroundSketchProofGraph | GroundModuleProgramProofGraph
+ProofVertexLabel: TypeAlias = GroundAnnotatedStateGraphVertexLabel | GroundModuleProgramProofVertexLabel | GroundStateGraphVertexLabel
+ProofResult: TypeAlias = GroundSketchProofResults | GroundModuleProgramProofResults
 ProofRule: TypeAlias = SketchRule | ModuleRule
 ProofStatus: TypeAlias = SketchProofStatus | ModuleProgramProofStatus
-ProofSearchOptions: TypeAlias = (
-    GroundSketchSearchOptions
-    | LiftedSketchSearchOptions
-    | GroundModuleProgramSearchOptions
-    | LiftedModuleProgramSearchOptions
-)
+ProofSearchOptions: TypeAlias = GroundSketchSearchOptions | GroundModuleProgramSearchOptions
+
+
+class CounterexampleKind(StrEnum):
+    CYCLE = "cycle"
+    OPEN_STATE = "open_state"
+    DEADEND_TRANSITION = "deadend_transition"
+
+
 FailureWitness: TypeAlias = int | list[int]
-FailureItem: TypeAlias = tuple[Literal["cycle"], list[int]] | tuple[Literal["open_state", "deadend_transition"], int]
-StateEvidence: TypeAlias = Callable[[State], JsonObject]
+FailureItem: TypeAlias = tuple[CounterexampleKind, FailureWitness]
+StateEvidence: TypeAlias = Callable[[GroundState], JsonObject]
 
 
 def task_name(task: LoadedSearchContext) -> str:
@@ -118,12 +96,12 @@ def failure_items(
 ) -> list[FailureItem]:
     items: list[FailureItem] = []
     if result.cycle:
-        items.append(("cycle", [int(vertex) for vertex in result.cycle]))
+        items.append((CounterexampleKind.CYCLE, [int(vertex) for vertex in result.cycle]))
     if max_open_state_counterexamples > 0:
-        items.extend(("open_state", int(vertex)) for vertex in result.open_states[:max_open_state_counterexamples])
+        items.extend((CounterexampleKind.OPEN_STATE, int(vertex)) for vertex in result.open_states[:max_open_state_counterexamples])
     if max_deadend_transition_counterexamples > 0:
         items.extend(
-            ("deadend_transition", int(edge))
+            (CounterexampleKind.DEADEND_TRANSITION, int(edge))
             for edge in result.deadend_transitions[:max_deadend_transition_counterexamples]
         )
     return items
@@ -139,11 +117,11 @@ def _out_edge_indices(graph: ProofGraph, vertex: int) -> list[int]:
 
 
 def _label_is_initial(label: ProofVertexLabel) -> bool:
-    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | LiftedAnnotatedStateGraphVertexLabel):
+    if isinstance(label, GroundAnnotatedStateGraphVertexLabel):
         return bool(label.is_initial)
-    if isinstance(label, GroundStateGraphVertexLabel | LiftedStateGraphVertexLabel):
+    if isinstance(label, GroundStateGraphVertexLabel):
         return bool(label.is_initial)
-    if isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
+    if isinstance(label, GroundModuleProgramProofVertexLabel):
         return bool(label.is_initial)
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
 
@@ -208,12 +186,12 @@ def _cycle_edges(graph: ProofGraph, vertices: list[int]) -> list[int]:
     return edges
 
 
-def _label_state(label: ProofVertexLabel) -> State:
-    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | LiftedAnnotatedStateGraphVertexLabel):
+def _label_state(label: ProofVertexLabel) -> GroundState:
+    if isinstance(label, GroundAnnotatedStateGraphVertexLabel):
         return label.state
-    if isinstance(label, GroundStateGraphVertexLabel | LiftedStateGraphVertexLabel):
+    if isinstance(label, GroundStateGraphVertexLabel):
         return label.state
-    if isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
+    if isinstance(label, GroundModuleProgramProofVertexLabel):
         return label.state
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
 
@@ -231,21 +209,21 @@ def state_summary(
     }
     if evidence is not None:
         out.update(evidence(state))
-    if isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
+    if isinstance(label, GroundModuleProgramProofVertexLabel):
         memory = label.memory_state
         memory_view = memory.value if hasattr(memory, "value") else memory
         out["memory_state"] = str(memory_view.get_name())
         out["module"] = str(label.module.get_name())
-    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | LiftedAnnotatedStateGraphVertexLabel):
+    if isinstance(label, GroundAnnotatedStateGraphVertexLabel):
         out["is_initial"] = bool(label.is_initial)
         out["is_goal"] = bool(label.is_goal)
         out["is_alive"] = bool(label.is_alive)
         out["is_unsolvable"] = bool(label.is_unsolvable)
         out["goal_distance"] = label.goal_distance
-    elif isinstance(label, GroundStateGraphVertexLabel | LiftedStateGraphVertexLabel):
+    elif isinstance(label, GroundStateGraphVertexLabel):
         out["is_initial"] = bool(label.is_initial)
         out["is_goal"] = bool(label.is_goal)
-    elif isinstance(label, GroundModuleProgramProofVertexLabel | LiftedModuleProgramProofVertexLabel):
+    elif isinstance(label, GroundModuleProgramProofVertexLabel):
         out["is_initial"] = bool(label.is_initial)
         out["is_goal"] = bool(label.is_goal)
     return out
@@ -369,7 +347,7 @@ def _expand_frontier(
 
 def witness_artifacts(
     graph: ProofGraph,
-    category: str,
+    kind: CounterexampleKind,
     witness: FailureWitness,
     evidence: StateEvidence | None,
     *,
@@ -380,7 +358,7 @@ def witness_artifacts(
     expander: FrontierExpander | None = None,
 ) -> tuple[Document, Document | None, Document | None]:
     """Return (counterexample, trace | None, successors | None) documents for one witness."""
-    if category == "cycle":
+    if kind == CounterexampleKind.CYCLE:
         vertices = [int(vertex) for vertex in witness]
         cycle_states = [witness_state(state_summary(graph, vertex, evidence), cycle=True) for vertex in vertices]
         cycle_edges = _cycle_edges(graph, vertices)
@@ -400,7 +378,7 @@ def witness_artifacts(
             trace_vertices=_vertices_for_edges(graph, path_edges) + vertices,
             graph_vertices=vertices, exclude=set(vertices),
         )
-    elif category == "deadend_transition":
+    elif kind == CounterexampleKind.DEADEND_TRANSITION:
         edge = int(witness)
         source_vertex, dead_vertex = int(graph.get_source(edge)), int(graph.get_target(edge))
         counterexample = counterexample_document(
@@ -416,7 +394,7 @@ def witness_artifacts(
             trace_vertices=_vertices_for_edges(graph, trace_edges) if trace_edges is not None else [source_vertex, dead_vertex],
             graph_vertices=[source_vertex], exclude=set(),
         )
-    else:  # open_state
+    else:  # CounterexampleKind.OPEN_STATE
         vertex = int(witness)
         counterexample = counterexample_document(
             header=header, feature_symbols=feature_symbols,
@@ -464,11 +442,12 @@ def build_proof_run(
     items: list[RunItem] = []
     if not result.is_successful():
         counts: dict[str, int] = {}
-        for category, witness in failure_items(
+        for kind, witness in failure_items(
             result,
             max_open_state_counterexamples=max_open_state_counterexamples,
             max_deadend_transition_counterexamples=max_deadend_transition_counterexamples,
         ):
+            category = kind.value
             counts[category] = counts.get(category, 0) + 1
             failure_id = f"{category}-{counts[category]:03d}"
             header = [
@@ -479,7 +458,7 @@ def build_proof_run(
                 ("problem", task_name(task)),
             ]
             witness_doc, trace, successors = witness_artifacts(
-                graph, category, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
+                graph, kind, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
             )
             names = {"witness": f"failures/{failure_id}/witness"}
             artifacts[names["witness"]] = witness_doc

@@ -22,11 +22,10 @@ PROBLEM = """(define (problem p)
 """
 
 EMPTY_PROGRAM = """(:program
-    (:entry "empty")
+    (:entry empty)
     (:module
         (:symbol empty)
         (:arguments)
-        (:description "")
         (:registers)
         (:entry m0)
         (:memory m0)
@@ -80,3 +79,87 @@ def test_execute_empty_module_program_emits_trace_and_open_frontier(tmp_path):
     assert all(row.split("|")[4] == "" and row.split("|")[5] == "" for row in successor_rows)  # mod, mem
     # successor states carry their atoms
     assert _section_rows(successors_text, "facts")
+
+
+PROGRAM_WITH_VARIANT_SYMBOL_RULES = """(:program
+    (:entry main)
+    (:module
+        (:symbol main)
+        (:arguments)
+        (:registers
+            (:concept r0)
+        )
+        (:entry source)
+        (:memory
+            source
+            target
+        )
+        (:features
+            (:numerical
+                (:symbol reachable-count)
+                (:expression (n_count (c_top)))
+            )
+        )
+        (:rules
+            (:rule
+                (:symbol load-edge)
+                        (:expression
+                    (:source-memory source)
+                    (:target-memory target)
+                    (:load
+                        (:conditions)
+                        (:concept (c_top))
+                        (:register
+                            (:concept r0)
+                        )
+                    )
+                )
+            )
+            (:rule
+                (:symbol sketch-edge)
+                        (:expression
+                    (:source-memory target)
+                    (:target-memory target)
+                    (:sketch
+                        (:conditions)
+                        (:effects)
+                    )
+                )
+            )
+        )
+    )
+)
+"""
+
+
+def test_ext_intern_rules_uses_rule_variant_symbols(tmp_path):
+    from pyrunir_mcp.kr.ps.ext.core.features import create_module_program_context
+    from pyrunir_mcp.kr.ps.ext.core.policy_io import parse_module_program_description
+    from pyyggdrasil.execution import ExecutionContext
+    from pyrunir_mcp.kr.ps.ext.core.data_loader import load_grounded_search_context
+    from pyrunir_mcp.kr.ps.ext.rules import collect_features, intern_rules
+    from pyrunir_mcp.kr.ps.feature_evidence import evaluate_features
+    from pyrunir_mcp.output.dictionaries import Dictionaries
+
+    domain = tmp_path / "domain.pddl"
+    domain.write_text(DOMAIN, encoding="utf-8")
+
+    context = create_module_program_context(domain)
+    program = parse_module_program_description(context, PROGRAM_WITH_VARIANT_SYMBOL_RULES)
+    dicts = Dictionaries(ext=True)
+
+    intern_rules(program, dicts)
+
+    assert dicts.rule_alias("load-edge") == "r0"
+    assert dicts.rule_alias("sketch-edge") == "r1"
+    assert dicts.tables()["rules"].rows == [
+        ["r0", "load-edge", "m0", "m1"],
+        ["r1", "sketch-edge", "m1", "m1"],
+    ]
+
+    problem = tmp_path / "p.pddl"
+    problem.write_text(PROBLEM, encoding="utf-8")
+    search_context = load_grounded_search_context(domain, problem, ExecutionContext(1)).search_context
+    state = search_context.state_repository.get_initial_state()
+
+    assert evaluate_features(state, collect_features(program))["reachable-count"] == 2

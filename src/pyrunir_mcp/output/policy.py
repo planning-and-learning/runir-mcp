@@ -23,6 +23,7 @@ class WitnessState:
     fluent: tuple[str, ...] = ()
     derived: tuple[str, ...] = ()
     flags: tuple[str, ...] = ()
+    hstar: JsonValue = ""
     vertex: int | None = None
     memory: tuple[str, str] | None = None  # (module, memory) for ext
 
@@ -146,20 +147,26 @@ def _memory_aliases(memory: tuple[str, str] | None, dicts: Dictionaries) -> tupl
     return module, dicts.memory(module, memory[1])
 
 
-def _state_row(state: WitnessState, dicts: Dictionaries, *, ext: bool, features: list[str]) -> list[JsonValue]:
+def _state_row(state: WitnessState, dicts: Dictionaries, *, ext: bool, features: list[str], include_hstar: bool) -> list[JsonValue]:
     values = [state.features.get(symbol) for symbol in features]
     if ext:
         module, memory = _memory_aliases(state.memory, dicts)
         vertex = _vertex_id(state.vertex) if state.vertex is not None else ""
-        return [vertex, _state_id(state.state), module, memory, _flags(state.flags), *values]
-    return [_state_id(state.state), _flags(state.flags), *values]
+        leading: list[JsonValue] = [vertex, _state_id(state.state), module, memory, _flags(state.flags)]
+    else:
+        leading = [_state_id(state.state), _flags(state.flags)]
+    if include_hstar:
+        leading.append(state.hstar)
+    return [*leading, *values]
 
 
-def _states_table(name: str, states: list[WitnessState], dicts: Dictionaries, *, ext: bool) -> Table:
+def _states_table(name: str, states: list[WitnessState], dicts: Dictionaries, *, ext: bool, include_hstar: bool) -> Table:
     features = dicts.feature_symbols()
     aliases = [f"f{index}" for index in range(len(features))]
     leading = ["vertex", "state", "module", "memory", "flags"] if ext else ["id", "flags"]
-    rows = [_state_row(state, dicts, ext=ext, features=features) for state in states]
+    if include_hstar:
+        leading.append("hstar")
+    rows = [_state_row(state, dicts, ext=ext, features=features, include_hstar=include_hstar) for state in states]
     return Table(name=name, columns=[*leading, *aliases], rows=rows)
 
 
@@ -267,12 +274,17 @@ def counterexample_document(
     cycle: Cycle | None,
     dicts: Dictionaries,
     ext: bool,
+    include_hstar: bool = True,
 ) -> Document:
     _intern_features(feature_symbols, dicts)
     if cycle is not None:
-        sections = [_cycle_table(cycle, ext=ext), _states_table("states", states, dicts, ext=ext), _transitions_table(transitions, dicts, ext=ext)]
+        sections = [
+            _cycle_table(cycle, ext=ext),
+            _states_table("states", states, dicts, ext=ext, include_hstar=include_hstar),
+            _transitions_table(transitions, dicts, ext=ext),
+        ]
     else:
-        sections = [_states_table("state", states, dicts, ext=ext)]
+        sections = [_states_table("state", states, dicts, ext=ext, include_hstar=include_hstar)]
     return _document(header, [*sections, _facts_table(states, dicts)])
 
 
@@ -286,7 +298,7 @@ def trace_document(
     ext: bool,
 ) -> Document:
     _intern_features(feature_symbols, dicts)
-    sections = [_states_table("states", states, dicts, ext=ext), _transitions_table(transitions, dicts, ext=ext), _facts_table(states, dicts)]
+    sections = [_states_table("states", states, dicts, ext=ext, include_hstar=True), _transitions_table(transitions, dicts, ext=ext), _facts_table(states, dicts)]
     return _document(header, sections)
 
 
@@ -302,5 +314,5 @@ def successors_document(
     targets = [successor.target for successor in successors]
     # The `[successors]` rows carry the move + (for ext) its `mod`/`mem`; the target `[states]`
     # sub-table is just the off-graph successor states' feature values, so it stays state-indexed.
-    sections = [_successors_table(successors, dicts, ext=ext), _states_table("states", targets, dicts, ext=False), _facts_table(targets, dicts)]
+    sections = [_successors_table(successors, dicts, ext=ext), _states_table("states", targets, dicts, ext=False, include_hstar=True), _facts_table(targets, dicts)]
     return _document(header, sections)

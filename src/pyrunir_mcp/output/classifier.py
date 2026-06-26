@@ -27,5 +27,5 @@ def classifier_witness(row: ClassifierRow, feature_symbols: list[str], dicts: Di
     """The single misclassified state as a `[state]` + `[facts]` witness document (boolean features)."""
     state = WitnessState(state=row.state, features=row.features, fluent=row.fluent, flags=(Flag.WITNESS,))
     return counterexample_document(
-        header=header, feature_symbols=feature_symbols, states=[state], transitions=[], cycle=None, dicts=dicts, ext=False
+        header=header, feature_symbols=feature_symbols, states=[state], transitions=[], cycle=None, dicts=dicts, ext=False, include_hstar=False
     )

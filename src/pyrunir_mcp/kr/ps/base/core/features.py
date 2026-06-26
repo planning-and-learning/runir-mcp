@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pyrunir.kr.dl.base.semantics import ConstructorRepository as DLConstructorRepository
 from pyrunir.kr.dl.base.semantics import ConstructorRepositoryFactory as DLConstructorRepositoryFactory
-from pyrunir.kr.ps.base import GroundSketchProofResults as GroundPolicyProofResults
+from pyrunir.kr.ps.base import GroundSketchProofResults as PolicyProofResults
 from pyrunir.kr.ps.base import Repository as PolicyRepository
 from pyrunir.kr.ps.base import RepositoryFactory as PolicyRepositoryFactory
 from pyrunir.kr.ps.base import Sketch
@@ -27,7 +27,7 @@ class BasePolicyContext:
 @dataclass(frozen=True)
 class ExecutionFailure:
     task: LoadedSearchContext
-    result: GroundPolicyProofResults
+    result: PolicyProofResults
 
 
 def intern_rules(policy: Sketch, dicts: Dictionaries) -> None:
