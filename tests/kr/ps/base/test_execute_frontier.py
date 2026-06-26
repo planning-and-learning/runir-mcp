@@ -66,3 +66,34 @@ def test_execute_empty_policy_emits_singleton_trace_and_open_frontier(tmp_path):
     assert all(row.split("|")[3] == "" for row in successor_rows)
     # successor states carry their atoms (a [facts] section), like the trace/counterexample
     assert _section_rows(successors_text, "facts")
+
+
+def test_execute_empty_policy_on_initial_goal_does_not_emit_open_state(tmp_path):
+    from pyrunir_mcp.kr.ps.base.execute.service import ExecutePolicyOptions, execute_policy
+
+    domain = tmp_path / "domain.pddl"
+    domain.write_text(DOMAIN, encoding="utf-8")
+    problem = tmp_path / "p.pddl"
+    problem.write_text("""(define (problem p)
+  (:domain tiny)
+  (:objects a b)
+  (:init (at a))
+  (:goal (at a)))
+""", encoding="utf-8")
+    sketch = tmp_path / "sketch.txt"
+    sketch.write_text(EMPTY_SKETCH, encoding="utf-8")
+    out = tmp_path / "out"
+
+    result = execute_policy(
+        ExecutePolicyOptions(
+            domain_file=domain,
+            problem_file=problem,
+            sketch_file=sketch,
+            num_rollouts=1,
+            dump_dir=out,
+        )
+    )
+
+    assert result.is_successful
+    assert not (out / "failures" / "open_state-001").exists()
+    assert '"status": "SUCCESS"' in (out / "manifest.json").read_text(encoding="utf-8")

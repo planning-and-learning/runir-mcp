@@ -4,6 +4,7 @@ from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions as PolicySearchOp
 
 from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext
 from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure
+from pyrunir_mcp.kr.ps.proof import is_goal_open_state_result
 from pyrunir_mcp.kr.ps.status import is_success_status
 
 
@@ -18,7 +19,7 @@ def execute_policy_on_tasks(
     for index, task in enumerate(execute_tasks, start=1):
         result = find_ground_solution(task.search_context, policy, search_options)
         print(f"[{index}/{num_tasks}] {task.problem_path.name}: {result.status.name}", flush=True)
-        if not is_success_status(result.status):
+        if not is_success_status(result.status) and not is_goal_open_state_result(result):
             return ExecutionFailure(task=task, result=result)
 
     return None

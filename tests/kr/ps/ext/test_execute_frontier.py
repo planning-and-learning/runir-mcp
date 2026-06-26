@@ -163,3 +163,34 @@ def test_ext_intern_rules_uses_rule_variant_symbols(tmp_path):
     state = search_context.state_repository.get_initial_state()
 
     assert evaluate_features(state, collect_features(program))["reachable-count"] == 2
+
+
+def test_execute_empty_module_program_on_initial_goal_does_not_emit_open_state(tmp_path):
+    from pyrunir_mcp.kr.ps.ext.execute.service import ExecutePolicyOptions, execute_policy
+
+    domain = tmp_path / "domain.pddl"
+    domain.write_text(DOMAIN, encoding="utf-8")
+    problem = tmp_path / "p.pddl"
+    problem.write_text("""(define (problem p)
+  (:domain tiny)
+  (:objects a b)
+  (:init (at a))
+  (:goal (at a)))
+""", encoding="utf-8")
+    program = tmp_path / "program.txt"
+    program.write_text(EMPTY_PROGRAM, encoding="utf-8")
+    out = tmp_path / "out"
+
+    result = execute_policy(
+        ExecutePolicyOptions(
+            domain_file=domain,
+            problem_file=problem,
+            module_program_file=program,
+            num_rollouts=1,
+            dump_dir=out,
+        )
+    )
+
+    assert result.is_successful
+    assert not (out / "failures" / "open_state-001").exists()
+    assert '"status": "SUCCESS"' in (out / "manifest.json").read_text(encoding="utf-8")

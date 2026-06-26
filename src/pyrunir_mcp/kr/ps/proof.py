@@ -70,6 +70,30 @@ FailureItem: TypeAlias = tuple[CounterexampleKind, FailureWitness]
 StateEvidence: TypeAlias = Callable[[GroundState], JsonObject]
 
 
+def _label_is_goal(label: ProofVertexLabel) -> bool:
+    if isinstance(label, GroundAnnotatedStateGraphVertexLabel):
+        return bool(label.is_goal)
+    if isinstance(label, GroundStateGraphVertexLabel):
+        return bool(label.is_goal)
+    if isinstance(label, GroundModuleProgramProofVertexLabel):
+        return bool(label.is_goal)
+    raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
+
+
+def _open_state_is_goal(result: ProofResult, vertex: int) -> bool:
+    graph = getattr(result, "graph", None)
+    if graph is None:
+        return False
+    return _label_is_goal(graph.get_vertex_property(int(vertex)))
+
+
+def is_goal_open_state_result(result: ProofResult) -> bool:
+    """True when a failed search reports only open vertices that are already goal states."""
+    if result.cycle or result.deadend_transitions or not result.open_states:
+        return False
+    return all(_open_state_is_goal(result, int(vertex)) for vertex in result.open_states)
+
+
 def task_name(task: LoadedSearchContext) -> str:
     return task.problem_path.name
 
@@ -98,7 +122,12 @@ def failure_items(
     if result.cycle:
         items.append((CounterexampleKind.CYCLE, [int(vertex) for vertex in result.cycle]))
     if max_open_state_counterexamples > 0:
-        items.extend((CounterexampleKind.OPEN_STATE, int(vertex)) for vertex in result.open_states[:max_open_state_counterexamples])
+        items.extend(
+            (CounterexampleKind.OPEN_STATE, int(vertex))
+            for vertex in result.open_states
+            if not _open_state_is_goal(result, int(vertex))
+        )
+        items = items[:1 + max_open_state_counterexamples] if result.cycle else items[:max_open_state_counterexamples]
     if max_deadend_transition_counterexamples > 0:
         items.extend(
             (CounterexampleKind.DEADEND_TRANSITION, int(edge))
@@ -437,10 +466,11 @@ def build_proof_run(
     max_deadend_transition_counterexamples: int = 1,
 ) -> JsonObject:
     graph = result.graph
-    status = "success" if result.is_successful() else "failure"
+    effective_success = result.is_successful() or is_goal_open_state_result(result)
+    status = "success" if effective_success else "failure"
     artifacts: dict[str, Document] = {}
     items: list[RunItem] = []
-    if not result.is_successful():
+    if not effective_success:
         counts: dict[str, int] = {}
         for kind, witness in failure_items(
             result,

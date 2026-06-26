@@ -18,7 +18,7 @@ from typing import Protocol, TypeVar
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.frontier import FrontierExpander
-from pyrunir_mcp.kr.ps.proof import CounterexampleKind, ProofResult, StateEvidence, failure_items, witness_artifacts
+from pyrunir_mcp.kr.ps.proof import CounterexampleKind, ProofResult, StateEvidence, failure_items, is_goal_open_state_result, witness_artifacts
 from pyrunir_mcp.kr.ps.status import is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.writer import Artifact, resolve_formats, write_run
@@ -150,11 +150,12 @@ def run_execute(
         seed_failed, seed_category = False, None
         for index, task in enumerate(tasks, start=1):
             result = solve(task, seed)
+            effective_success = is_success_status(result.status) or is_goal_open_state_result(result)
             print(f"[seed {seed}] [{index}/{len(tasks)}] {task.problem_path.name}: {result.status.name}", flush=True)
-            kind, witness = _result_failure(result)
+            kind, witness = _result_failure(result) if not effective_success else (None, None)
             category = kind.value if isinstance(kind, CounterexampleKind) else kind
-            task_rows.append({"problem_file": task.problem_path.name, "status": result.status.name, "failure_category": category, "seed": seed})
-            if not is_success_status(result.status):
+            task_rows.append({"problem_file": task.problem_path.name, "status": "SUCCESS" if effective_success else result.status.name, "failure_category": category, "seed": seed})
+            if not effective_success:
                 seed_failed, seed_category = True, category
                 if first_failure is None:
                     first_failure = (task, result)
