@@ -98,6 +98,54 @@ def test_successors_document_shows_empty_rule_gap():
     assert "s2|a1|s61|r0|DEADEND|f0:2>3" in psv
 
 
+def test_base_state_columns_can_include_hlmcut_without_hstar():
+    state = WitnessState(1, {"n_undeliv": 2}, hstar=7, hlmcut=3)
+    doc = counterexample_document(
+        header=[("id", "open-001")],
+        feature_symbols=["n_undeliv"],
+        states=[state],
+        transitions=[],
+        cycle=None,
+        dicts=Dictionaries(),
+        ext=False,
+        include_hstar=False,
+        include_hlmcut=True,
+    )
+    psv = render_document(doc, "psv")
+    assert "[state]\nid|flags|hlmcut|f0\ns1||3|2" in psv
+    assert "hstar" not in psv
+
+
+def test_ext_state_columns_can_include_hstar_without_hlmcut():
+    state = WitnessState(2, {"n_held": 1}, hstar=5, hlmcut=2, vertex=4, memory=("m", "q"))
+    doc = counterexample_document(
+        header=[("id", "cycle-001")],
+        feature_symbols=["n_held"],
+        states=[state],
+        transitions=[],
+        cycle=Cycle(vertex_indices=(4,), state_indices=(2,)),
+        dicts=Dictionaries(ext=True),
+        ext=True,
+        include_hstar=True,
+        include_hlmcut=False,
+    )
+    psv = render_document(doc, "psv")
+    assert "[states]\nvertex|state|module|memory|flags|hstar|f0\nv4|s2|M0|m0||5|1" in psv
+    assert "hlmcut" not in psv
+
+
+def test_ext_successor_state_columns_include_hlmcut_by_default():
+    succ = Successor(src=0, target=WitnessState(1, {"n": 9}, hstar="", hlmcut=4), action="(a)")
+    doc = successors_document(
+        header=[("id", "successors-001")],
+        feature_symbols=["n"],
+        successors=[succ],
+        dicts=Dictionaries(ext=True),
+        ext=True,
+    )
+    psv = render_document(doc, "psv")
+    assert "[states]\nid|flags|hstar|hlmcut|f0\ns1|||4|9" in psv
+
 def test_ext_state_columns_include_vtx_mod_and_mem():
     dicts = Dictionaries(ext=True)
     mem = ("deliver", "q_init")  # (module, memory)
