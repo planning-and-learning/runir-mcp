@@ -90,7 +90,6 @@ def state_facts(state: GroundState) -> JsonObject:
     }
 
 
-
 def heuristic_json_value(value: HStarValue | LMCutValue) -> JsonValue:
     if isinstance(value, HeuristicSentinel):
         return value.value
@@ -102,12 +101,16 @@ def state_evidence(
     *,
     include_facts: bool,
     hstar: HStarEvaluator | None = None,
+    include_hstar: bool = True,
+    include_hlmcut: bool = True,
 ) -> FeatureEvidence:
     def evidence(state: GroundState) -> JsonObject:
         data: JsonObject = {"feature_values": evaluate_features(state, features)}
         if hstar is not None:
-            data["hstar"] = heuristic_json_value(hstar.evaluate(state))
-            data["hlmcut"] = heuristic_json_value(hstar.evaluate_lmcut(state))
+            if include_hstar:
+                data["hstar"] = heuristic_json_value(hstar.evaluate(state))
+            if include_hlmcut:
+                data["hlmcut"] = heuristic_json_value(hstar.evaluate_lmcut(state))
         if include_facts:
             data.update(state_facts(state))
         return data

@@ -161,6 +161,8 @@ def rollout_artifacts(
     dicts: Dictionaries,
     header: list[tuple[str, str]],
     max_steps: int = _MAX_ROLLOUT_STEPS,
+    include_hstar: bool = True,
+    include_hlmcut: bool = True,
 ) -> tuple[Document, Document | None, Document | None] | None:
     """Build (counterexample, trace, successors) for a base init-only `execute` failure by rolling the
     policy forward to its real stuck state. Returns `None` if the greedy rollout instead reaches a goal
@@ -206,7 +208,8 @@ def rollout_artifacts(
         for index, step in enumerate(result.steps)
     ]
     trace = trace_document(
-        header=header, feature_symbols=feature_symbols, states=trace_states, transitions=trace_transitions, dicts=dicts, ext=False
+        header=header, feature_symbols=feature_symbols, states=trace_states, transitions=trace_transitions, dicts=dicts, ext=False,
+        include_hstar=include_hstar, include_hlmcut=include_hlmcut,
     )
 
     if is_cycle:
@@ -216,11 +219,13 @@ def rollout_artifacts(
             transition_steps=tuple(range(start, len(result.steps))),
         )
         counterexample = counterexample_document(
-            header=header, feature_symbols=feature_symbols, states=trace_states, transitions=trace_transitions, cycle=cycle, dicts=dicts, ext=False
+            header=header, feature_symbols=feature_symbols, states=trace_states, transitions=trace_transitions, cycle=cycle, dicts=dicts, ext=False,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
         )
     else:
         counterexample = counterexample_document(
-            header=header, feature_symbols=feature_symbols, states=[trace_states[last]], transitions=[], cycle=None, dicts=dicts, ext=False
+            header=header, feature_symbols=feature_symbols, states=[trace_states[last]], transitions=[], cycle=None, dicts=dicts, ext=False,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
         )
 
     terminal = result.states[last]
@@ -229,7 +234,10 @@ def rollout_artifacts(
         for labeled in generator.get_labeled_successor_nodes(Node(terminal, 0.0))
     ]
     successors_doc = (
-        successors_document(header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=False)
+        successors_document(
+            header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=False,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
         if successors
         else None
     )

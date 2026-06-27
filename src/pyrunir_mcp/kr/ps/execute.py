@@ -137,6 +137,8 @@ def run_execute(
     evidence: StateEvidence,
     dicts: Dictionaries,
     manifest_metadata: JsonObject,
+    include_hstar: bool = True,
+    include_hlmcut: bool = True,
     expander_factory: Callable[[Task], FrontierExpander] | None = None,
     rollout_fallback: RolloutFallback | None = None,
 ) -> tuple[Task, ProofResult] | None:
@@ -183,7 +185,8 @@ def run_execute(
                     raise RuntimeError(f"Cannot build witness artifacts for non-counterexample category: {category}")
                 expander = expander_factory(task) if expander_factory is not None else None
                 docs = witness_artifacts(
-                    result.graph, kind, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
+                    result.graph, kind, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander,
+                    include_hstar=include_hstar, include_hlmcut=include_hlmcut
                 )
             witness_doc, trace, successors = docs
             names["witness"] = f"failures/{failure_id}/witness"

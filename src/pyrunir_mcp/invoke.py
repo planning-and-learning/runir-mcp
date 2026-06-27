@@ -113,7 +113,9 @@ def _base_prove(args: Args) -> ToolResult:
             max_num_states=args.integer("max_num_states", 100_000),
             max_time_seconds=args.number("max_time_seconds", 5.0),
             hstar_max_num_states=args.integer("hstar_max_num_states", 100_000),
-            hstar_max_time_seconds=args.number("hstar_max_time_seconds", 3.0),
+            hstar_max_time_seconds=args.number("hstar_max_time_seconds", 1.0),
+            include_hstar=args.boolean("include_hstar", True),
+            include_hlmcut=args.boolean("include_hlmcut", True),
             max_open_state_counterexamples=args.integer("max_open_state_counterexamples", 1),
             max_deadend_transition_counterexamples=args.integer("max_deadend_transition_counterexamples", 1),
         )
@@ -131,7 +133,9 @@ def _ext_prove(args: Args) -> ToolResult:
             max_num_states=args.integer("max_num_states", 100_000),
             max_time_seconds=args.number("max_time_seconds", 5.0),
             hstar_max_num_states=args.integer("hstar_max_num_states", 100_000),
-            hstar_max_time_seconds=args.number("hstar_max_time_seconds", 3.0),
+            hstar_max_time_seconds=args.number("hstar_max_time_seconds", 1.0),
+            include_hstar=args.boolean("include_hstar", True),
+            include_hlmcut=args.boolean("include_hlmcut", True),
             max_arity=args.integer("max_arity", 0),
             max_open_state_counterexamples=args.integer("max_open_state_counterexamples", 1),
             max_deadend_transition_counterexamples=args.integer("max_deadend_transition_counterexamples", 1),
@@ -244,7 +248,9 @@ def _base_execute(args: Args) -> ToolResult:
             max_num_states=args.optional_integer("max_num_states"),
             max_time_seconds=args.optional_number("max_time_seconds"),
             hstar_max_num_states=args.integer("hstar_max_num_states", 100_000),
-            hstar_max_time_seconds=args.number("hstar_max_time_seconds", 3.0),
+            hstar_max_time_seconds=args.number("hstar_max_time_seconds", 1.0),
+            include_hstar=args.boolean("include_hstar", True),
+            include_hlmcut=args.boolean("include_hlmcut", True),
             dump_dir=output_dir,
         )
     )
@@ -267,7 +273,9 @@ def _ext_execute(args: Args) -> ToolResult:
             max_num_states=args.optional_integer("max_num_states"),
             max_time_seconds=args.optional_number("max_time_seconds"),
             hstar_max_num_states=args.integer("hstar_max_num_states", 100_000),
-            hstar_max_time_seconds=args.number("hstar_max_time_seconds", 3.0),
+            hstar_max_time_seconds=args.number("hstar_max_time_seconds", 1.0),
+            include_hstar=args.boolean("include_hstar", True),
+            include_hlmcut=args.boolean("include_hlmcut", True),
             dump_dir=output_dir,
         )
     )

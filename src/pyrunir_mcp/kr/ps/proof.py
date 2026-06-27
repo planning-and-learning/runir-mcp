@@ -330,6 +330,8 @@ def _trace_document(
     ext: bool,
     header: list[tuple[str, str]],
     witness_vertices: set[int],
+    include_hstar: bool = True,
+    include_hlmcut: bool = True,
 ) -> Document | None:
     # `path_edges == []` means the witness IS an initial vertex: emit a singleton trace (one
     # state, no transitions). Only `None` (no path / not applicable) suppresses the trace.
@@ -346,6 +348,8 @@ def _trace_document(
         transitions=_transitions(graph, path_edges, evidence, ext=ext),
         dicts=dicts,
         ext=ext,
+        include_hstar=include_hstar,
+        include_hlmcut=include_hlmcut,
     )
 
 
@@ -385,6 +389,8 @@ def witness_artifacts(
     ext: bool,
     header: list[tuple[str, str]],
     expander: FrontierExpander | None = None,
+    include_hstar: bool = True,
+    include_hlmcut: bool = True,
 ) -> tuple[Document, Document | None, Document | None]:
     """Return (counterexample, trace | None, successors | None) documents for one witness."""
     if kind == CounterexampleKind.CYCLE:
@@ -399,9 +405,13 @@ def witness_artifacts(
         counterexample = counterexample_document(
             header=header, feature_symbols=feature_symbols, states=cycle_states,
             transitions=_transitions(graph, cycle_edges, evidence, ext=ext), cycle=cycle, dicts=dicts, ext=ext,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
         )
         path_edges = _path_edges_to(graph, vertices[0]) if vertices else None
-        trace = _trace_document(graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices=set())
+        trace = _trace_document(
+            graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
+            header=header, witness_vertices=set(), include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
         successors = _expand_frontier(
             graph, expander, evidence,
             trace_vertices=_vertices_for_edges(graph, path_edges) + vertices,
@@ -414,10 +424,14 @@ def witness_artifacts(
             header=header, feature_symbols=feature_symbols,
             states=[witness_state(state_summary(graph, dead_vertex, evidence), witness=True)],
             transitions=[], cycle=None, dicts=dicts, ext=ext,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
         )
         path_edges = _path_edges_to(graph, source_vertex)
         trace_edges = ([*path_edges, edge]) if path_edges is not None else None
-        trace = _trace_document(graph, trace_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices={dead_vertex})
+        trace = _trace_document(
+            graph, trace_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
+            header=header, witness_vertices={dead_vertex}, include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
         successors = _expand_frontier(
             graph, expander, evidence,
             trace_vertices=_vertices_for_edges(graph, trace_edges) if trace_edges is not None else [source_vertex, dead_vertex],
@@ -429,9 +443,13 @@ def witness_artifacts(
             header=header, feature_symbols=feature_symbols,
             states=[witness_state(state_summary(graph, vertex, evidence), witness=True, open_state=True)],
             transitions=[], cycle=None, dicts=dicts, ext=ext,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
         )
         path_edges = _path_edges_to(graph, vertex)
-        trace = _trace_document(graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, witness_vertices={vertex})
+        trace = _trace_document(
+            graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
+            header=header, witness_vertices={vertex}, include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
         successors = _expand_frontier(
             graph, expander, evidence,
             trace_vertices=_vertices_for_edges(graph, path_edges),
@@ -443,7 +461,10 @@ def witness_artifacts(
     # move also carries the module + resulting memory (`mod`/`mem`) its rule lands in; a gap leaves
     # them blank.
     successor_doc = (
-        successors_document(header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=ext)
+        successors_document(
+            header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=ext,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
         if successors
         else None
     )
@@ -464,6 +485,8 @@ def build_proof_run(
     expander: FrontierExpander | None = None,
     max_open_state_counterexamples: int = 1,
     max_deadend_transition_counterexamples: int = 1,
+    include_hstar: bool = True,
+    include_hlmcut: bool = True,
 ) -> JsonObject:
     graph = result.graph
     effective_success = result.is_successful() or is_goal_open_state_result(result)
@@ -488,7 +511,8 @@ def build_proof_run(
                 ("problem", task_name(task)),
             ]
             witness_doc, trace, successors = witness_artifacts(
-                graph, kind, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header, expander=expander
+                graph, kind, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
+                header=header, expander=expander, include_hstar=include_hstar, include_hlmcut=include_hlmcut,
             )
             names = {"witness": f"failures/{failure_id}/witness"}
             artifacts[names["witness"]] = witness_doc

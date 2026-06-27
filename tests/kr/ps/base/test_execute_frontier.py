@@ -68,6 +68,49 @@ def test_execute_empty_policy_emits_singleton_trace_and_open_frontier(tmp_path):
     assert _section_rows(successors_text, "facts")
 
 
+
+def test_execute_empty_policy_can_disable_hstar_and_hlmcut_columns(tmp_path):
+    from pyrunir_mcp.kr.ps.base.execute.service import ExecutePolicyOptions, execute_policy
+
+    domain = tmp_path / "domain.pddl"
+    domain.write_text(DOMAIN, encoding="utf-8")
+    problem = tmp_path / "p.pddl"
+    problem.write_text(PROBLEM, encoding="utf-8")
+    sketch = tmp_path / "sketch.txt"
+    sketch.write_text(EMPTY_SKETCH, encoding="utf-8")
+
+    lmcut_only = tmp_path / "lmcut-only"
+    execute_policy(
+        ExecutePolicyOptions(
+            domain_file=domain,
+            problem_file=problem,
+            sketch_file=sketch,
+            num_rollouts=1,
+            include_hstar=False,
+            include_hlmcut=True,
+            dump_dir=lmcut_only,
+        )
+    )
+    text = (lmcut_only / "failures" / "open_state-001" / "successors.psv").read_text(encoding="utf-8")
+    assert "[states]\nid|flags|hlmcut" in text
+    assert "hstar" not in text
+
+    no_heuristics = tmp_path / "no-heuristics"
+    execute_policy(
+        ExecutePolicyOptions(
+            domain_file=domain,
+            problem_file=problem,
+            sketch_file=sketch,
+            num_rollouts=1,
+            include_hstar=False,
+            include_hlmcut=False,
+            dump_dir=no_heuristics,
+        )
+    )
+    text = (no_heuristics / "failures" / "open_state-001" / "successors.psv").read_text(encoding="utf-8")
+    assert "hstar" not in text
+    assert "hlmcut" not in text
+
 def test_execute_empty_policy_on_initial_goal_does_not_emit_open_state(tmp_path):
     from pyrunir_mcp.kr.ps.base.execute.service import ExecutePolicyOptions, execute_policy
 

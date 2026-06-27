@@ -34,7 +34,9 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
         max_num_states: int | None = None,
         max_time_seconds: float | None = None,
         hstar_max_num_states: int = 100_000,
-        hstar_max_time_seconds: float = 3.0,
+        hstar_max_time_seconds: float = 1.0,
+        include_hstar: bool = True,
+        include_hlmcut: bool = True,
     ) -> dict:
         """Execute an extended Runir module program and write traces/manifests."""
         resolved_output_dir = fresh_output_dir(server_output_dir(config.output_root, output_dir))
@@ -53,6 +55,8 @@ def register_tools(mcp: FastMCP, config: ServerConfig) -> None:
                 max_time_seconds=max_time_seconds,
                 hstar_max_num_states=hstar_max_num_states,
                 hstar_max_time_seconds=hstar_max_time_seconds,
+                include_hstar=include_hstar,
+                include_hlmcut=include_hlmcut,
                 dump_dir=resolved_output_dir,
             )
         )

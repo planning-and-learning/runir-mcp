@@ -81,6 +81,53 @@ def test_execute_empty_module_program_emits_trace_and_open_frontier(tmp_path):
     assert _section_rows(successors_text, "facts")
 
 
+def test_execute_empty_module_program_can_disable_hstar_and_hlmcut_columns(tmp_path):
+    from pyrunir_mcp.kr.ps.ext.execute.service import ExecutePolicyOptions, execute_policy
+
+    domain = tmp_path / "domain.pddl"
+    domain.write_text(DOMAIN, encoding="utf-8")
+    problem = tmp_path / "p.pddl"
+    problem.write_text(PROBLEM, encoding="utf-8")
+    program = tmp_path / "program.txt"
+    program.write_text(EMPTY_PROGRAM, encoding="utf-8")
+
+    hstar_only = tmp_path / "hstar-only"
+    execute_policy(
+        ExecutePolicyOptions(
+            domain_file=domain,
+            problem_file=problem,
+            module_program_file=program,
+            num_rollouts=1,
+            include_hstar=True,
+            include_hlmcut=False,
+            dump_dir=hstar_only,
+        )
+    )
+    successors = sorted(hstar_only.glob("failures/*/successors.psv"))
+    assert successors
+    text = successors[0].read_text(encoding="utf-8")
+    assert "[states]\nid|flags|hstar" in text
+    assert "hlmcut" not in text
+
+    no_heuristics = tmp_path / "no-heuristics"
+    execute_policy(
+        ExecutePolicyOptions(
+            domain_file=domain,
+            problem_file=problem,
+            module_program_file=program,
+            num_rollouts=1,
+            include_hstar=False,
+            include_hlmcut=False,
+            dump_dir=no_heuristics,
+        )
+    )
+    successors = sorted(no_heuristics.glob("failures/*/successors.psv"))
+    assert successors
+    text = successors[0].read_text(encoding="utf-8")
+    assert "hstar" not in text
+    assert "hlmcut" not in text
+
+
 PROGRAM_WITH_VARIANT_SYMBOL_RULES = """(:program
     (:entry main)
     (:module

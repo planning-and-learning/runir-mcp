@@ -43,7 +43,9 @@ class ExecutePolicyOptions:
     max_num_states: int | None = None
     max_time_seconds: float | None = None
     hstar_max_num_states: int = 100_000
-    hstar_max_time_seconds: float = 3.0
+    hstar_max_time_seconds: float = 1.0
+    include_hstar: bool = True
+    include_hlmcut: bool = True
     dump_dir: Path | None = None
 
 
@@ -82,18 +84,28 @@ def _manifest_metadata(options: ExecutePolicyOptions) -> JsonObject:
         "module_program_sha256": _module_program_sha256(options.module_program_file),
         "hstar_max_num_states": options.hstar_max_num_states,
         "hstar_max_time_seconds": options.hstar_max_time_seconds,
+        "include_hstar": options.include_hstar,
+        "include_hlmcut": options.include_hlmcut,
     }
 
 
 def _execute_policy_with_dumps(
-    options: ExecutePolicyOptions, policy: Policy, tasks: list[LoadedSearchContext], hstar_task: LoadedLiftedSearchContext
+    options: ExecutePolicyOptions, policy: Policy, tasks: list[LoadedSearchContext], hstar_task: LoadedLiftedSearchContext | None
 ) -> ExecutionFailure | None:
     assert options.dump_dir is not None
     features = collect_features(policy)
     dicts = Dictionaries(ext=True)
     intern_rules(policy, dicts)
-    hstar = HStarEvaluator(hstar_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
-    evidence = state_evidence(features, include_facts=True, hstar=hstar)
+    hstar = None
+    if hstar_task is not None:
+        hstar = HStarEvaluator(hstar_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
+    evidence = state_evidence(
+        features,
+        include_facts=True,
+        hstar=hstar,
+        include_hstar=options.include_hstar,
+        include_hlmcut=options.include_hlmcut,
+    )
     failing = run_execute(
         tool="execute_module_program",
         ext=True,
@@ -105,6 +117,8 @@ def _execute_policy_with_dumps(
         evidence=evidence,
         dicts=dicts,
         manifest_metadata=_manifest_metadata(options),
+        include_hstar=options.include_hstar,
+        include_hlmcut=options.include_hlmcut,
         expander_factory=lambda task: make_ext_frontier_expander(task.search_context, policy, evidence),
     )
     return ExecutionFailure(task=failing[0], result=failing[1]) if failing else None
@@ -128,6 +142,8 @@ def execute_policy(options: ExecutePolicyOptions) -> ExecutePolicyResult:
     if options.dump_dir is None:
         failure = _execute_policy_rollouts_without_dumps(options, policy, tasks)
     else:
-        hstar_task = load_lifted_search_context(options.domain_file, options.problem_file, execution_context)
+        hstar_task = None
+        if options.include_hstar or options.include_hlmcut:
+            hstar_task = load_lifted_search_context(options.domain_file, options.problem_file, execution_context)
         failure = _execute_policy_with_dumps(options, policy, tasks, hstar_task)
     return ExecutePolicyResult(policy=policy, tasks=tasks, failure=failure, dump_dir=options.dump_dir)

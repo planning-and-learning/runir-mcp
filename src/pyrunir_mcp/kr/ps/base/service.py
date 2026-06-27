@@ -29,11 +29,21 @@ def prove_policy(options: ProvePolicyOptions) -> JsonObject:
 
     execution_context = ExecutionContext(options.num_threads)
     task = load_grounded_search_context(domain_path, problem_path, execution_context)
-    hstar_task = load_lifted_search_context(domain_path, problem_path, execution_context)
+    hstar_task = None
+    if options.include_hstar or options.include_hlmcut:
+        hstar_task = load_lifted_search_context(domain_path, problem_path, execution_context)
     result = prove_ground_solution(task.search_context, policy, search_options)
 
-    hstar = HStarEvaluator(hstar_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
-    evidence = state_evidence(features, include_facts=True, hstar=hstar)
+    hstar = None
+    if hstar_task is not None:
+        hstar = HStarEvaluator(hstar_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
+    evidence = state_evidence(
+        features,
+        include_facts=True,
+        hstar=hstar,
+        include_hstar=options.include_hstar,
+        include_hlmcut=options.include_hlmcut,
+    )
     dicts = Dictionaries(ext=False)
     intern_rules(policy, dicts)
     return build_proof_run(
@@ -48,6 +58,8 @@ def prove_policy(options: ProvePolicyOptions) -> JsonObject:
             "max_time_seconds": options.max_time_seconds,
             "hstar_max_num_states": options.hstar_max_num_states,
             "hstar_max_time_seconds": options.hstar_max_time_seconds,
+            "include_hstar": options.include_hstar,
+            "include_hlmcut": options.include_hlmcut,
             "max_open_state_counterexamples": options.max_open_state_counterexamples,
             "max_deadend_transition_counterexamples": options.max_deadend_transition_counterexamples,
         },
@@ -60,4 +72,6 @@ def prove_policy(options: ProvePolicyOptions) -> JsonObject:
         expander=make_frontier_expander(task.search_context, policy, evidence),
         max_open_state_counterexamples=options.max_open_state_counterexamples,
         max_deadend_transition_counterexamples=options.max_deadend_transition_counterexamples,
+        include_hstar=options.include_hstar,
+        include_hlmcut=options.include_hlmcut,
     )

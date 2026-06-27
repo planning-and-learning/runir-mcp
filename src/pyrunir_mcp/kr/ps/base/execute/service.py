@@ -43,7 +43,9 @@ class ExecutePolicyOptions:
     max_num_states: int | None = None
     max_time_seconds: float | None = None
     hstar_max_num_states: int = 100_000
-    hstar_max_time_seconds: float = 3.0
+    hstar_max_time_seconds: float = 1.0
+    include_hstar: bool = True
+    include_hlmcut: bool = True
     dump_dir: Path | None = None
 
 
@@ -83,14 +85,24 @@ def _manifest_metadata(options: ExecutePolicyOptions) -> JsonObject:
         "classifier_file": str(options.classifier_file) if options.classifier_file else None,
         "hstar_max_num_states": options.hstar_max_num_states,
         "hstar_max_time_seconds": options.hstar_max_time_seconds,
+        "include_hstar": options.include_hstar,
+        "include_hlmcut": options.include_hlmcut,
     }
 
 
 def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, context: ExecuteContext) -> ExecutionFailure | None:
     assert options.dump_dir is not None
     features = collect_features(policy)
-    hstar = HStarEvaluator(context.lifted_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
-    evidence = state_evidence(features, include_facts=True, hstar=hstar)
+    hstar = None
+    if options.include_hstar or options.include_hlmcut:
+        hstar = HStarEvaluator(context.lifted_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
+    evidence = state_evidence(
+        features,
+        include_facts=True,
+        hstar=hstar,
+        include_hstar=options.include_hstar,
+        include_hlmcut=options.include_hlmcut,
+    )
     dicts = Dictionaries(ext=False)
     intern_rules(policy, dicts)
     # Built once over the SAME parse/repositories as the grounding (see create_execute_context), so the
@@ -107,10 +119,13 @@ def _execute_policy_with_dumps(options: ExecutePolicyOptions, policy: Policy, co
         evidence=evidence,
         dicts=dicts,
         manifest_metadata=_manifest_metadata(options),
+        include_hstar=options.include_hstar,
+        include_hlmcut=options.include_hlmcut,
         expander_factory=lambda task: make_frontier_expander(task.search_context, policy, evidence),
         rollout_fallback=lambda task, *, header, evidence, feature_symbols, dicts: rollout_artifacts(
             context.task.search_context, policy, features, classifier, evidence,
             feature_symbols=feature_symbols, dicts=dicts, header=header,
+            include_hstar=options.include_hstar, include_hlmcut=options.include_hlmcut,
         ),
     )
     return ExecutionFailure(task=failing[0], result=failing[1]) if failing else None

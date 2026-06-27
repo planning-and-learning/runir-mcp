@@ -48,14 +48,24 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
 
     execution_context = ExecutionContext(options.num_threads)
     task = load_grounded_search_context(domain_path, problem_path, execution_context)
-    hstar_task = load_lifted_search_context(domain_path, problem_path, execution_context)
+    hstar_task = None
+    if options.include_hstar or options.include_hlmcut:
+        hstar_task = load_lifted_search_context(domain_path, problem_path, execution_context)
     result = prove_ground_solution(task.search_context, program, search_options)
 
     dicts = Dictionaries(ext=True)
     intern_rules(program, dicts)
 
-    hstar = HStarEvaluator(hstar_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
-    evidence = state_evidence(features, include_facts=True, hstar=hstar)
+    hstar = None
+    if hstar_task is not None:
+        hstar = HStarEvaluator(hstar_task.search_context, HStarOptions(options.hstar_max_num_states, options.hstar_max_time_seconds))
+    evidence = state_evidence(
+        features,
+        include_facts=True,
+        hstar=hstar,
+        include_hstar=options.include_hstar,
+        include_hlmcut=options.include_hlmcut,
+    )
     return build_proof_run(
         tool=TOOL_NAME,
         output_dir=Path(options.output_dir).resolve(),
@@ -68,6 +78,8 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
             "max_time_seconds": options.max_time_seconds,
             "hstar_max_num_states": options.hstar_max_num_states,
             "hstar_max_time_seconds": options.hstar_max_time_seconds,
+            "include_hstar": options.include_hstar,
+            "include_hlmcut": options.include_hlmcut,
             "max_arity": options.max_arity,
             "max_open_state_counterexamples": options.max_open_state_counterexamples,
             "max_deadend_transition_counterexamples": options.max_deadend_transition_counterexamples,
@@ -81,4 +93,6 @@ def prove_module_program(options: ProveModuleProgramOptions) -> JsonObject:
         expander=make_ext_frontier_expander(task.search_context, program, evidence),
         max_open_state_counterexamples=options.max_open_state_counterexamples,
         max_deadend_transition_counterexamples=options.max_deadend_transition_counterexamples,
+        include_hstar=options.include_hstar,
+        include_hlmcut=options.include_hlmcut,
     )
