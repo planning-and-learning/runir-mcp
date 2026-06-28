@@ -131,7 +131,13 @@ def test_classifier_flags_state_as_unsolvable(tmp_path):
         )
     )
     assert not result.is_successful
-    witness = (out / "failures" / "open_state-001" / "witness.psv").read_text(encoding="utf-8")
+    witness = (out / "failures" / "deadend-001" / "witness.psv").read_text(encoding="utf-8")
     state_rows = _section_rows(witness, "state")
     assert len(state_rows) == 1  # stops immediately: the initial state is classified unsolvable
-    assert "DEADEND" in state_rows[0].split("|")[1].split(",")
+    flags = set(state_rows[0].split("|")[1].split(","))
+    assert "DEADEND" in flags
+    assert "OPEN" not in flags
+    meta = json.loads((out / "failures" / "deadend-001" / "meta.json").read_text(encoding="utf-8"))
+    assert meta["category"] == "deadend"
+    assert meta["files"] == {"witness": "witness.psv", "trace": "trace.psv"}
+    assert not (out / "failures" / "deadend-001" / "successors.psv").exists()

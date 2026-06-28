@@ -62,6 +62,7 @@ ProofSearchOptions: TypeAlias = GroundSketchSearchOptions | GroundModuleProgramS
 class CounterexampleKind(StrEnum):
     CYCLE = "cycle"
     OPEN_STATE = "open_state"
+    DEADEND = "deadend"
     DEADEND_TRANSITION = "deadend_transition"
 
 
@@ -94,6 +95,15 @@ def is_goal_open_state_result(result: ProofResult) -> bool:
     return all(_open_state_is_goal(result, int(vertex)) for vertex in result.open_states)
 
 
+
+def _open_state_is_deadend(result: ProofResult, vertex: int, evidence: StateEvidence | None) -> bool:
+    if evidence is None:
+        return False
+    graph = getattr(result, "graph", None)
+    if graph is None:
+        return False
+    return bool(state_summary(graph, int(vertex), evidence).get("is_unsolvable"))
+
 def task_name(task: LoadedSearchContext) -> str:
     return task.problem_path.name
 
@@ -117,17 +127,33 @@ def failure_items(
     *,
     max_open_state_counterexamples: int,
     max_deadend_transition_counterexamples: int,
+    evidence: StateEvidence | None = None,
 ) -> list[FailureItem]:
     items: list[FailureItem] = []
     if result.cycle:
         items.append((CounterexampleKind.CYCLE, [int(vertex) for vertex in result.cycle]))
+
+    open_vertices = [
+        int(vertex)
+        for vertex in result.open_states
+        if not _open_state_is_goal(result, int(vertex))
+    ]
+    classifier_deadends = [
+        vertex for vertex in open_vertices
+        if _open_state_is_deadend(result, vertex, evidence)
+    ]
+    ordinary_open = [vertex for vertex in open_vertices if vertex not in set(classifier_deadends)]
+
+    if max_deadend_transition_counterexamples > 0:
+        items.extend(
+            (CounterexampleKind.DEADEND, vertex)
+            for vertex in classifier_deadends[:max_deadend_transition_counterexamples]
+        )
     if max_open_state_counterexamples > 0:
         items.extend(
-            (CounterexampleKind.OPEN_STATE, int(vertex))
-            for vertex in result.open_states
-            if not _open_state_is_goal(result, int(vertex))
+            (CounterexampleKind.OPEN_STATE, vertex)
+            for vertex in ordinary_open[:max_open_state_counterexamples]
         )
-        items = items[:1 + max_open_state_counterexamples] if result.cycle else items[:max_open_state_counterexamples]
     if max_deadend_transition_counterexamples > 0:
         items.extend(
             (CounterexampleKind.DEADEND_TRANSITION, int(edge))
@@ -236,8 +262,6 @@ def state_summary(
         "vertex_index": int(vertex),
         "state_index": int(state.get_index()),
     }
-    if evidence is not None:
-        out.update(evidence(state))
     if isinstance(label, GroundModuleProgramProofVertexLabel):
         memory = label.memory_state
         memory_view = memory.value if hasattr(memory, "value") else memory
@@ -255,6 +279,8 @@ def state_summary(
     elif isinstance(label, GroundModuleProgramProofVertexLabel):
         out["is_initial"] = bool(label.is_initial)
         out["is_goal"] = bool(label.is_goal)
+    if evidence is not None:
+        out.update(evidence(state))
     return out
 
 
@@ -417,6 +443,20 @@ def witness_artifacts(
             trace_vertices=_vertices_for_edges(graph, path_edges) + vertices,
             graph_vertices=vertices, exclude=set(vertices),
         )
+    elif kind == CounterexampleKind.DEADEND:
+        vertex = int(witness)
+        counterexample = counterexample_document(
+            header=header, feature_symbols=feature_symbols,
+            states=[witness_state(state_summary(graph, vertex, evidence), witness=True)],
+            transitions=[], cycle=None, dicts=dicts, ext=ext,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
+        path_edges = _path_edges_to(graph, vertex)
+        trace = _trace_document(
+            graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
+            header=header, witness_vertices={vertex}, include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
+        successors = []
     elif kind == CounterexampleKind.DEADEND_TRANSITION:
         edge = int(witness)
         source_vertex, dead_vertex = int(graph.get_source(edge)), int(graph.get_target(edge))
@@ -499,6 +539,7 @@ def build_proof_run(
             result,
             max_open_state_counterexamples=max_open_state_counterexamples,
             max_deadend_transition_counterexamples=max_deadend_transition_counterexamples,
+            evidence=evidence,
         ):
             category = kind.value
             counts[category] = counts.get(category, 0) + 1

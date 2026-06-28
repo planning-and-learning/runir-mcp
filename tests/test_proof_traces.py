@@ -78,3 +78,23 @@ def test_build_proof_run_treats_goal_open_state_as_success(monkeypatch, tmp_path
     assert envelope["primary"]["successful"] is True
     assert envelope["primary"]["counterexample_count"] == 0
     assert envelope["items"] == []
+
+
+def test_failure_items_promotes_classifier_deadend_open_states(monkeypatch):
+    result = SimpleNamespace(
+        cycle=[],
+        open_states=[1, 2, 3],
+        deadend_transitions=[],
+    )
+    monkeypatch.setattr(proof, "_open_state_is_deadend", lambda observed, vertex, evidence: vertex == 2)
+
+    assert failure_items(
+        result,
+        max_open_state_counterexamples=2,
+        max_deadend_transition_counterexamples=1,
+        evidence=lambda _state: {},
+    ) == [
+        (CounterexampleKind.DEADEND, 2),
+        (CounterexampleKind.OPEN_STATE, 1),
+        (CounterexampleKind.OPEN_STATE, 3),
+    ]

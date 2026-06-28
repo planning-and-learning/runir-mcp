@@ -146,8 +146,11 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
             "meta_path": meta_path,
             "trace_available": bool(item.get("trace_available", trace_available)),
         })
-    if failure_category is None and failure_items:
-        failure_category = failure_items[0].get("failure_category")
+    if failure_items:
+        # Distinct failure rows are built after any witness-level category refinement
+        # (for example classifier-detected deadends in the base execute fallback). Prefer
+        # them over the coarse per-task rollout row.
+        failure_category = failure_items[0].get("failure_category") or failure_items[0].get("category")
     if failing_task is None and failure_items:
         failing_task = failure_items[0].get("task")
 

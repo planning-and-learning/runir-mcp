@@ -26,7 +26,7 @@ from pyrunir_mcp.tables import Document, Table
 
 # Produce (counterexample, trace, successors) docs for a base init-only open-state failure, or None to
 # fall back to the default graph witness. Keyword args mirror what `witness_artifacts` consumes.
-RolloutFallback = Callable[..., tuple[Document, Document | None, Document | None] | None]
+RolloutFallback = Callable[..., tuple[Document, Document | None, Document | None] | tuple[Document, Document | None, Document | None, str | None] | None]
 
 class BrfsSearchOptions(Protocol):
     random_seed: int
@@ -75,9 +75,9 @@ def configure_search_options(
     return search_options
 
 
-def _result_failure(result: ProofResult) -> tuple[CounterexampleKind | str | None, int | list[int] | None]:
+def _result_failure(result: ProofResult, evidence: StateEvidence | None) -> tuple[CounterexampleKind | str | None, int | list[int] | None]:
     """The failure category and graph witness for a rollout result (None when it succeeded)."""
-    items = failure_items(result, max_open_state_counterexamples=1, max_deadend_transition_counterexamples=1)
+    items = failure_items(result, max_open_state_counterexamples=1, max_deadend_transition_counterexamples=1, evidence=evidence)
     if items:
         return items[0]
     if is_success_status(result.status):
@@ -154,7 +154,7 @@ def run_execute(
             result = solve(task, seed)
             effective_success = is_success_status(result.status) or is_goal_open_state_result(result)
             print(f"[seed {seed}] [{index}/{len(tasks)}] {task.problem_path.name}: {result.status.name}", flush=True)
-            kind, witness = _result_failure(result) if not effective_success else (None, None)
+            kind, witness = _result_failure(result, evidence) if not effective_success else (None, None)
             category = kind.value if isinstance(kind, CounterexampleKind) else kind
             task_rows.append({"problem_file": task.problem_path.name, "status": "SUCCESS" if effective_success else result.status.name, "failure_category": category, "seed": seed})
             if not effective_success:
@@ -179,7 +179,18 @@ def run_execute(
             docs: tuple[Document, Document | None, Document | None] | None = None
             kind = CounterexampleKind(category) if category in CounterexampleKind._value2member_map_ else None
             if rollout_fallback is not None and kind == CounterexampleKind.OPEN_STATE and result.graph.get_num_vertices() == 1:
-                docs = rollout_fallback(task, header=header, evidence=evidence, feature_symbols=feature_symbols, dicts=dicts)
+                fallback = rollout_fallback(task, header=header, evidence=evidence, feature_symbols=feature_symbols, dicts=dicts)
+                if fallback is not None:
+                    if len(fallback) == 4:
+                        docs = (fallback[0], fallback[1], fallback[2])
+                        if fallback[3] is not None:
+                            category = str(fallback[3])
+                            kind = CounterexampleKind(category) if category in CounterexampleKind._value2member_map_ else None
+                            failure_id = f"{category}-{index:03d}"
+                            header = [(key, value if key != "id" else failure_id) for key, value in header]
+                            header = [(key, value if key != "category" else category) for key, value in header]
+                    else:
+                        docs = fallback
             if docs is None:
                 if kind is None:
                     raise RuntimeError(f"Cannot build witness artifacts for non-counterexample category: {category}")

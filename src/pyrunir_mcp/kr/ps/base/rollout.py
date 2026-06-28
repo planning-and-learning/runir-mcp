@@ -163,10 +163,11 @@ def rollout_artifacts(
     max_steps: int = _MAX_ROLLOUT_STEPS,
     include_hstar: bool = True,
     include_hlmcut: bool = True,
-) -> tuple[Document, Document | None, Document | None] | None:
+) -> tuple[Document, Document | None, Document | None, str | None] | None:
     """Build (counterexample, trace, successors) for a base init-only `execute` failure by rolling the
     policy forward to its real stuck state. Returns `None` if the greedy rollout instead reaches a goal
-    (verdict and rollout disagree on tie-breaks) so the caller falls back to the default init witness."""
+    (verdict and rollout disagree on tie-breaks) so the caller falls back to the default init witness.
+    The fourth return value is an optional failure-category override."""
     result = greedy_policy_rollout(search_context, policy, features, classifier, max_steps=max_steps)
     if result.outcome == "goal":
         return None
@@ -194,7 +195,7 @@ def rollout_artifacts(
         for index, state in enumerate(result.states)
     ]
     trace_states = [
-        witness_state(s, witness=(index == last), open_state=(index == last), cycle=(is_cycle and index == last))
+        witness_state(s, witness=(index == last), open_state=(index == last and not terminal_unsolvable), cycle=(is_cycle and index == last))
         for index, s in enumerate(summaries)
     ]
     trace_transitions = [
@@ -229,10 +230,12 @@ def rollout_artifacts(
         )
 
     terminal = result.states[last]
-    successors: list[Successor] = [
-        _successor(terminal, labeled.node.get_state(), labeled.label, compatible_rule(terminal, labeled.node.get_state()), evidence, is_goal)
-        for labeled in generator.get_labeled_successor_nodes(Node(terminal, 0.0))
-    ]
+    successors: list[Successor] = []
+    if not terminal_unsolvable:
+        successors = [
+            _successor(terminal, labeled.node.get_state(), labeled.label, compatible_rule(terminal, labeled.node.get_state()), evidence, is_goal)
+            for labeled in generator.get_labeled_successor_nodes(Node(terminal, 0.0))
+        ]
     successors_doc = (
         successors_document(
             header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=False,
@@ -241,4 +244,5 @@ def rollout_artifacts(
         if successors
         else None
     )
-    return counterexample, trace, successors_doc
+    category_override = "deadend" if terminal_unsolvable else None
+    return counterexample, trace, successors_doc, category_override

@@ -39,6 +39,8 @@ def test_prove_classifier_accepts_frozen_options(monkeypatch, tmp_path):
     assert descriptions == [classifier.read_text(encoding="utf-8")]
     assert result["status"] == "success"
     assert result["primary"]["successful"] is True
+    assert result["prompt_summary"] is result["primary"]["prompt_summary"]
+    assert result["prompt_summary"]["tool"] == service.TOOL_NAME
 
 
 def test_create_empty_classifier_writes_empty_classifier(tmp_path):

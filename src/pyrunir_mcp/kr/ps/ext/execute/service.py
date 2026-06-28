@@ -13,16 +13,13 @@ from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds, run_execute
-from pyrunir_mcp.kr.ps.ext.core.data_loader import (
-    LoadedLiftedSearchContext,
-    LoadedSearchContext,
-    load_grounded_search_context,
-    load_lifted_search_context,
-)
-from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure, create_module_program_context
+from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedLiftedSearchContext, LoadedSearchContext
+from pyrunir_mcp.kr.ps.ext.core.execute_context import create_execute_context
+from pyrunir_mcp.kr.ps.ext.core.features import ExecutionFailure
 from pyrunir_mcp.kr.ps.ext.core.policy_evaluation import execute_policy_on_tasks
 from pyrunir_mcp.kr.ps.ext.core.policy_io import parse_module_program_description, read_module_program_description
 from pyrunir_mcp.kr.ps.ext.rules import collect_features, intern_rules
+from pyrunir_mcp.kr.ps.classifier import build_classifier, classifier_evidence
 from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
 from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions
 from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander
@@ -34,6 +31,7 @@ class ExecutePolicyOptions:
     domain_file: Path
     problem_file: Path
     module_program_file: Path
+    classifier_file: Path | None = None
     num_threads: int = 1
     random_seed: int = 0
     random_seed_start: int = 0
@@ -82,6 +80,7 @@ def _manifest_metadata(options: ExecutePolicyOptions) -> JsonObject:
         "problem_file": str(options.problem_file),
         "module_program_file": str(options.module_program_file),
         "module_program_sha256": _module_program_sha256(options.module_program_file),
+        "classifier_file": str(options.classifier_file) if options.classifier_file else None,
         "hstar_max_num_states": options.hstar_max_num_states,
         "hstar_max_time_seconds": options.hstar_max_time_seconds,
         "include_hstar": options.include_hstar,
@@ -90,7 +89,7 @@ def _manifest_metadata(options: ExecutePolicyOptions) -> JsonObject:
 
 
 def _execute_policy_with_dumps(
-    options: ExecutePolicyOptions, policy: Policy, tasks: list[LoadedSearchContext], hstar_task: LoadedLiftedSearchContext | None
+    options: ExecutePolicyOptions, policy: Policy, tasks: list[LoadedSearchContext], hstar_task: LoadedLiftedSearchContext | None, classifier: object | None
 ) -> ExecutionFailure | None:
     assert options.dump_dir is not None
     features = collect_features(policy)
@@ -106,6 +105,7 @@ def _execute_policy_with_dumps(
         include_hstar=options.include_hstar,
         include_hlmcut=options.include_hlmcut,
     )
+    evidence = classifier_evidence(evidence, classifier)
     failing = run_execute(
         tool="execute_module_program",
         ext=True,
@@ -136,14 +136,17 @@ def _execute_policy_rollouts_without_dumps(options: ExecutePolicyOptions, policy
 
 def execute_policy(options: ExecutePolicyOptions) -> ExecutePolicyResult:
     execution_context = ExecutionContext(options.num_threads)
-    context = create_module_program_context(options.domain_file)
-    policy = parse_module_program_description(context, read_module_program_description(options.module_program_file))
-    tasks = [load_grounded_search_context(options.domain_file, options.problem_file, execution_context)]
+    context = create_execute_context(options.domain_file, options.problem_file, execution_context)
+    policy = parse_module_program_description(context.module_program_context, read_module_program_description(options.module_program_file))
+    tasks = [context.task]
     if options.dump_dir is None:
         failure = _execute_policy_rollouts_without_dumps(options, policy, tasks)
     else:
         hstar_task = None
         if options.include_hstar or options.include_hlmcut:
-            hstar_task = load_lifted_search_context(options.domain_file, options.problem_file, execution_context)
-        failure = _execute_policy_with_dumps(options, policy, tasks, hstar_task)
+            hstar_task = context.lifted_task
+        classifier = None
+        if options.classifier_file is not None:
+            classifier = build_classifier(context.classifier_repository, context.module_program_context.planning_domain, options.classifier_file)
+        failure = _execute_policy_with_dumps(options, policy, tasks, hstar_task, classifier)
     return ExecutePolicyResult(policy=policy, tasks=tasks, failure=failure, dump_dir=options.dump_dir)

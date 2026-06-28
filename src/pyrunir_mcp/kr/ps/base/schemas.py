@@ -9,6 +9,7 @@ class ProvePolicyOptions:
     problem_file: str
     sketch_file: str
     output_dir: str
+    classifier_file: str | None = None
     num_threads: int = 1
     max_num_states: int = 100_000
     max_time_seconds: float = 5.0

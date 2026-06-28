@@ -20,7 +20,7 @@ from pyrunir.kr.dl.base.semantics import ConstructorRepositoryFactory as DLConst
 from pyrunir.kr.dl.uns import ConstructorRepositoryFactory as UnsDLConstructorRepositoryFactory
 from pyrunir.kr.ps.base import RepositoryFactory as PolicyRepositoryFactory
 from pyrunir.kr.uns import Repository as ClassifierRepository, RepositoryFactory as ClassifierRepositoryFactory
-from pyrunir.kr.uns.dl import ClassifierFactory, parse_classifier
+from pyrunir_mcp.kr.ps.classifier import build_classifier
 from pypddl.formalism import ParserOptions
 from pytyr.formalism.planning import Parser, PlanningDomain
 from pytyr.planning.lifted import GroundTaskInstantiationOptions, GroundTaskInstantiationStatus, Task as LiftedTask
@@ -28,9 +28,6 @@ from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedLiftedSearchContext, LoadedSearchContext
 from pyrunir_mcp.kr.ps.base.core.features import BasePolicyContext
-
-# pyrunir ClassifierView (a bound view type with no importable Python alias).
-Classifier = object
 
 
 @dataclass(frozen=True)
@@ -71,11 +68,3 @@ def create_execute_context(domain_path: Path, problem_path: Path, execution_cont
         parser=parser,
         formal_lifted_task=lifted_task,
     )
-
-
-def build_classifier(repository: ClassifierRepository, domain: PlanningDomain, classifier_file: Path | None) -> Classifier:
-    """The unsolvability classifier over the shared `repository`/`domain` from `create_execute_context`.
-    No `classifier_file` → the empty `(or)` classifier (classifies every state solvable)."""
-    if classifier_file is None:
-        return ClassifierFactory.create_empty(repository)
-    return parse_classifier(Path(classifier_file).read_text(encoding="utf-8"), domain, repository)
