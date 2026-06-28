@@ -93,6 +93,7 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
     result_manifest = _manifest_result(manifest, output_dir)
     tasks = result_manifest.get("tasks", []) if isinstance(result_manifest, dict) else []
     distinct_failures = result_manifest.get("distinct_failures", []) if isinstance(result_manifest, dict) else []
+    successful_traces = result_manifest.get("successful_traces", []) if isinstance(result_manifest, dict) else []
 
     task_items: list[JsonObject] = []
     failing_task = None
@@ -146,6 +147,26 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
             "meta_path": meta_path,
             "trace_available": bool(item.get("trace_available", trace_available)),
         })
+    success_items: list[JsonObject] = []
+    for index, item in enumerate(successful_traces, start=1):
+        success_id = str(item.get("id") or f"success-{index:03d}")
+        problem = item.get("problem_file")
+        task = item.get("task") or item.get("name") or (Path(str(problem)).name if problem else f"task-{index:03d}")
+        trace_path = _result_path(item.get("trace_path"), output_dir)
+        meta_path = _result_path(item.get("meta_path"), output_dir)
+        trace_available = bool(trace_path) and trace_path != "<omitted: outside output_dir>"
+        success_items.append({
+            "kind": "success",
+            "id": success_id,
+            "category": item.get("category") or "success",
+            "problem_file": problem,
+            "task": task,
+            "seed": item.get("seed"),
+            "trace_path": trace_path,
+            "meta_path": meta_path,
+            "trace_available": bool(item.get("trace_available", trace_available)),
+        })
+
     if failure_items:
         # Distinct failure rows are built after any witness-level category refinement
         # (for example classifier-detected deadends in the base execute fallback). Prefer
@@ -170,6 +191,7 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
         "counts": {
             "tasks": len(task_items),
             "failures": len(failure_items),
+            "successes": len(success_items),
         },
         "task_statuses": task_statuses,
         "failure_category": failure_category,
@@ -185,16 +207,18 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
         "task_statuses": task_statuses,
         "task_count": len(task_items),
         "failure_count": len(failure_items),
+        "success_count": len(success_items),
         "prompt_summary": prompt_summary,
     }
     summary = {
         "schema_version": 1,
         "tool": tool,
         "status": status,
-        "counts": {"tasks": len(task_items), "failures": len(failure_items)},
+        "counts": {"tasks": len(task_items), "failures": len(failure_items), "successes": len(success_items)},
         "manifest": result_manifest,
         "tasks": task_items,
         "distinct_failures": failure_items,
+        "successful_traces": success_items,
     }
     return {
         "schema_version": 1,
@@ -205,6 +229,7 @@ def execute_result(*, tool: str, result: ExecuteResultLike, output_dir: Path) ->
         "artifacts": artifacts,
         "prompt_summary": prompt_summary,
         "items": failure_items,
+        "successes": success_items,
         "tasks": task_items,
         "manifest": result_manifest,
         "manifest_path": artifacts["manifest_json"],

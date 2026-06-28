@@ -139,4 +139,9 @@ def test_execute_empty_policy_on_initial_goal_does_not_emit_open_state(tmp_path)
 
     assert result.is_successful
     assert not (out / "failures" / "open_state-001").exists()
-    assert '"status": "SUCCESS"' in (out / "manifest.json").read_text(encoding="utf-8")
+    manifest_text = (out / "manifest.json").read_text(encoding="utf-8")
+    assert '"status": "SUCCESS"' in manifest_text
+    assert '"successful_traces"' in manifest_text
+    assert (out / "successes" / "success-001" / "trace.psv").is_file()
+    assert (out / "successes" / "success-001" / "meta.json").is_file()
+    assert (out / "successes.psv").is_file()

@@ -1,3 +1,6 @@
+import pytest
+
+from pyrunir_mcp.kr.ps.ext.termination.serialize import feature_symbol, rule_symbol, string_keyed_dict
 from pyrunir_mcp.output.classifier import ClassifierRow, classifier_witness
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.termination import (
@@ -41,3 +44,37 @@ def test_termination_cycle_document():
     assert "[edges]\nidx|src|tgt|rule|changes\n0|0|1|r0|v2:dec\n1|1|0|r1|v2:inc" in psv
     # variables interned concept, boolean, numerical in that grouping order
     assert dicts.tables()["variables"].rows == [["v0", "concept", "c_undelivered"], ["v1", "boolean", "b_holding"], ["v2", "numerical", "n_count"]]
+
+
+class _Symbolic:
+    def __init__(self, symbol: str):
+        self._symbol = symbol
+
+    def get_symbol(self) -> str:
+        return self._symbol
+
+
+class _FeatureLike:
+    def __init__(self, symbol: str):
+        self._variant = _Symbolic(symbol)
+
+    def get_variant(self) -> _Symbolic:
+        return self._variant
+
+
+def test_termination_serializer_uses_feature_symbol_objects():
+    assert string_keyed_dict({_FeatureLike("pending"): True}) == {"pending": "True"}
+
+
+def test_termination_serializer_uses_rule_symbol_objects():
+    assert rule_symbol(_Symbolic("put_down_pending")) == "put_down_pending"
+
+
+def test_termination_serializer_requires_rule_symbol_accessor():
+    with pytest.raises(AttributeError):
+        rule_symbol("(:rule (:symbol put_down_pending))")
+
+
+def test_termination_serializer_requires_feature_variant_symbol_accessor():
+    with pytest.raises(AttributeError):
+        feature_symbol(_Symbolic("pending"))

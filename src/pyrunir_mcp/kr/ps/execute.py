@@ -18,7 +18,7 @@ from typing import Protocol, TypeVar
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.frontier import FrontierExpander
-from pyrunir_mcp.kr.ps.proof import CounterexampleKind, ProofResult, StateEvidence, failure_items, is_goal_open_state_result, witness_artifacts
+from pyrunir_mcp.kr.ps.proof import CounterexampleKind, ProofResult, StateEvidence, failure_items, is_goal_open_state_result, successful_trace_artifact, witness_artifacts
 from pyrunir_mcp.kr.ps.status import is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.writer import Artifact, resolve_formats, write_run
@@ -97,8 +97,35 @@ class _Representative:
     successors: str | None
 
 
+@dataclass(frozen=True)
+class _SuccessTrace:
+    id: str
+    category: str
+    status: str
+    seed: int
+    problem: str
+    trace: str
+
+
 def _relative(name: str | None) -> str:
     return f"{name}.psv" if name else ""
+
+
+def _write_success_meta(output_dir: Path, success: _SuccessTrace, source: str) -> str:
+    primary = resolve_formats()[0]
+    meta = {
+        "id": success.id,
+        "category": success.category,
+        "status": success.status,
+        "seed": success.seed,
+        "problem": success.problem,
+        "source": source,
+        "files": {"trace": f"trace.{primary}"},
+    }
+    path = output_dir / "successes" / success.id / "meta.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path.resolve().as_posix()
 
 
 def _write_failure_meta(output_dir: Path, rep: _Representative, source: str) -> str:
@@ -146,6 +173,7 @@ def run_execute(
     rollouts: list[JsonObject] = []
     task_rows: list[JsonObject] = []
     representatives: dict[tuple[str, str], tuple[int, Task, ProofResult, int | list[int] | None]] = {}
+    successful_runs: list[tuple[int, Task, ProofResult]] = []
     first_failure: tuple[Task, ProofResult] | None = None
 
     for seed in seeds:
@@ -157,6 +185,8 @@ def run_execute(
             kind, witness = _result_failure(result, evidence) if not effective_success else (None, None)
             category = kind.value if isinstance(kind, CounterexampleKind) else kind
             task_rows.append({"problem_file": task.problem_path.name, "status": "SUCCESS" if effective_success else result.status.name, "failure_category": category, "seed": seed})
+            if effective_success:
+                successful_runs.append((seed, task, result))
             if not effective_success:
                 seed_failed, seed_category = True, category
                 if first_failure is None:
@@ -210,15 +240,36 @@ def run_execute(
                 artifacts[names["successors"]] = successors
         reps.append(_Representative(failure_id, category, result.status.name, seed, problem, names["witness"], names["trace"], names["successors"]))
 
+    successes: list[_SuccessTrace] = []
+    for index, (seed, task, result) in enumerate(successful_runs, start=1):
+        success_id = f"success-{index:03d}"
+        problem = task.problem_path.name
+        trace_name = f"successes/{success_id}/trace"
+        header = [("tool", tool), ("id", success_id), ("category", "success"), ("status", "SUCCESS"), ("problem", problem), ("seed", str(seed))]
+        trace = successful_trace_artifact(
+            result.graph, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext, header=header,
+            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
+        if trace is None:
+            continue
+        artifacts[trace_name] = trace
+        successes.append(_SuccessTrace(success_id, "success", "SUCCESS", seed, problem, trace_name))
+
     artifacts["failures"] = Table(
         name="failures",
         columns=["id", "category", "status", "seed", "problem", "source", "trace", "witness", "successors"],
         rows=[[r.id, r.category, r.status, r.seed, r.problem, "find_solution", _relative(r.trace), _relative(r.witness), _relative(r.successors)] for r in reps],
     )
+    artifacts["successes"] = Table(
+        name="successes",
+        columns=["id", "category", "status", "seed", "problem", "source", "trace"],
+        rows=[[s.id, s.category, s.status, s.seed, s.problem, "find_solution", _relative(s.trace)] for s in successes],
+    )
     artifacts["summary"] = Table(name="summary", columns=["id", "category", "status", "seed", "problem"], rows=[[r.id, r.category, r.status, r.seed, r.problem] for r in reps])
 
     paths = write_run(output_dir, {**{f"dicts/{name}": table for name, table in dicts.tables().items()}, **artifacts})
     meta_paths = {r.id: _write_failure_meta(output_dir, r, "find_solution") for r in reps}
+    success_meta_paths = {s.id: _write_success_meta(output_dir, s, "find_solution") for s in successes}
 
     manifest = {
         "tool": tool,
@@ -239,6 +290,18 @@ def run_execute(
                 "trace_available": r.trace is not None,
             }
             for r in reps
+        ],
+        "successful_traces": [
+            {
+                "id": s.id,
+                "category": s.category,
+                "problem_file": s.problem,
+                "seed": s.seed,
+                "trace_path": paths.get(s.trace),
+                "meta_path": success_meta_paths[s.id],
+                "trace_available": True,
+            }
+            for s in successes
         ],
     }
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

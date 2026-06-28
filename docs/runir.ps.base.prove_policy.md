@@ -45,3 +45,4 @@ output_dir/
       trace.{psv,md,json}                # path to the witness, present when a path exists
       successors.{psv,md,json}           # 1-step successors of the witness
 ```
+

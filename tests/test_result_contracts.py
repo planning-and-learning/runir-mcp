@@ -204,6 +204,60 @@ def test_execute_result_reuses_service_written_failure_artifacts(tmp_path):
     assert json.loads(witness_path.read_text(encoding="utf-8"))["id"] == "open_state-001"
     assert json.loads(trace_path.read_text(encoding="utf-8"))["id"] == "open_state-001"
 
+def test_execute_result_exposes_successful_trace_artifacts(tmp_path):
+    class Result:
+        failure = None
+
+    output_dir = tmp_path / "execute"
+    success_dir = output_dir / "successes" / "success-001"
+    trace_path = success_dir / "trace.psv"
+    meta_path = success_dir / "meta.json"
+    success_dir.mkdir(parents=True)
+    trace_path.write_text("@id success-001\n", encoding="utf-8")
+    meta_path.write_text(json.dumps({"id": "success-001", "category": "success"}) + "\n", encoding="utf-8")
+    (output_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "tasks": [{"problem_file": "p1.pddl", "status": "SUCCESS", "seed": 0}],
+                "distinct_failures": [],
+                "successful_traces": [
+                    {
+                        "id": "success-001",
+                        "category": "success",
+                        "problem_file": "p1.pddl",
+                        "seed": 0,
+                        "trace_path": trace_path.as_posix(),
+                        "meta_path": meta_path.as_posix(),
+                        "trace_available": True,
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = execute_result(tool="runir.ps.base.execute_policy", result=Result(), output_dir=output_dir)
+
+    assert result["primary"]["successful"] is True
+    assert result["primary"]["success_count"] == 1
+    assert result["prompt_summary"]["counts"]["successes"] == 1
+    assert result["items"] == []
+    assert result["successes"] == [
+        {
+            "kind": "success",
+            "id": "success-001",
+            "category": "success",
+            "problem_file": "p1.pddl",
+            "task": "p1.pddl",
+            "seed": 0,
+            "trace_path": trace_path.as_posix(),
+            "meta_path": meta_path.as_posix(),
+            "trace_available": True,
+        }
+    ]
+
+
 def test_base_execute_cli_passes_trace_metadata_options(monkeypatch, tmp_path):
     from pyrunir_mcp import invoke
 

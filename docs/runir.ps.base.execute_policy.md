@@ -23,7 +23,7 @@ Executes a base sketch policy on one grounded planning task. This is the cheap v
 
 ## Output
 
-Returns normalized execution output with one task entry per rollout seed and representative failure entries. `hstar` values in witness, trace, and successor state rows are computed by converting each reported state into the lifted task and running A* guided by LM-cut; the value is shortest remaining plan length in number of actions, not action cost. `inf` means the state is proven dead; an empty cell means the h* computation exhausted `hstar_max_time_seconds` or `hstar_max_num_states` before proving a value. The `hlmcut` column reports the raw LM-cut heuristic value for the same lifted state as an admissible lower bound, including when exact `hstar` is too costly. State rows always carry feature values and (for witness/cycle states) `fluent`/`derived` facts. Transition rows always carry concrete action labels and the matched rule symbol. The on-disk encoding of the dictionaries, counterexamples, traces, and successors is the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md).
+Returns normalized execution output with one task entry per rollout seed, representative failure entries, and trace-only entries for every rollout that succeeds. `hstar` values in witness, trace, and successor state rows are computed by converting each reported state into the lifted task and running A* guided by LM-cut; the value is shortest remaining plan length in number of actions, not action cost. `inf` means the state is proven dead; an empty cell means the h* computation exhausted `hstar_max_time_seconds` or `hstar_max_num_states` before proving a value. The `hlmcut` column reports the raw LM-cut heuristic value for the same lifted state as an admissible lower bound, including when exact `hstar` is too costly. State rows always carry feature values and (for witness/cycle states) `fluent`/`derived` facts. Transition rows always carry concrete action labels and the matched rule symbol. The on-disk encoding of the dictionaries, counterexamples, traces, and successors is the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md).
 
 ## Output Directory
 
@@ -33,6 +33,7 @@ output_dir/
   manifest.json                          # run metadata: config, command, rollout budgets, hstar budgets (JSON only)
   summary.{psv,md,json}                  # run index/counts table
   failures.{psv,md,json}                 # one row per representative failure (index)
+  successes.{psv,md,json}                # one row per successful rollout trace (index)
   dicts/
     features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol
     rules.{psv,md,json}                  # run-global dictionary: r0,r1,… -> rule symbol
@@ -45,9 +46,13 @@ output_dir/
       witness.{psv,md,json}              # witness state or cycle
       trace.{psv,md,json}                # path to the witness, present when a path exists
       successors.{psv,md,json}           # 1-step successors of the witness (open_state, cycle, deadend)
+  successes/
+    <id>/                                # one directory per successful rollout
+      meta.json                          # per-success metadata (see docs/index.md)
+      trace.{psv,md,json}                # complete successful rollout trace; no witness/successors
 ```
 
-Everything for one failure is local to `failures/<id>/`; the run-global alias dictionaries live under
+Everything for one failure is local to `failures/<id>/`; everything for one successful rollout is local to `successes/<id>/`. The run-global alias dictionaries live under
 `dicts/`.
 
 ## Output Files
@@ -57,7 +62,7 @@ The alias dictionaries under `dicts/` (`features`/`rules`/`actions`/`atoms`) and
 - `source` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 
-It also writes the `failures` index below (execute-specific). Each artifact is written in all three formats (`.psv`, `.md`, `.json`) during experimentation, controlled by a `formats` option that later narrows to `["psv"]`. `summary.{psv,md,json}` is the run index/counts table; `manifest.json` holds run metadata (config, command, budgets) and stays JSON-only per the project output policy.
+It also writes the `failures` and `successes` indexes below (execute-specific). Each artifact is written in all three formats (`.psv`, `.md`, `.json`) during experimentation, controlled by a `formats` option that later narrows to `["psv"]`. `summary.{psv,md,json}` is the run index/counts table; `manifest.json` holds run metadata (config, command, budgets) and stays JSON-only per the project output policy.
 
 ### Failures
 
@@ -78,4 +83,24 @@ Files `failures.psv` / `failures.md` / `failures.json` — one row per represent
 ```text
 id|category|status|seed|problem|source|trace|witness|successors
 cycle-001|cycle|CYCLE|0|p01.pddl|find_solution|failures/cycle-001/trace.psv|failures/cycle-001/witness.psv|failures/cycle-001/successors.psv
+```
+
+
+### Successes
+
+Files `successes.psv` / `successes.md` / `successes.json` — one row per rollout seed that succeeds. Unlike failures, a success has no witness state and no successor frontier: its artifact is only the complete trace under `successes/<id>/trace.{psv,md,json}`. All successful rollouts from the requested seeds are listed, not just one representative.
+
+| Column | Meaning |
+|---|---|
+| `id` | Stable success id, e.g. `success-001` (also the `successes/<id>/` directory name). |
+| `category` | Always `success`. |
+| `status` | Execution status, usually `SUCCESS`. |
+| `seed` | Rollout seed. |
+| `problem` | Problem file path. |
+| `source` | Trace source (e.g. `find_solution`). |
+| `trace` | Relative path to the successful trace file. |
+
+```text
+id|category|status|seed|problem|source|trace
+success-001|success|SUCCESS|0|p01.pddl|find_solution|successes/success-001/trace.psv
 ```

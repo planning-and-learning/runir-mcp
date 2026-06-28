@@ -5,8 +5,16 @@ from pyrunir.kr.ps.ext import StructuralTerminationStatus
 from pyrunir_mcp.json_types import JsonObject
 
 
+def feature_symbol(feature) -> str:
+    return str(feature.get_variant().get_symbol()).strip()
+
+
+def rule_symbol(rule) -> str:
+    return str(rule.get_symbol()).strip()
+
+
 def string_keyed_dict(values) -> dict[str, str]:
-    return {str(key): str(value) for key, value in values.items()}
+    return {feature_symbol(key): str(value) for key, value in values.items()}
 
 
 def counterexample_to_data(counterexample) -> JsonObject:
@@ -29,7 +37,7 @@ def counterexample_to_data(counterexample) -> JsonObject:
                 "index": index,
                 "source": edge.get_source(),
                 "target": edge.get_target(),
-                "rule": str(edge.get_rule()).strip(),
+                "rule": rule_symbol(edge.get_rule()),
                 "numerical_changes": string_keyed_dict(edge.get_numerical_changes()),
             }
         )

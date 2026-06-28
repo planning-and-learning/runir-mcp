@@ -1,6 +1,6 @@
 # Output: base sketch-policy counterexamples, traces, and successors
 
-Shared output-file format for the base sketch-policy tools — [`runir.ps.base.execute_policy`](../runir.ps.base.execute_policy.md) and [`runir.ps.base.prove_policy`](../runir.ps.base.prove_policy.md). Both write the same alias dictionaries (under `dicts/`) and per-failure `witness`/`trace`/`successors` files (under `failures/<id>/`) described here. Each tool's own index/summary layer (execute's `failures`/`manifest`, prove's `summary`) and tool-specific options live in that tool's doc.
+Shared output-file format for the base sketch-policy tools — [`runir.ps.base.execute_policy`](../runir.ps.base.execute_policy.md) and [`runir.ps.base.prove_policy`](../runir.ps.base.prove_policy.md). Both write the same alias dictionaries (under `dicts/`) and per-failure `witness`/`trace`/`successors` files (under `failures/<id>/`) described here. Execute additionally writes trace-only successful rollout references under `successes/<id>/`. Each tool's own index/summary layer (execute's `failures`/`manifest`, prove's `summary`) and tool-specific options live in that tool's doc.
 
 Each structured artifact is built once as a logical table — or, for the sectioned witness/trace/successor files, a document of `@key value` headers plus named tables — and rendered through the shared renderer (`pyrunir_mcp.tables`) into the same data in three forms:
 
@@ -134,6 +134,13 @@ state|atoms
 s0|p0
 s1|p1
 ```
+
+
+## Successful traces
+
+Files `successes/<id>/trace.{psv,md,json}` — complete traces for rollout seeds that succeeded. They use the same `[states]`, `[transitions]`, and `[facts]` schema as counterexample traces, but their headers carry `@category success` and they are stored under `successes/` instead of `failures/`. A success has no witness and no successor frontier: there is no `witness.{psv,md,json}` and no `successors.{psv,md,json}` in `successes/<id>/`.
+
+These traces are positive references: they show behavior the policy already handles and should not be treated as defects. Execute tools list every rollout seed that succeeds. Prove tools currently do not emit success references.
 
 ## Successors
 

@@ -404,6 +404,32 @@ def _expand_frontier(
     return expander(graph, vertices)
 
 
+
+
+def successful_trace_artifact(
+    graph: ProofGraph,
+    evidence: StateEvidence | None,
+    *,
+    feature_symbols: list[str],
+    dicts: Dictionaries,
+    ext: bool,
+    header: list[tuple[str, str]],
+    include_hstar: bool = True,
+    include_hlmcut: bool = True,
+) -> Document | None:
+    """Return a trace to the first reachable goal vertex in a successful proof graph."""
+    for vertex in _vertex_indices(graph):
+        if not _label_is_goal(graph.get_vertex_property(vertex)):
+            continue
+        path_edges = _path_edges_to(graph, vertex)
+        if path_edges is None:
+            continue
+        return _trace_document(
+            graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
+            header=header, witness_vertices=set(), include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        )
+    return None
+
 def witness_artifacts(
     graph: ProofGraph,
     kind: CounterexampleKind,

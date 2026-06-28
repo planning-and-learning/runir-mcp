@@ -901,7 +901,7 @@ wheels = [
 
 [[package]]
 name = "pyrunir-mcp"
-version = "0.0.14"
+version = "0.0.20"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },

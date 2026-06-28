@@ -127,6 +127,11 @@ s0|p0
 s1|p1
 ```
 
+
+## Successful traces
+
+Execute successful traces mirror base successful traces: `successes/<id>/trace.{psv,md,json}` uses the module-program trace schema above, with vertex-indexed `[states]`/`[transitions]` and planning-state `[facts]`. A success directory contains only `meta.json` and `trace.{psv,md,json}`; it has no witness and no successors.
+
 ## Successors
 
 Same purpose and categories as [base successors](runir.ps.base.counterexamples.md#successors) — the 1-step frontier from each state on the trace/cycle, the gap visible as an advancing move with an empty `rule`. The frontier is built by expanding each vertex's planning state with the successor generator and asking pyrunir which **module rule** (at that vertex's memory state + registers) selects the move, via `pyrunir.kr.ps.ext.SuccessorExpander`: `matching_rule(...)` replays the executor's per-rule applicability (memory match + conditions + effects, DoRule action/argument match) and `apply(...)` returns the resulting proof node, so a taken move also reports the **module + resulting memory** it lands in.
