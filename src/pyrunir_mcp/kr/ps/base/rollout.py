@@ -38,7 +38,7 @@ from pyrunir_mcp.kr.ps.feature_evidence import (
     evaluate_features,
     feature_key,
 )
-from pyrunir_mcp.kr.ps.frontier import _format_ground_action, _goal_test, _successor
+from pyrunir_mcp.kr.ps.frontier import format_ground_action, goal_test, successor
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.policy import (
     Cycle,
@@ -113,7 +113,7 @@ def greedy_policy_rollout(
 ) -> RolloutResult:
     fkeys = [feature_key(feature) for feature in features]
     generator = search_context.successor_generator
-    is_goal = _goal_test(search_context)
+    is_goal = goal_test(search_context)
     compatible_rule = _make_compatible_rule(
         policy, Builder(), DenotationRepositoryFactory().create()
     )
@@ -191,7 +191,7 @@ def rollout_artifacts(
     if result.outcome == "goal":
         return None
 
-    is_goal = _goal_test(search_context)
+    is_goal = goal_test(search_context)
     generator = search_context.successor_generator
     builder = Builder()
     denotations = DenotationRepositoryFactory().create()
@@ -224,7 +224,7 @@ def rollout_artifacts(
     ]
     trace_transitions = [
         witness_transition(
-            {"action": _format_ground_action(step.action), "module_rule": step.rule},
+            {"action": format_ground_action(step.action), "module_rule": step.rule},
             step=index,
             source=summaries[index],
             target=summaries[index + 1],
@@ -277,7 +277,7 @@ def rollout_artifacts(
     successors: list[Successor] = []
     if not terminal_unsolvable:
         successors = [
-            _successor(
+            successor(
                 terminal,
                 labeled.node.get_state(),
                 labeled.label,

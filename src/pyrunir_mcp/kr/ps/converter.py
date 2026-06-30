@@ -48,8 +48,11 @@ class GroundToLiftedStateConverter:
         return self._repository.get_or_create(FluentGroundAtomBuilder(binding))[0]
 
     def _copy_fluent_fact(self, fact: FluentFDRFact) -> FluentFDRFact:
-        atom = self._copy_fluent_ground_atom(fact.get_atom())
-        return self._fdr_context.get_fact(atom)
+        atom = fact.get_atom()
+        if atom is None:
+            raise ValueError("fluent FDR fact has no atom")
+        copied_atom = self._copy_fluent_ground_atom(atom)
+        return self._fdr_context.get_fact(copied_atom)
 
     def _copy_fluent_function(self, function: FluentFunction) -> FluentFunction:
         builder = FluentFunctionBuilder(function.get_name(), function.get_arity())

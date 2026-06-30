@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pyyggdrasil.execution import ExecutionContext
 from pytyr.planning.ground import Node as GroundNode
 from pytyr.planning.lifted import Node
@@ -34,7 +36,7 @@ UNSOLVABLE_PROBLEM = """(define (problem p)
 """
 
 
-def _write_task(tmp_path, domain_text: str, problem_text: str):
+def _write_task(tmp_path: Path, domain_text: str, problem_text: str) -> tuple[Path, Path]:
     domain = tmp_path / "domain.pddl"
     problem = tmp_path / "problem.pddl"
     domain.write_text(domain_text, encoding="utf-8")
@@ -42,7 +44,7 @@ def _write_task(tmp_path, domain_text: str, problem_text: str):
     return domain, problem
 
 
-def test_hstar_uses_lifted_start_state_option(tmp_path):
+def test_hstar_uses_lifted_start_state_option(tmp_path: Path) -> None:
     domain, problem = _write_task(tmp_path, DOMAIN, PROBLEM)
     context = load_lifted_search_context(domain, problem, ExecutionContext(1)).search_context
     evaluator = HStarEvaluator(context, HStarOptions(max_num_states=100, max_time_seconds=3.0))
@@ -61,7 +63,7 @@ def test_hstar_uses_lifted_start_state_option(tmp_path):
     assert evaluator.evaluate_lmcut(goal) == 0
 
 
-def test_hstar_marks_lifted_deadend_as_inf(tmp_path):
+def test_hstar_marks_lifted_deadend_as_inf(tmp_path: Path) -> None:
     domain, problem = _write_task(tmp_path, UNSOLVABLE_DOMAIN, UNSOLVABLE_PROBLEM)
     context = load_lifted_search_context(domain, problem, ExecutionContext(1)).search_context
     evaluator = HStarEvaluator(context, HStarOptions(max_num_states=100, max_time_seconds=3.0))
@@ -71,7 +73,7 @@ def test_hstar_marks_lifted_deadend_as_inf(tmp_path):
     assert evaluator.evaluate_lmcut(initial) == HeuristicSentinel.DEADEND
 
 
-def test_hstar_converts_ground_state_into_lifted_repository(tmp_path):
+def test_hstar_converts_ground_state_into_lifted_repository(tmp_path: Path) -> None:
     domain, problem = _write_task(tmp_path, DOMAIN, PROBLEM)
     execution_context = ExecutionContext(1)
     lifted = load_lifted_search_context(domain, problem, execution_context).search_context
@@ -87,7 +89,7 @@ def test_hstar_converts_ground_state_into_lifted_repository(tmp_path):
     assert evaluator.evaluate_lmcut(ground_after_first) == 1
 
 
-def test_hstar_budget_exhaustion_is_unknown_not_inf(tmp_path):
+def test_hstar_budget_exhaustion_is_unknown_not_inf(tmp_path: Path) -> None:
     domain, problem = _write_task(tmp_path, DOMAIN, PROBLEM)
     context = load_lifted_search_context(domain, problem, ExecutionContext(1)).search_context
     evaluator = HStarEvaluator(context, HStarOptions(max_num_states=0, max_time_seconds=3.0))

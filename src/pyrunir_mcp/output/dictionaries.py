@@ -8,6 +8,7 @@ the shared PSV/Markdown/JSON output conventions.
 from __future__ import annotations
 
 from enum import StrEnum
+from collections.abc import Sequence
 from typing import Hashable
 
 from pyrunir_mcp.json_types import JsonValue
@@ -29,7 +30,7 @@ class Dictionary:
         self._keys: list[Hashable] = []
         self._rows: list[list[JsonValue]] = []
 
-    def intern(self, key: Hashable, cells: list[JsonValue]) -> str:
+    def intern(self, key: Hashable, cells: Sequence[JsonValue]) -> str:
         alias = self._alias_by_key.get(key)
         if alias is None:
             alias = f"{self._prefix}{len(self._rows)}"

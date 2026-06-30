@@ -16,10 +16,18 @@ from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
 from pyrunir_mcp.tables import Document, Table
 
 
+def _json_dict() -> dict[str, JsonValue]:
+    return {}
+
+
+def _delta_dict() -> dict[str, tuple[JsonValue, JsonValue]]:
+    return {}
+
+
 @dataclass(frozen=True)
 class WitnessState:
     state: int
-    features: dict[str, JsonValue] = field(default_factory=dict)
+    features: dict[str, JsonValue] = field(default_factory=_json_dict)
     fluent: tuple[str, ...] = ()
     derived: tuple[str, ...] = ()
     flags: tuple[str, ...] = ()
@@ -36,7 +44,7 @@ class WitnessTransition:
     target: int
     action: str | None = None
     rule: str | None = None  # raw rule symbol; looked up in the rules dictionary
-    delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=dict)
+    delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=_delta_dict)
 
 
 @dataclass(frozen=True)
@@ -52,7 +60,7 @@ class Successor:
     target: WitnessState
     action: str | None = None
     rule: str | None = None
-    delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=dict)
+    delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=_delta_dict)
 
 
 class Flag(StrEnum):

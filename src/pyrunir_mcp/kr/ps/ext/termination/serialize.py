@@ -49,40 +49,47 @@ def rule_symbol(rule: SymbolicRule) -> str:
     return str(rule.get_symbol()).strip()
 
 
-def string_keyed_dict(values: Mapping[SymbolicFeature, str]) -> dict[str, str]:
+def string_keyed_dict(values: Mapping[SymbolicFeature, object]) -> dict[str, str]:
     return {feature_symbol(key): str(value) for key, value in values.items()}
 
 
 def counterexample_to_data(counterexample: TerminationCounterexample) -> JsonObject:
-    vertices = []
+    vertices: list[JsonObject] = []
     for index, vertex in enumerate(counterexample.get_vertices()):
-        vertices.append(
-            {
-                "index": index,
-                "memory_state": str(vertex.get_memory_state()),
-                "concepts": string_keyed_dict(vertex.get_concepts()),
-                "booleans": string_keyed_dict(vertex.get_booleans()),
-                "numericals": string_keyed_dict(vertex.get_numericals()),
-            }
-        )
+        row: JsonObject = {
+            "index": index,
+            "memory_state": str(vertex.get_memory_state()),
+            "concepts": {
+                key: value for key, value in string_keyed_dict(vertex.get_concepts()).items()
+            },
+            "booleans": {
+                key: value for key, value in string_keyed_dict(vertex.get_booleans()).items()
+            },
+            "numericals": {
+                key: value for key, value in string_keyed_dict(vertex.get_numericals()).items()
+            },
+        }
+        vertices.append(row)
 
-    edges = []
+    edges: list[JsonObject] = []
     for index, edge in enumerate(counterexample.get_edges()):
-        edges.append(
-            {
-                "index": index,
-                "source": edge.get_source(),
-                "target": edge.get_target(),
-                "rule": rule_symbol(edge.get_rule()),
-                "numerical_changes": string_keyed_dict(edge.get_numerical_changes()),
-            }
-        )
+        row: JsonObject = {
+            "index": index,
+            "source": edge.get_source(),
+            "target": edge.get_target(),
+            "rule": rule_symbol(edge.get_rule()),
+            "numerical_changes": {
+                key: value
+                for key, value in string_keyed_dict(edge.get_numerical_changes()).items()
+            },
+        }
+        edges.append(row)
 
     return {
         "num_vertices": counterexample.get_num_vertices(),
         "num_edges": counterexample.get_num_edges(),
-        "vertices": vertices,
-        "edges": edges,
+        "vertices": [vertex for vertex in vertices],
+        "edges": [edge for edge in edges],
     }
 
 

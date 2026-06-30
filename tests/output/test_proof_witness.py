@@ -1,10 +1,11 @@
+from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.hstar import HeuristicSentinel
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.policy import counterexample_document, successors_document, trace_document
 from pyrunir_mcp.output.proof_witness import successor, witness_state, witness_transition
 from pyrunir_mcp.tables import render_document
 
-BASE_STATE = {
+BASE_STATE: JsonObject = {
     "vertex_index": 0,
     "state_index": 10,
     "feature_values": {"n_undeliv": 3, "b_goal": False},
@@ -14,7 +15,7 @@ BASE_STATE = {
     "is_goal": False,
     "is_unsolvable": False,
 }
-OPEN_STATE = {
+OPEN_STATE: JsonObject = {
     "vertex_index": 1,
     "state_index": 11,
     "feature_values": {"n_undeliv": 3, "b_goal": False},
@@ -59,7 +60,7 @@ def test_open_state_counterexample_document():
 def test_trace_transitions_alias_and_delta():
     dicts = Dictionaries()
     dicts.rule("deliver")
-    edge = {"source_vertex_index": 0, "target_vertex_index": 1, "action": "(deliver ball1)", "module_rule": "deliver"}
+    edge: JsonObject = {"source_vertex_index": 0, "target_vertex_index": 1, "action": "(deliver ball1)", "module_rule": "deliver"}
     transition = witness_transition(edge, step=0, source=BASE_STATE, target={**OPEN_STATE, "feature_values": {"n_undeliv": 2, "b_goal": False}}, ext=False)
     doc = trace_document(
         header=[("tool", "prove_policy")],
@@ -75,16 +76,16 @@ def test_trace_transitions_alias_and_delta():
 
 
 def test_ext_transition_uses_vertex_endpoints():
-    src = {**BASE_STATE, "memory_state": "q0", "module": "m"}
-    tgt = {**OPEN_STATE, "memory_state": "q1", "module": "m", "feature_values": {"n_undeliv": 2, "b_goal": False}}
+    src: JsonObject = {**BASE_STATE, "memory_state": "q0", "module": "m"}
+    tgt: JsonObject = {**OPEN_STATE, "memory_state": "q1", "module": "m", "feature_values": {"n_undeliv": 2, "b_goal": False}}
     transition = witness_transition({"action": "(a)", "module_rule": "r"}, step=0, source=src, target=tgt, ext=True)
     assert transition.source == 0 and transition.target == 1  # vertex indices, not state indices
 
 
 def test_successor_targets_and_gap():
     dicts = Dictionaries()
-    src = BASE_STATE
-    goal_target = {**OPEN_STATE, "state_index": 20, "is_goal": True, "feature_values": {"n_undeliv": 2, "b_goal": True}}
+    src: JsonObject = BASE_STATE
+    goal_target: JsonObject = {**OPEN_STATE, "state_index": 20, "is_goal": True, "feature_values": {"n_undeliv": 2, "b_goal": True}}
     succ = successor(src, {"action": "(deliver)", "module_rule": None}, goal_target)
     doc = successors_document(header=[("tool", "prove_policy")], feature_symbols=["n_undeliv", "b_goal"], successors=[succ], dicts=dicts, ext=False)
     psv = render_document(doc, "psv")

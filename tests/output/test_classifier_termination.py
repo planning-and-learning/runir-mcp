@@ -1,7 +1,16 @@
+from typing import cast
+
 import pytest
 
-from pyrunir_mcp.kr.ps.ext.termination.serialize import feature_symbol, rule_symbol, string_keyed_dict
+from pyrunir_mcp.kr.ps.ext.termination.serialize import (
+    SymbolicFeature,
+    SymbolicRule,
+    feature_symbol,
+    rule_symbol,
+    string_keyed_dict,
+)
 from pyrunir_mcp.output.classifier import ClassifierRow, classifier_witness
+from pyrunir_mcp.output.run import RunItemCategory
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.termination import (
     TerminationDictionaries,
@@ -15,7 +24,7 @@ from pyrunir_mcp.tables import render_document
 def test_classifier_witness_document():
     dicts = Dictionaries()
     row = ClassifierRow(
-        "false_negative-001", "false_negative", 57,
+        "false_negative-001", RunItemCategory.FALSE_NEGATIVE, 57,
         {"b_holding_target": True, "b_at_goal": False}, fluent=("at(robot roomA)", "holding(ball1)"),
     )
     doc = classifier_witness(
@@ -63,18 +72,18 @@ class _FeatureLike:
 
 
 def test_termination_serializer_uses_feature_symbol_objects():
-    assert string_keyed_dict({_FeatureLike("pending"): True}) == {"pending": "True"}
+    assert string_keyed_dict({cast(SymbolicFeature, _FeatureLike("pending")): True}) == {"pending": "True"}
 
 
 def test_termination_serializer_uses_rule_symbol_objects():
-    assert rule_symbol(_Symbolic("put_down_pending")) == "put_down_pending"
+    assert rule_symbol(cast(SymbolicRule, _Symbolic("put_down_pending"))) == "put_down_pending"
 
 
 def test_termination_serializer_requires_rule_symbol_accessor():
     with pytest.raises(AttributeError):
-        rule_symbol("(:rule (:symbol put_down_pending))")
+        rule_symbol(cast(SymbolicRule, "(:rule (:symbol put_down_pending))"))
 
 
 def test_termination_serializer_requires_feature_variant_symbol_accessor():
     with pytest.raises(AttributeError):
-        feature_symbol(_Symbolic("pending"))
+        feature_symbol(cast(SymbolicFeature, _Symbolic("pending")))

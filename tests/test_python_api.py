@@ -8,19 +8,10 @@ import pyrunir_mcp as public
 from pyrunir.kr.ps.base import Sketch
 from pytyr.planning import SearchStatus
 
-from pyrunir_mcp.kr.ps.base.core.data_loader import (
-    LoadedLiftedSearchContext as BaseLoadedLiftedSearchContext,
-)
-from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext as BaseLoadedSearchTaskContext
-from pyrunir_mcp.kr.ps.ext.core.data_loader import (
-    LoadedLiftedSearchContext as ExtLoadedLiftedSearchContext,
-)
-from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext as ExtLoadedSearchTaskContext
 from pyrunir_mcp import (
     CandidateSource,
     ClassifierObservationDetails,
     ClassifierProofCounts,
-    TaskContext,
     DumpFormat,
     ExecuteObservationDetails,
     FailureFingerprint,
@@ -31,20 +22,7 @@ from pyrunir_mcp import (
     ValidationStatus,
     dump_validation_history,
 )
-from pyyggdrasil.execution import ExecutionContext
 
-
-def _task_context(tmp_path: Path) -> TaskContext:
-    return TaskContext(
-        id="task_000001",
-        index=1,
-        problem_file=tmp_path / "problem.pddl",
-        execution_context=cast(ExecutionContext, None),
-        base_task=cast(BaseLoadedSearchTaskContext, None),
-        base_lifted_task=cast(BaseLoadedLiftedSearchContext, None),
-        ext_task=cast(ExtLoadedSearchTaskContext, None),
-        ext_lifted_task=cast(ExtLoadedLiftedSearchContext, None),
-    )
 
 
 def test_public_exports_use_typed_names() -> None:

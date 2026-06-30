@@ -15,12 +15,16 @@ from pyrunir_mcp.output.run import RunItemCategory
 from pyrunir_mcp.tables import Document
 
 
+def _json_dict() -> dict[str, JsonValue]:
+    return {}
+
+
 @dataclass(frozen=True)
 class ClassifierRow:
     id: str
     category: RunItemCategory
     state: int
-    features: dict[str, JsonValue] = field(default_factory=dict)
+    features: dict[str, JsonValue] = field(default_factory=_json_dict)
     fluent: tuple[str, ...] = ()
 
 

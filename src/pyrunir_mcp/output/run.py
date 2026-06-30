@@ -13,7 +13,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from pyrunir_mcp.artifacts import fresh_output_dir
-from pyrunir_mcp.json_types import JsonObject
+from pyrunir_mcp.json_types import JsonObject, JsonValue
 from pyrunir_mcp.output.writer import Artifact, resolve_formats, write_run
 from pyrunir_mcp.tables import Fmt, Table
 
@@ -148,11 +148,12 @@ def build_run_envelope(
     primary = resolve_formats(formats)[0]
     meta_paths = {item.id: _write_item_meta(output_dir, item, primary) for item in items}
 
-    result_items = [_result_item(item, paths, meta_paths[item.id]) for item in items]
-    category_counts = _category_counts(items)
-    counts = {"counterexamples": len(items), "categories": len(category_counts)}
+    result_item_objects = [_result_item(item, paths, meta_paths[item.id]) for item in items]
+    result_items: list[JsonValue] = list(result_item_objects)
+    category_counts: JsonObject = {key: value for key, value in _category_counts(items).items()}
+    counts: JsonObject = {"counterexamples": len(items), "categories": len(category_counts)}
     output_path = output_dir.resolve().as_posix()
-    prompt_summary = {
+    prompt_summary: JsonObject = {
         "tool": tool,
         "status": status.value,
         "successful": status is RunStatus.SUCCESS,
@@ -162,12 +163,12 @@ def build_run_envelope(
         "category_counts": category_counts,
         "note": "Counterexamples are written under output_dir; start with summary.",
     }
-    passthrough = {
+    passthrough: JsonObject = {
         key: metadata[key]
         for key in ("program_status", "nonterminating_modules")
         if key in metadata
     }
-    primary = {
+    primary_doc: JsonObject = {
         "successful": status is RunStatus.SUCCESS,
         "status": status.value,
         "category": (
@@ -177,7 +178,7 @@ def build_run_envelope(
         "failure_category": (
             failure_category.value
             if failure_category is not None
-            else (result_items[0]["category"] if result_items else None)
+            else (result_item_objects[0]["category"] if result_item_objects else None)
         ),
         "counterexample_count": len(result_items),
         "category_counts": category_counts,
@@ -188,7 +189,7 @@ def build_run_envelope(
         "schema_version": 1,
         "tool": tool,
         "status": status.value,
-        "primary": primary,
+        "primary": primary_doc,
         "summary": {
             "schema_version": 1,
             "tool": tool,

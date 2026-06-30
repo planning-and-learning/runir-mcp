@@ -16,6 +16,7 @@ def test_dictionary_table_shape():
     d = Dictionary("p", ["kind", "atom"])
     d.intern(("fluent", "at(a)"), ["fluent", "at(a)"])
     table = d.table("atoms")
+    assert table is not None
     assert table.columns == ["id", "kind", "atom"]
     assert table.rows == [["p0", "fluent", "at(a)"]]
 

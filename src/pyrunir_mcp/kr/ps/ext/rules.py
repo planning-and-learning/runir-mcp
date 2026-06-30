@@ -22,12 +22,13 @@ def iter_module_rules(program: ModuleProgram) -> list[tuple[Module, RuleVariant,
     for module in program.get_modules():
         for transition in module.get_memory_transitions():
             for rule_variant in transition:
-                rules.append((module, rule_variant, cast(ModuleRule, rule_variant.get_variant())))
+                rules.append((module, rule_variant, rule_variant.get_variant()))
     return rules
 
 
 def _declared_features(module: Module) -> list[Feature]:
     features: list[Feature] = []
+    # pyrunir returns family-specific feature lists; Feature is the shared MCP union over them.
     features.extend(cast(list[Feature], module.get_concept_features()))
     features.extend(cast(list[Feature], module.get_boolean_features()))
     features.extend(cast(list[Feature], module.get_numerical_features()))

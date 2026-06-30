@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import StrEnum
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Literal
 
 from pyrunir_mcp.candidates import Candidate
 from pyrunir_mcp.json_types import JsonObject
@@ -17,10 +19,10 @@ from pyrunir_mcp.kr.ps.ext.rules import (
     collect_features as collect_ext_features,
     intern_rules as intern_ext_rules,
 )
-from pyrunir_mcp.kr.ps.execute import run_execute
-from pyrunir_mcp.kr.ps.feature_evidence import feature_key, state_evidence
+from pyrunir_mcp.kr.ps.execute import RolloutFallbackResult, Task, run_execute
+from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key, state_evidence
 from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander, make_frontier_expander
-from pyrunir_mcp.kr.ps.proof import build_proof_run
+from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, build_proof_run
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.writer import Fmt
 from pyrunir_mcp.validation import (
@@ -31,7 +33,6 @@ from pyrunir_mcp.validation import (
     ExecutePolicyResult,
     ObservationDetails,
     ProofObservationDetails,
-    ProveClassifierResult,
     ProveModuleProgramResult,
     ProvePolicyResult,
     ValidationObservation,
@@ -51,9 +52,13 @@ class DumpResult:
     files: tuple[Path, ...]
 
 
+def _format_value(fmt: DumpFormat) -> Fmt:
+    value: Literal["psv", "md", "json"] = fmt.value
+    return value
+
+
 def _render_formats(formats: tuple[DumpFormat, ...]) -> tuple[Fmt, ...]:
-    selected = [fmt.value for fmt in formats]
-    return tuple(fmt for fmt in selected if fmt in {"psv", "md", "json"})  # type: ignore[return-value]
+    return tuple(_format_value(fmt) for fmt in formats)
 
 def _counts_json(counts: ClassifierProofCounts) -> JsonObject:
     return {
@@ -72,7 +77,7 @@ def _observation_details_json(details: ObservationDetails) -> JsonObject:
             if details.failure_problem_file is None
             else {
                 "problem_file": details.failure_problem_file,
-                "status": details.failure_status.name
+                "status": str(getattr(details.failure_status, "name", details.failure_status))
                 if details.failure_status is not None
                 else None,
             },
@@ -151,7 +156,7 @@ def _result_json(result: ValidationResult) -> JsonObject:
             "status": result.proof.status.name,
             "successful": bool(result.proof.is_successful()),
         }
-    elif isinstance(result, ProveClassifierResult):
+    else:
         base["counts"] = _counts_json(result.counts)
     return base
 
@@ -168,10 +173,37 @@ def _candidate_source_metadata(result: ValidationResult) -> JsonObject:
     }
 
 
-def _populate_feature_dictionary(dicts: Dictionaries, features: list[object]) -> list[str]:
+def _populate_feature_dictionary(dicts: Dictionaries, features: Sequence[Feature]) -> list[str]:
     for feature in features:
         dicts.feature(feature_key(feature))
     return dicts.feature_symbols()
+
+
+def _execute_policy_rollout_fallback(result: ExecutePolicyResult, features: list[Feature]):
+    classifier = result.classifier
+    if classifier is None:
+        return None
+
+    def fallback(
+        task: Task,
+        *,
+        header: list[tuple[str, str]],
+        evidence: StateEvidence,
+        feature_symbols: list[str],
+        dicts: Dictionaries,
+    ) -> RolloutFallbackResult:
+        return rollout_artifacts(
+            task.search_context,
+            result.candidate.value,
+            features,
+            classifier.value,
+            evidence,
+            feature_symbols=feature_symbols,
+            dicts=dicts,
+            header=header,
+        )
+
+    return fallback
 
 
 def _dump_execute_policy_artifacts(
@@ -191,7 +223,7 @@ def _dump_execute_policy_artifacts(
     if not proofs_by_seed:
         return None
 
-    def solve(_task: object, seed: int):
+    def solve(_task: object, seed: int) -> ProofResult:
         return proofs_by_seed[seed]
 
     run_execute(
@@ -211,15 +243,7 @@ def _dump_execute_policy_artifacts(
             loaded_task.search_context, result.candidate.value, evidence
         ),
         rollout_fallback=(
-            (
-                lambda loaded_task, **kwargs: rollout_artifacts(
-                    loaded_task.search_context,
-                    result.candidate.value,
-                    features,
-                    result.classifier.value,
-                    **kwargs,
-                )
-            )
+            _execute_policy_rollout_fallback(result, features)
             if result.classifier is not None
             else None
         ),
@@ -246,7 +270,7 @@ def _dump_execute_module_program_artifacts(
     if not proofs_by_seed:
         return None
 
-    def solve(_task: object, seed: int):
+    def solve(_task: object, seed: int) -> ProofResult:
         return proofs_by_seed[seed]
 
     run_execute(
@@ -281,7 +305,7 @@ def _dump_prove_policy_artifacts(
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_base_rules(result.candidate.value, dicts)
     evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
-    envelope = build_proof_run(
+    envelope: JsonObject = build_proof_run(
         tool=result.kind.value,
         output_dir=output_path,
         metadata=_candidate_source_metadata(result),
@@ -294,7 +318,6 @@ def _dump_prove_policy_artifacts(
         expander=make_frontier_expander(result.context.base_task.search_context, result.candidate.value, evidence),
         include_hstar=False,
         include_hlmcut=False,
-        formats=formats,
     )
     path = output_path / "run.json"
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -311,7 +334,7 @@ def _dump_prove_module_program_artifacts(
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_ext_rules(result.candidate.value, dicts)
     evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
-    envelope = build_proof_run(
+    envelope: JsonObject = build_proof_run(
         tool=result.kind.value,
         output_dir=output_path,
         metadata=_candidate_source_metadata(result),
@@ -324,7 +347,6 @@ def _dump_prove_module_program_artifacts(
         expander=make_ext_frontier_expander(result.context.ext_task.search_context, result.candidate.value, evidence),
         include_hstar=False,
         include_hlmcut=False,
-        formats=formats,
     )
     path = output_path / "run.json"
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")

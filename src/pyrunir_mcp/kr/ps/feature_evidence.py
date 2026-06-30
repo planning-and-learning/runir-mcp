@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, TypeAlias, runtime_checkable
+from typing import Protocol, TypeAlias, cast, runtime_checkable
 
 from pyrunir.kr.ps.base.dl import (
     BooleanFeature as BaseBooleanFeature,
@@ -40,19 +40,31 @@ class ObjectCollection(Protocol):
     def get_objects(self) -> list[NamedObject]: ...
 
 
-class Stringable(Protocol):
-    def __str__(self) -> str: ...
-
-
 @runtime_checkable
 class DenotationValue(Protocol):
     def get(self) -> SemanticValue: ...
 
 
-SemanticValue: TypeAlias = JsonValue | ObjectCollection | DenotationValue | Stringable
+SemanticValue: TypeAlias = object
 
 
-def _object_name(value: NamedObject | Stringable) -> str:
+class BaseEvaluableFeature(Protocol):
+    def evaluate(self, context: BaseGroundEvaluationContext) -> object: ...
+
+
+class ExtEvaluableExpression(Protocol):
+    def evaluate(self, context: ExtGroundEvaluationContext) -> object: ...
+
+
+class ExtExpressionVariant(Protocol):
+    def get_expression(self) -> ExtEvaluableExpression: ...
+
+
+class ExtExpressionFeature(Protocol):
+    def get_variant(self) -> ExtExpressionVariant: ...
+
+
+def _object_name(value: object) -> str:
     return str(value.get_name()) if isinstance(value, NamedObject) else str(value)
 
 
@@ -77,9 +89,11 @@ def _evaluate_feature_value(feature: Feature, state: GroundState) -> JsonValue:
     denotations = DenotationRepositoryFactory().create()
     if hasattr(feature, "evaluate"):
         context = BaseGroundEvaluationContext(state, builder, denotations)
-        return json_value(feature.evaluate(context))
+        # Base feature stubs omit evaluate on some union members even though hasattr checked it.
+        return json_value(cast(BaseEvaluableFeature, feature).evaluate(context))
     context = ExtGroundEvaluationContext(state, builder, denotations)
-    value = feature.get_variant().get_expression().evaluate(context)
+    # Ext features evaluate through their variant expression; the pybind stubs do not expose this structurally.
+    value = cast(ExtExpressionFeature, feature).get_variant().get_expression().evaluate(context)
     return json_value(value)
 
 

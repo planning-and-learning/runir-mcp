@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Protocol, cast
+
+from pyrunir.kr.ps.base import Sketch
+from pyrunir.kr.ps.ext import ModuleProgram as ExtModuleProgram
+
 from pyrunir_mcp.kr.ps.base.core.features import collect_features as collect_base_features
 from pyrunir_mcp.kr.ps.ext.rules import collect_features as collect_ext_features
 
@@ -89,14 +95,19 @@ class ModuleProgram:
         raise AssertionError("declared feature collection must not inspect rules")
 
 
-def _symbols(features: list[Feature]) -> list[str]:
+class SymbolicFeature(Protocol):
+    def get_variant(self) -> Variant: ...
+
+
+def _symbols(features: Sequence[SymbolicFeature]) -> list[str]:
     return [feature.get_variant().get_symbol() for feature in features]
 
 
 def test_base_collectors_use_declared_sketch_features_only():
     policy = SketchPolicy(booleans=[Feature("a")], numericals=[Feature("a"), Feature("b")])
 
-    assert _symbols(collect_base_features(policy)) == ["a", "b"]
+    features = cast(Sequence[SymbolicFeature], collect_base_features(cast(Sketch, policy)))
+    assert _symbols(features) == ["a", "b"]
 
 
 def test_ext_collectors_use_declared_module_features_only():
@@ -107,4 +118,5 @@ def test_ext_collectors_use_declared_module_features_only():
         ]
     )
 
-    assert _symbols(collect_ext_features(program)) == ["c", "b", "n"]
+    features = cast(Sequence[SymbolicFeature], collect_ext_features(cast(ExtModuleProgram, program)))
+    assert _symbols(features) == ["c", "b", "n"]

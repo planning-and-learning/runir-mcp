@@ -12,6 +12,24 @@ from pyrunir_mcp.kr.ps.hstar import HeuristicSentinel
 from pyrunir_mcp.output.policy import Successor, WitnessState, WitnessTransition, resolve_flags
 
 
+def _int(value: JsonValue) -> int:
+    if isinstance(value, bool | float | list | dict) or value is None:
+        raise TypeError(f"expected int-like JSON scalar, got {type(value).__name__}")
+    return int(value)
+
+
+def _str_opt(value: JsonValue) -> str | None:
+    return None if value is None else str(value)
+
+
+def _json_object(value: JsonValue) -> JsonObject:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _str_tuple(value: JsonValue) -> tuple[str, ...]:
+    return tuple(str(item) for item in value) if isinstance(value, list) else ()
+
+
 def _memory(state: JsonObject) -> tuple[str, str] | None:
     if "memory_state" not in state:
         return None
@@ -49,14 +67,14 @@ def witness_state(
         cycle=cycle,
     )
     return WitnessState(
-        state=int(state["state_index"]),
+        state=_int(state["state_index"]),
         hstar=state.get("hstar", ""),
         hlmcut=state.get("hlmcut", ""),
-        features=state.get("feature_values", {}),
-        fluent=tuple(state.get("fluent_facts", ())),
-        derived=tuple(state.get("derived_atoms", ())),
+        features=_json_object(state.get("feature_values", {})),
+        fluent=_str_tuple(state.get("fluent_facts", [])),
+        derived=_str_tuple(state.get("derived_atoms", [])),
         flags=flags,
-        vertex=int(state["vertex_index"]) if "vertex_index" in state else None,
+        vertex=_int(state["vertex_index"]) if "vertex_index" in state else None,
         memory=_memory(state),
     )
 
@@ -72,11 +90,11 @@ def witness_transition(
     endpoint = "vertex_index" if ext else "state_index"
     return WitnessTransition(
         step=step,
-        source=int(source[endpoint]),
-        target=int(target[endpoint]),
-        action=edge.get("action"),
-        rule=edge.get("module_rule"),
-        delta=_delta(source.get("feature_values", {}), target.get("feature_values", {})),
+        source=_int(source[endpoint]),
+        target=_int(target[endpoint]),
+        action=_str_opt(edge.get("action")),
+        rule=_str_opt(edge.get("module_rule")),
+        delta=_delta(_json_object(source.get("feature_values", {})), _json_object(target.get("feature_values", {}))),
     )
 
 
@@ -86,9 +104,9 @@ def successor(
     target: JsonObject,
 ) -> Successor:
     return Successor(
-        src=int(source["vertex_index"] if "memory_state" in source else source["state_index"]),
+        src=_int(source["vertex_index"] if "memory_state" in source else source["state_index"]),
         target=witness_state(target),
-        action=edge.get("action"),
-        rule=edge.get("module_rule"),
-        delta=_delta(source.get("feature_values", {}), target.get("feature_values", {})),
+        action=_str_opt(edge.get("action")),
+        rule=_str_opt(edge.get("module_rule")),
+        delta=_delta(_json_object(source.get("feature_values", {})), _json_object(target.get("feature_values", {}))),
     )

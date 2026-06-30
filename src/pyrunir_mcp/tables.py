@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, override
 
 from jinja2 import DictLoader, Environment
 
@@ -94,20 +94,23 @@ class PSVRenderer(Renderer):
             raise ValueError(f"PSV cell must not contain '|' or newline: {text!r}")
         return text
 
+    @override
+    @override
     def table(self, table: Table) -> str:
         columns = [self.cell(column) for column in table.columns]
         rows = [[self.cell(value) for value in row] for row in table.rows]
         rendered = _ENV.get_template("psv_table.j2").render(columns=columns, rows=rows)
         return rendered.rstrip("\n")
 
+    @override
     def document(self, doc: Document) -> str:
-        lines = []
+        lines: list[str] = []
         for key, value in doc.header:
             if "\n" in key or "\n" in str(value):
                 raise ValueError(f"PSV header line must not contain a newline: @{key} {value!r}")
             lines.append(f"@{key} {value}")
         header = "\n".join(lines)
-        sections = []
+        sections: list[str] = []
         for t in doc.sections:
             if "[" in t.name or "]" in t.name:
                 raise ValueError(f"PSV section name must not contain '[' or ']': {t.name!r}")
@@ -119,6 +122,7 @@ class MarkdownRenderer(Renderer):
     def cell(self, value: JsonValue) -> str:
         return _scalar(value).replace("|", r"\|").replace("\n", " ")
 
+    @override
     def table(self, table: Table) -> str:
         columns = [self.cell(column) for column in table.columns]
         cells = [[self.cell(value) for value in row] for row in table.rows]
@@ -133,6 +137,7 @@ class MarkdownRenderer(Renderer):
         )
         return rendered.rstrip("\n")
 
+    @override
     def document(self, doc: Document) -> str:
         header = "\n".join(f"- **{key}**: {value}" for key, value in doc.header)
         sections = [f"## {t.name}\n\n{self.table(t)}" for t in doc.sections]
@@ -140,9 +145,11 @@ class MarkdownRenderer(Renderer):
 
 
 class JSONRenderer(Renderer):
+    @override
     def table(self, table: Table) -> str:
         return json.dumps(_json_records(table), indent=2, sort_keys=True)
 
+    @override
     def document(self, doc: Document) -> str:
         result = {
             "header": {key: value for key, value in doc.header},

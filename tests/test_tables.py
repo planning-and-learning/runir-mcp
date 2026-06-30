@@ -1,4 +1,5 @@
 import json
+from typing import cast
 
 import pytest
 
@@ -9,6 +10,7 @@ from pyrunir_mcp.tables import (
     PSVRenderer,
     Renderer,
     Table,
+    Fmt,
     render,
     render_document,
     renderer_for,
@@ -165,7 +167,7 @@ def test_renderer_registry_returns_format_objects():
 
 def test_renderer_for_rejects_unknown_format():
     with pytest.raises(ValueError):
-        renderer_for("xml")
+        renderer_for(cast(Fmt, "xml"))
 
 
 def test_render_wrappers_match_renderer_objects():

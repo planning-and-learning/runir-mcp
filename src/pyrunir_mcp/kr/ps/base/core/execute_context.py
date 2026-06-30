@@ -25,6 +25,7 @@ from pytyr.planning.lifted import (
     Task as LiftedTask,
 )
 
+from pyrunir_mcp.planning import parse_task_file
 from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedLiftedSearchContext, LoadedSearchContext
 from pyrunir_mcp.kr.ps.base.core.features import BasePolicyContext
 from pyrunir_mcp.kr.ps.classifier import ClassifierContext
@@ -101,7 +102,7 @@ def create_task_context(
 ) -> TaskContext:
     index = domain_context.next_task_index
     domain_context.next_task_index += 1
-    formalism_task = domain_context.parser.parse_task(problem_path, ParserOptions())
+    formalism_task = parse_task_file(domain_context.parser, problem_path, ParserOptions())
     lifted_task = LiftedTask(formalism_task)
     lifted_context = LiftedTaskSearchContext(lifted_task, execution_context)
     grounded = lifted_task.instantiate_ground_task(

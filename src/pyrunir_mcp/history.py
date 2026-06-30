@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 from pyrunir_mcp.validation import ValidationObservation
 
 
+def _observations_factory() -> list[ValidationObservation]:
+    return []
+
+
 def _same_observation_key(left: ValidationObservation, right: ValidationObservation) -> bool:
     if left.fingerprint is not None or right.fingerprint is not None:
         return left.fingerprint == right.fingerprint
@@ -29,7 +33,7 @@ class HistoryFeedback:
 
 @dataclass(slots=True)
 class ValidationHistory:
-    observations: list[ValidationObservation] = field(default_factory=list)
+    observations: list[ValidationObservation] = field(default_factory=_observations_factory)
 
     def fold(self, observation: ValidationObservation) -> HistoryFeedback:
         previous_occurrences = sum(

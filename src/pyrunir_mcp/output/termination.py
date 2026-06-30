@@ -15,6 +15,10 @@ from pyrunir_mcp.output.dictionaries import Dictionary
 from pyrunir_mcp.tables import Document, Table
 
 
+def _str_dict() -> dict[str, str]:
+    return {}
+
+
 class VariableKind(StrEnum):
     CONCEPT = "concept"
     BOOLEAN = "boolean"
@@ -28,9 +32,9 @@ VARIABLE_KINDS = (VariableKind.CONCEPT, VariableKind.BOOLEAN, VariableKind.NUMER
 class TerminationVertex:
     index: int
     memory_state: str
-    concepts: dict[str, str] = field(default_factory=dict)
-    booleans: dict[str, str] = field(default_factory=dict)
-    numericals: dict[str, str] = field(default_factory=dict)
+    concepts: dict[str, str] = field(default_factory=_str_dict)
+    booleans: dict[str, str] = field(default_factory=_str_dict)
+    numericals: dict[str, str] = field(default_factory=_str_dict)
 
     def values(self) -> dict[VariableKind, dict[str, str]]:
         return {
@@ -46,7 +50,7 @@ class TerminationEdge:
     source: int
     target: int
     rule: str
-    numerical_changes: dict[str, str] = field(default_factory=dict)
+    numerical_changes: dict[str, str] = field(default_factory=_str_dict)
 
 
 class TerminationDictionaries:

@@ -55,9 +55,6 @@ from pyrunir_mcp.kr.ps.base.core.features import (
     BasePolicyContext,
     ExecutionFailure as BaseExecutionFailure,
 )
-from pyrunir_mcp.kr.ps.base.core.policy_evaluation import (
-    execute_policy_on_tasks as execute_base_policy_on_tasks,
-)
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds
 from pyrunir_mcp.kr.ps.ext.core.data_loader import (
     LoadedLiftedSearchContext as ExtLoadedLiftedSearchContext,
@@ -66,9 +63,6 @@ from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext as ExtLoa
 from pyrunir_mcp.kr.ps.ext.core.features import (
     ExecutionFailure as ExtExecutionFailure,
     ModuleProgramContext,
-)
-from pyrunir_mcp.kr.ps.ext.core.policy_evaluation import (
-    execute_policy_on_tasks as execute_ext_policy_on_tasks,
 )
 from pyrunir_mcp.kr.ps.classifier import ClassifierContext
 from pyrunir_mcp.kr.ps.status import is_success_status
@@ -80,6 +74,7 @@ from pyrunir_mcp.kr.ps.proof import (
     is_goal_open_state_result,
     make_search_options,
 )
+from pyrunir_mcp.planning import parse_task_file
 
 
 class ValidationKind(StrEnum):
@@ -115,7 +110,7 @@ class FailureFingerprint:
 @dataclass(frozen=True, slots=True)
 class ExecuteObservationDetails:
     failure_problem_file: str | None
-    failure_status: SearchStatus | None
+    failure_status: object | None
     num_rollouts: int
 
 
@@ -257,7 +252,7 @@ def create_task_context(
     index = domain_context.next_task_index
     domain_context.next_task_index += 1
     execution_context = ExecutionContext(num_threads)
-    formalism_task = domain_context.parser.parse_task(problem_path, ParserOptions())
+    formalism_task = parse_task_file(domain_context.parser, problem_path, ParserOptions())
     lifted_task = LiftedTask(formalism_task)
     lifted_context = LiftedTaskSearchContext(lifted_task, execution_context)
     grounded = lifted_task.instantiate_ground_task(

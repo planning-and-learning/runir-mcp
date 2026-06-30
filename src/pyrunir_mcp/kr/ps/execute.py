@@ -14,54 +14,57 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeAlias, overload
+
+from pyrunir.datasets import GroundTaskSearchContext
+from pyrunir.kr.ps.base import GroundSketchSearchOptions
+from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions
 
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.kr.ps.frontier import FrontierExpander
 from pyrunir_mcp.kr.ps.proof import (
     CounterexampleKind,
     ProofResult,
-    ProofStatus,
     StateEvidence,
     failure_items,
     is_goal_open_state_result,
     successful_trace_artifact,
     witness_artifacts,
 )
-from pyrunir_mcp.kr.ps.status import SuccessStatus, is_success_status
+from pyrunir_mcp.kr.ps.status import AnyStatus, SuccessStatus, is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.run import FailureCategory, RunCategory, RunItemCategory, status_category
 from pyrunir_mcp.output.writer import Artifact, resolve_formats, write_run
-from pyrunir_mcp.tables import Document, Table
+from pyrunir_mcp.tables import Document, Fmt, Table
 
-# Produce (counterexample, trace, successors) docs for a base init-only open-state failure, or None to
-# fall back to the default graph witness. Keyword args mirror what `witness_artifacts` consumes.
-RolloutFallback = Callable[
-    ...,
+RolloutFallbackResult = (
     tuple[Document, Document | None, Document | None]
     | tuple[Document, Document | None, Document | None, str | None]
-    | None,
-]
+    | None
+)
 
 
-class BrfsSearchOptions(Protocol):
-    random_seed: int
-    shuffle_labeled_succ_nodes: bool
-    max_num_states: int
-    max_time: timedelta
+class RolloutFallback(Protocol):
+    def __call__(
+        self,
+        task: "Task",
+        *,
+        header: list[tuple[str, str]],
+        evidence: StateEvidence,
+        feature_symbols: list[str],
+        dicts: Dictionaries,
+    ) -> RolloutFallbackResult: ...
 
 
-class SearchOptions(Protocol):
-    brfs_options: BrfsSearchOptions
-    max_arity: int
-
-
-SearchOptionsT = TypeVar("SearchOptionsT", bound=SearchOptions)
+SearchOptions: TypeAlias = GroundSketchSearchOptions | GroundModuleProgramSearchOptions
 
 
 class Task(Protocol):
     @property
     def problem_path(self) -> Path: ...
+
+    @property
+    def search_context(self) -> GroundTaskSearchContext: ...
 
 
 def rollout_seeds(num_rollouts: int, random_seed: int, random_seed_start: int) -> list[int]:
@@ -70,15 +73,39 @@ def rollout_seeds(num_rollouts: int, random_seed: int, random_seed_start: int) -
     return [random_seed_start + offset for offset in range(num_rollouts)]
 
 
+@overload
 def configure_search_options(
-    search_options: SearchOptionsT,
+    search_options: GroundSketchSearchOptions,
     *,
     random_seed: int,
     shuffle_labeled_succ_nodes: bool,
-    max_arity: int,
-    max_num_states: int | None,
-    max_time_seconds: float | None,
-) -> SearchOptionsT:
+    max_arity: int = 0,
+    max_num_states: int | None = None,
+    max_time_seconds: float | None = None,
+) -> GroundSketchSearchOptions: ...
+
+
+@overload
+def configure_search_options(
+    search_options: GroundModuleProgramSearchOptions,
+    *,
+    random_seed: int,
+    shuffle_labeled_succ_nodes: bool,
+    max_arity: int = 0,
+    max_num_states: int | None = None,
+    max_time_seconds: float | None = None,
+) -> GroundModuleProgramSearchOptions: ...
+
+
+def configure_search_options(
+    search_options: SearchOptions,
+    *,
+    random_seed: int,
+    shuffle_labeled_succ_nodes: bool,
+    max_arity: int = 0,
+    max_num_states: int | None = None,
+    max_time_seconds: float | None = None,
+) -> SearchOptions:
     """Apply the shared base/ext greedy-execution knobs onto a family-specific options object
     (both expose `brfs_options` and `max_arity`)."""
     search_options.brfs_options.random_seed = random_seed
@@ -105,14 +132,14 @@ def _result_failure(
         return items[0]
     if is_success_status(result.status):
         return None, None
-    return status_category(result.status.name), None  # e.g. resource_limit (no graph witness)
+    return status_category(str(result.status.name)), None  # e.g. resource_limit (no graph witness)
 
 
 @dataclass(frozen=True)
 class _Representative:
     id: str
     category: FailureCategory
-    status: ProofStatus
+    status: AnyStatus
     seed: int
     problem: str
     witness: str | None
@@ -124,7 +151,7 @@ class _Representative:
 class _SuccessTrace:
     id: str
     category: FailureCategory
-    status: ProofStatus
+    status: AnyStatus
     seed: int
     problem: str
     trace: str
@@ -193,7 +220,7 @@ def run_execute(
     include_hlmcut: bool = True,
     expander_factory: Callable[[Task], FrontierExpander] | None = None,
     rollout_fallback: RolloutFallback | None = None,
-    formats: tuple[str, ...] | None = None,
+    formats: tuple[Fmt, ...] | None = None,
 ) -> tuple[Task, ProofResult] | None:
     """Run rollouts and write the new-format artifacts. Returns the first failing (task, result)."""
     rollouts: list[JsonObject] = []
@@ -205,7 +232,8 @@ def run_execute(
     first_failure: tuple[Task, ProofResult] | None = None
 
     for seed in seeds:
-        seed_failed, seed_category = False, None
+        seed_failed = False
+        seed_category: str | None = None
         for task in tasks:
             result = solve(task, seed)
             effective_success = is_success_status(result.status) or is_goal_open_state_result(
@@ -214,14 +242,19 @@ def run_execute(
             kind, witness = (
                 _result_failure(result, evidence) if not effective_success else (None, None)
             )
-            category = RunItemCategory(kind.value) if isinstance(kind, CounterexampleKind) else kind
-            category_value = category.value if category is not None else None
+            if kind is None:
+                failure_category = None
+            elif isinstance(kind, CounterexampleKind):
+                failure_category = RunItemCategory(kind.value)
+            else:
+                failure_category = kind
+            category_value = failure_category.value if failure_category is not None else None
             task_rows.append(
                 {
                     "problem_file": task.problem_path.name,
                     "status": SuccessStatus.SUCCESS.value
                     if effective_success
-                    else result.status.name,
+                    else str(result.status.name),
                     "failure_category": category_value,
                     "seed": seed,
                 }
@@ -232,7 +265,7 @@ def run_execute(
                 seed_failed, seed_category = True, category_value
                 if first_failure is None:
                     first_failure = (task, result)
-                if category is not None and category_value is not None:
+                if failure_category is not None and category_value is not None:
                     representatives.setdefault(
                         (task.problem_path.name, category_value), (seed, task, result, witness)
                     )
@@ -433,7 +466,7 @@ def run_execute(
     artifacts["summary"] = Table(
         name="summary",
         columns=["id", "category", "status", "seed", "problem"],
-        rows=[[r.id, r.category.value, r.status.name, r.seed, r.problem] for r in reps],
+        rows=[[r.id, r.category.value, str(r.status.name), r.seed, r.problem] for r in reps],
     )
 
     paths = write_run(
@@ -459,9 +492,9 @@ def run_execute(
                 "failure_category": r.category.value,
                 "problem_file": r.problem,
                 "seed": r.seed,
-                "witness_path": paths.get(r.witness),
-                "trace_path": paths.get(r.trace),
-                "successors_path": paths.get(r.successors),
+                "witness_path": paths.get(r.witness) if r.witness is not None else None,
+                "trace_path": paths.get(r.trace) if r.trace is not None else None,
+                "successors_path": paths.get(r.successors) if r.successors is not None else None,
                 "meta_path": meta_paths[r.id],
                 "trace_available": r.trace is not None,
             }

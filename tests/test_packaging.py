@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from typing import cast
+
+from pyrunir_mcp.json_types import JsonObject
 
 
-def _pyproject() -> dict:
-    return tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())
+def _pyproject() -> JsonObject:
+    return cast(JsonObject, tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()))
 
 
 def test_package_declares_no_console_scripts() -> None:
-    project = _pyproject()["project"]
+    project = cast(JsonObject, _pyproject()["project"])
     assert "scripts" not in project
 
 
@@ -21,4 +24,5 @@ def test_package_declares_typed_api() -> None:
 def test_package_version_matches_project_metadata() -> None:
     import pyrunir_mcp
 
-    assert pyrunir_mcp.__version__ == _pyproject()["project"]["version"]
+    project = cast(JsonObject, _pyproject()["project"])
+    assert pyrunir_mcp.__version__ == cast(str, project["version"])

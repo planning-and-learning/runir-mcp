@@ -75,6 +75,8 @@ class HStarEvaluator:
             options,
         )
         if result.status == SearchStatus.SOLVED:
+            if result.plan is None:
+                return HeuristicSentinel.UNKNOWN
             return int(result.plan.get_length())
         if result.status == SearchStatus.UNSOLVABLE:
             return HeuristicSentinel.DEADEND

@@ -886,17 +886,17 @@ wheels = [
 
 [[package]]
 name = "pyrunir"
-version = "0.0.15"
+version = "0.0.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pypddl" },
     { name = "pytyr" },
     { name = "pyyggdrasil" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/04/0a7b657a59f8eaf993a882f9bc6bd7eb19fe017a21ec1cd408757fd5cec0/pyrunir-0.0.15.tar.gz", hash = "sha256:382e7279e3f83dd6eec04bae508b0af64287adbfea23b56d06ff3c546830cf5f", size = 524216, upload-time = "2026-06-26T08:39:40.205Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/26/05e2c576955d26e0ee53265b1a2078c4e2c826dc8a77c5f16bdcb66eb156/pyrunir-0.0.17.tar.gz", hash = "sha256:a5053a482be3c6ce72bdc8ffbe112a8643bcbe5494cd586426dc08659d24caa7", size = 524201 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5e/02/26026d8a1518661c58b2e15d86ac288a16e2a7bcb97a10549746560365e7/pyrunir-0.0.15-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:49f71ec4aeb7f8e08612cd66b9e142b22a987685298d4e3345b9d09c10205f52", size = 3356539, upload-time = "2026-06-26T08:39:33.156Z" },
-    { url = "https://files.pythonhosted.org/packages/4d/07/9bb0ff52f9a88b5f4595af54f29311125386210e2c42c07416161ae6aa80/pyrunir-0.0.15-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9f7bfad9b6c661acbd3aaeb2d8eba69e423054cdb16721144390f1b30eef9e75", size = 4175348, upload-time = "2026-06-26T08:39:34.835Z" },
+    { url = "https://files.pythonhosted.org/packages/45/48/1234ddd073170dff09424494b2866e6fe7e79c1c6aab07a4052bc773c02f/pyrunir-0.0.17-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:c59718e9e9e3a89d609ce113e651ececad4eabd2b5705e519f3a299422e26bc4", size = 3355748 },
+    { url = "https://files.pythonhosted.org/packages/f8/74/636ae68941bd796d4c60f498d41369dc7940942fbb56361da6aafe8d524e/pyrunir-0.0.17-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ba9d2260473ffd64b286d21b5ff411094f79708e1b4008c8a4b425c5a6c3b2d0", size = 4176115 },
 ]
 
 [[package]]
@@ -919,7 +919,7 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = ">=2" },
     { name = "jinja2", specifier = ">=3" },
-    { name = "pyrunir", specifier = ">=0.0.15,<0.1" },
+    { name = "pyrunir", specifier = ">=0.0.17,<0.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
 ]

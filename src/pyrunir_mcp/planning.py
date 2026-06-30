@@ -2,16 +2,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, cast
 
 from pyrunir.datasets import GroundTaskSearchContext, LiftedTaskSearchContext
 from pypddl.formalism import ParserOptions
-from pytyr.formalism.planning import Parser
+from pytyr.formalism.planning import Parser, PlanningTask
 from pyyggdrasil.execution import ExecutionContext
 from pytyr.planning.lifted import (
     GroundTaskInstantiationOptions,
     GroundTaskInstantiationStatus,
     Task as LiftedTask,
 )
+
+
+class PathTaskParser(Protocol):
+    def parse_task(self, task_filepath: Path, parser_options: ParserOptions) -> PlanningTask: ...
+
+
+def parse_task_file(parser: Parser, problem_path: Path, parser_options: ParserOptions) -> PlanningTask:
+    # pytyr's overload stub uses PathLike[Unknown]; this narrows the file-path overload.
+    return cast(PathTaskParser, parser).parse_task(problem_path, parser_options)
 
 
 @dataclass(frozen=True)
@@ -33,7 +43,7 @@ def build_lifted_search_context(
 ) -> LiftedTaskSearchContext:
     parser_options = ParserOptions()
     parser = Parser(domain_path, parser_options)
-    formalism_task = parser.parse_task(problem_path, parser_options)
+    formalism_task = parse_task_file(parser, problem_path, parser_options)
     lifted_task = LiftedTask(formalism_task)
     return LiftedTaskSearchContext(lifted_task, execution_context)
 
@@ -45,7 +55,7 @@ def build_ground_search_context(
 ) -> GroundTaskSearchContext:
     parser_options = ParserOptions()
     parser = Parser(domain_path, parser_options)
-    formalism_task = parser.parse_task(problem_path, parser_options)
+    formalism_task = parse_task_file(parser, problem_path, parser_options)
     lifted_task = LiftedTask(formalism_task)
     grounded = lifted_task.instantiate_ground_task(
         execution_context, GroundTaskInstantiationOptions()
