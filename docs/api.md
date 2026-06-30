@@ -56,6 +56,13 @@ dump_validation_history(history, "artifacts/history")
 write_empty_policy(domain, "empty_policy.formatted.txt")
 ```
 
+## Setup References
+
+- [Contexts](context.md) documents `create_domain_context(...)` and `create_task_context(...)`.
+- [Candidates](candidates.md) documents policy, module-program, and classifier creation.
+- [Validation History](history.md) documents `ValidationHistory.fold(...)`.
+- [Dumping](dumping.md) documents `dump_result(...)`, `dump_validation_history(...)`, and formats.
+
 ## Candidate Creation
 
 - `create_policy(domain, policy_file)` returns `Policy`.

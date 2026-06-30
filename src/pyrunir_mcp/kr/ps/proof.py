@@ -342,7 +342,7 @@ def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
         out["action"] = _format_ground_action(prop.transition)
         out["module_rule"] = _format_module_rule(prop.rule)
         out["transition"] = str(prop.transition).strip()
-    if isinstance(prop, ModuleProgramProofEdgeLabel):
+    elif isinstance(prop, ModuleProgramProofEdgeLabel):
         if prop.state_transition is not None:
             out["action"] = _format_ground_action(prop.state_transition)
             out["transition"] = str(prop.state_transition).strip()
