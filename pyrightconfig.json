@@ -1,0 +1,47 @@
+{
+  "typeCheckingMode": "strict",
+
+  "pythonVersion": "3.13",
+  "venvPath": ".",
+  "venv": ".venv",
+
+  "include": [
+    "src",
+    "tests"
+  ],
+
+  "exclude": [
+    ".venv",
+    "build",
+    "dist",
+    "**/__pycache__"
+  ],
+
+  "reportMissingImports": "error",
+  "reportMissingModuleSource": "error",
+  "reportMissingTypeStubs": "error",
+
+  "reportUnknownVariableType": "error",
+  "reportUnknownParameterType": "error",
+  "reportUnknownArgumentType": "error",
+  "reportUnknownLambdaType": "error",
+  "reportUnknownMemberType": "error",
+
+  "reportUntypedFunctionDecorator": "error",
+  "reportUntypedClassDecorator": "error",
+
+  "reportPrivateImportUsage": "error",
+  "reportImplicitOverride": "error",
+
+  "reportUnusedImport": "error",
+  "reportUnusedVariable": "error",
+  "reportDuplicateImport": "error",
+
+  "reportUnnecessaryTypeIgnoreComment": "error",
+
+  "reportAssertAlwaysTrue": "error",
+  "reportUnreachable": "error",
+
+  "reportInvalidTypeVarUse": "error",
+  "reportInvalidTypeForm": "error"
+}
