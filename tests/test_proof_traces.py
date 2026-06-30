@@ -64,7 +64,7 @@ def test_build_proof_run_treats_goal_open_state_as_success(monkeypatch, tmp_path
     monkeypatch.setattr(proof, "is_goal_open_state_result", lambda observed: observed is result)
 
     envelope = proof.build_proof_run(
-        tool="runir.ps.base.prove_policy",
+        tool="prove_policy",
         output_dir=tmp_path / "out",
         metadata={},
         task=task,

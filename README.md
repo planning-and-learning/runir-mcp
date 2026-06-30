@@ -1,37 +1,31 @@
 # pyrunir-mcp
 
-MCP server exposing pyrunir tools for planning-and-learning agents.
+`pyrunir-mcp` now exposes a Python API for planning-and-learning agents.
+Callers keep domain contexts, task contexts, candidates, validation results, and validation history
+in memory, and explicitly dump results only when they need filesystem artifacts.
 
-## Roles
+The Python API is documented in [`docs/api.md`](docs/api.md).
 
-Set `PYRUNIR_MCP_ROLE` before launching the server. The server and invoke CLI fail closed when the role is missing, so restricted agents must be launched with an explicit role:
+## Basic Flow
 
-- `kr/ps/base`: sketch-policy proof, execution, and formatting tools.
-- `kr/ps/ext`: module-program proof, structural termination, execution, and formatting tools.
-- `kr/uns`: unsolvability classifier proof and formatting tools.
-- `all`: every pyrunir MCP tool; use only for trusted, unrestricted local maintenance.
+```python
+from pyrunir_mcp import (
+    ValidationHistory,
+    create_task_context,
+    create_domain_context,
+    create_policy,
+    execute_policy,
+)
 
-The server rejects missing or unknown roles at startup.
+domain = create_domain_context("domain.pddl")
+task = create_task_context(domain, "problem.pddl")
+policy = create_policy(domain, "policy.txt")
+history = ValidationHistory()
 
-## Output format
+result = execute_policy(domain, task, policy)
+feedback = history.fold(result.observation)
+```
 
-Every artifact is rendered to `.psv`, `.md`, and `.json` by default. Set `PYRUNIR_MCP_OUTPUT_FORMAT` to write a single format instead, so a consumer reads exactly one file per artifact (no adjacent duplicate renderings):
-
-- `psv` / `md` / `json`: write only that format.
-- `all` (or unset): write every format (the default).
-
-(The execute `manifest.json` and the per-failure `failures/<id>/meta.json` — machine-readable run/failure metadata — are always written regardless of this setting.)
-
-## Tool Documentation
-
-Per-tool calling arguments and normalized output structures are documented in [`docs/index.md`](docs/index.md). The individual tool pages cover:
-
-- `runir.ps.base.create_empty_policy`, `runir.ps.base.reformat_policy`, `runir.ps.base.execute_policy`, and `runir.ps.base.prove_policy`
-- `runir.ps.ext.create_empty_module_program`, `runir.ps.ext.reformat_module_program`, `runir.ps.ext.reformat_module`, `runir.ps.ext.execute_module_program`, `runir.ps.ext.prove_module_program`, and `runir.ps.ext.prove_termination`
-- `runir.uns.create_empty_classifier`, `runir.uns.reformat_classifier`, and `runir.uns.prove_classifier`
-
-Start with the index for shared result conventions, especially the distinction between counterexample witness files and path trace files.
-
-## Output Contract
-
-Proof and execution tools write a local, grouped tree under the requested `output_dir`: run-global alias dictionaries under `dicts/`, and everything for one failure local to `failures/<id>/` (its `meta.json`, `witness`, and — when available — `trace` and `successors`). If that directory already contains output, the tool allocates a numbered child directory such as `run-002` instead of overwriting. The selected output directory contains a `.pyrunir-mcp-output` reservation marker. Results include `primary` orchestration fields, a structured `summary`, and `items` with absolute paths to each failure's witness file and, when available, its trace. See [`docs/index.md`](docs/index.md) for the exact shared layout (including `meta.json`) and the per-tool pages for argument tables.
+Use `dump_result(...)` and `dump_validation_history(...)` when an external process needs files.
+The old file-path based MCP tools and invoke CLI have been removed; consumers should depend on the
+Python API directly.

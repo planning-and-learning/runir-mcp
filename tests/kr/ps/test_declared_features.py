@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from pyrunir_mcp.kr.ps.base.service import collect_features as collect_base_features
-from pyrunir_mcp.kr.ps.ext.service import collect_features as collect_ext_features
-from pyrunir_mcp.kr.ps.base.execute.service import collect_features as collect_base_execute_features
-from pyrunir_mcp.kr.ps.ext.execute.service import collect_features as collect_ext_execute_features
+from pyrunir_mcp.kr.ps.base.core.features import collect_features as collect_base_features
+from pyrunir_mcp.kr.ps.ext.rules import collect_features as collect_ext_features
 
 
 class Variant:
@@ -99,7 +97,6 @@ def test_base_collectors_use_declared_sketch_features_only():
     policy = SketchPolicy(booleans=[Feature("a")], numericals=[Feature("a"), Feature("b")])
 
     assert _symbols(collect_base_features(policy)) == ["a", "b"]
-    assert _symbols(collect_base_execute_features(policy)) == ["a", "b"]
 
 
 def test_ext_collectors_use_declared_module_features_only():
@@ -111,4 +108,3 @@ def test_ext_collectors_use_declared_module_features_only():
     )
 
     assert _symbols(collect_ext_features(program)) == ["c", "b", "n"]
-    assert _symbols(collect_ext_execute_features(program)) == ["c", "b", "n"]

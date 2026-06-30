@@ -2,15 +2,21 @@
 
 Each distinct symbol/value is listed once and referenced everywhere by a short alias
 `<prefix><index>` (`f`eatures, `r`ules, `a`ctions, `p` atoms, `M`odules, `m`emory, `v`ariables). See
-docs/output/runir.ps.base.counterexamples.md#conventions.
+the shared PSV/Markdown/JSON output conventions.
 """
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Hashable
 
 from pyrunir_mcp.json_types import JsonValue
 from pyrunir_mcp.tables import Table
+
+
+class AtomKind(StrEnum):
+    FLUENT = "fluent"
+    DERIVED = "derived"
 
 
 class Dictionary:
@@ -42,7 +48,9 @@ class Dictionary:
     def table(self, name: str) -> Table | None:
         if not self._rows:
             return None
-        return Table(name=name, columns=["id", *self._columns], rows=[list(row) for row in self._rows])
+        return Table(
+            name=name, columns=["id", *self._columns], rows=[list(row) for row in self._rows]
+        )
 
 
 class Dictionaries:
@@ -67,8 +75,8 @@ class Dictionaries:
     def action(self, action: str) -> str:
         return self.actions.intern(action, [action])
 
-    def atom(self, kind: str, atom: str) -> str:
-        return self.atoms.intern((kind, atom), [kind, atom])
+    def atom(self, kind: AtomKind, atom: str) -> str:
+        return self.atoms.intern((kind, atom), [kind.value, atom])
 
     def module(self, module: str) -> str:
         return self.modules.intern(module, [module])
@@ -102,4 +110,8 @@ class Dictionaries:
             "modules": self.modules,
             "memory": self.memories,
         }
-        return {name: table for name, dictionary in named.items() if (table := dictionary.table(name)) is not None}
+        return {
+            name: table
+            for name, dictionary in named.items()
+            if (table := dictionary.table(name)) is not None
+        }

@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, TypeAlias, runtime_checkable
 
-from pyrunir.kr.ps.base.dl import BooleanFeature as BaseBooleanFeature, NumericalFeature as BaseNumericalFeature
+from pyrunir.kr.ps.base.dl import (
+    BooleanFeature as BaseBooleanFeature,
+    NumericalFeature as BaseNumericalFeature,
+)
 from pyrunir.kr.ps.ext import (
     BooleanFeature as ExtBooleanFeature,
     ConceptFeature as ExtConceptFeature,
@@ -37,16 +40,23 @@ class ObjectCollection(Protocol):
     def get_objects(self) -> list[NamedObject]: ...
 
 
+class Stringable(Protocol):
+    def __str__(self) -> str: ...
+
+
 @runtime_checkable
 class DenotationValue(Protocol):
-    def get(self): ...
+    def get(self) -> SemanticValue: ...
 
 
-def _object_name(value: NamedObject | object) -> str:
+SemanticValue: TypeAlias = JsonValue | ObjectCollection | DenotationValue | Stringable
+
+
+def _object_name(value: NamedObject | Stringable) -> str:
     return str(value.get_name()) if isinstance(value, NamedObject) else str(value)
 
 
-def json_value(value) -> JsonValue:
+def json_value(value: SemanticValue) -> JsonValue:
     if isinstance(value, bool | int | float | str) or value is None:
         return value
     if isinstance(value, ObjectCollection):

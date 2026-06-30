@@ -19,29 +19,40 @@ state unsolvable) so real classifiers can flag dead states in the future with no
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Literal
 
 from pyrunir.datasets import GroundTaskSearchContext
-from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
+from pyrunir.kr.dl.base.semantics import Builder, DenotationRepository, DenotationRepositoryFactory
 from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext as UnsEvaluationContext
 from pyrunir.kr.ps.base import Sketch as Policy
 from pyrunir.kr.ps.base.dl import GroundEvaluationContext as RuleEvaluationContext
-from pyrunir.kr.uns import classify
+from pyrunir.kr.uns import Classifier, classify
 from pytyr.formalism.planning import GroundAction
 from pytyr.planning.ground import Node, State
 
 from pyrunir_mcp.json_types import JsonObject, JsonValue
-from pyrunir_mcp.kr.ps.feature_evidence import Feature, FeatureEvidence, evaluate_features, feature_key
+from pyrunir_mcp.kr.ps.feature_evidence import (
+    Feature,
+    FeatureEvidence,
+    evaluate_features,
+    feature_key,
+)
 from pyrunir_mcp.kr.ps.frontier import _format_ground_action, _goal_test, _successor
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.output.policy import Cycle, Successor, counterexample_document, successors_document, trace_document
+from pyrunir_mcp.output.policy import (
+    Cycle,
+    Successor,
+    counterexample_document,
+    successors_document,
+    trace_document,
+)
 from pyrunir_mcp.output.proof_witness import witness_state, witness_transition
 from pyrunir_mcp.tables import Document
 
 _MAX_ROLLOUT_STEPS = 1_000_000  # safety cap; the walk dedups states so it always terminates first
 
 Outcome = Literal["deadend", "cycle", "goal", "unsolvable"]
-Classifier = object  # pyrunir ClassifierView (no public type alias to import)
 
 
 @dataclass(frozen=True)
@@ -75,15 +86,19 @@ def _decreases_numeric(before: JsonObject, after: JsonObject) -> bool:
     return False
 
 
-def _make_compatible_rule(policy: Policy, builder: Builder, denotations: object):
+def _make_compatible_rule(
+    policy: Policy, builder: Builder, denotations: DenotationRepository
+) -> Callable[[State, State], str | None]:
     rules = list(policy.get_rules())
 
     def compatible_rule(source: State, target: State) -> str | None:
         context = RuleEvaluationContext(source, target, builder, denotations)
+        if not policy.is_compatible_with(context):
+            return None
         for rule in rules:
             if rule.is_compatible_with(context):
                 return str(rule.get_symbol()).strip()
-        return None
+        return "<sketch-compatible>"
 
     return compatible_rule
 
@@ -99,7 +114,9 @@ def greedy_policy_rollout(
     fkeys = [feature_key(feature) for feature in features]
     generator = search_context.successor_generator
     is_goal = _goal_test(search_context)
-    compatible_rule = _make_compatible_rule(policy, Builder(), DenotationRepositoryFactory().create())
+    compatible_rule = _make_compatible_rule(
+        policy, Builder(), DenotationRepositoryFactory().create()
+    )
     # A denotation repository caches per DL family; the uns classifier MUST NOT share the base-ps
     # rule-eval repository, or mixing base/uns denotations in one cache crashes runir. Dedicated here.
     uns_builder = Builder()
@@ -168,7 +185,9 @@ def rollout_artifacts(
     policy forward to its real stuck state. Returns `None` if the greedy rollout instead reaches a goal
     (verdict and rollout disagree on tie-breaks) so the caller falls back to the default init witness.
     The fourth return value is an optional failure-category override."""
-    result = greedy_policy_rollout(search_context, policy, features, classifier, max_steps=max_steps)
+    result = greedy_policy_rollout(
+        search_context, policy, features, classifier, max_steps=max_steps
+    )
     if result.outcome == "goal":
         return None
 
@@ -195,7 +214,12 @@ def rollout_artifacts(
         for index, state in enumerate(result.states)
     ]
     trace_states = [
-        witness_state(s, witness=(index == last), open_state=(index == last and not terminal_unsolvable), cycle=(is_cycle and index == last))
+        witness_state(
+            s,
+            witness=(index == last),
+            open_state=(index == last and not terminal_unsolvable),
+            cycle=(is_cycle and index == last),
+        )
         for index, s in enumerate(summaries)
     ]
     trace_transitions = [
@@ -209,8 +233,14 @@ def rollout_artifacts(
         for index, step in enumerate(result.steps)
     ]
     trace = trace_document(
-        header=header, feature_symbols=feature_symbols, states=trace_states, transitions=trace_transitions, dicts=dicts, ext=False,
-        include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+        header=header,
+        feature_symbols=feature_symbols,
+        states=trace_states,
+        transitions=trace_transitions,
+        dicts=dicts,
+        ext=False,
+        include_hstar=include_hstar,
+        include_hlmcut=include_hlmcut,
     )
 
     if is_cycle:
@@ -220,26 +250,52 @@ def rollout_artifacts(
             transition_steps=tuple(range(start, len(result.steps))),
         )
         counterexample = counterexample_document(
-            header=header, feature_symbols=feature_symbols, states=trace_states, transitions=trace_transitions, cycle=cycle, dicts=dicts, ext=False,
-            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            header=header,
+            feature_symbols=feature_symbols,
+            states=trace_states,
+            transitions=trace_transitions,
+            cycle=cycle,
+            dicts=dicts,
+            ext=False,
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
     else:
         counterexample = counterexample_document(
-            header=header, feature_symbols=feature_symbols, states=[trace_states[last]], transitions=[], cycle=None, dicts=dicts, ext=False,
-            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            header=header,
+            feature_symbols=feature_symbols,
+            states=[trace_states[last]],
+            transitions=[],
+            cycle=None,
+            dicts=dicts,
+            ext=False,
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
 
     terminal = result.states[last]
     successors: list[Successor] = []
     if not terminal_unsolvable:
         successors = [
-            _successor(terminal, labeled.node.get_state(), labeled.label, compatible_rule(terminal, labeled.node.get_state()), evidence, is_goal)
+            _successor(
+                terminal,
+                labeled.node.get_state(),
+                labeled.label,
+                compatible_rule(terminal, labeled.node.get_state()),
+                evidence,
+                is_goal,
+            )
             for labeled in generator.get_labeled_successor_nodes(Node(terminal, 0.0))
         ]
     successors_doc = (
         successors_document(
-            header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=False,
-            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            header=header,
+            feature_symbols=feature_symbols,
+            successors=successors,
+            dicts=dicts,
+            ext=False,
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         if successors
         else None

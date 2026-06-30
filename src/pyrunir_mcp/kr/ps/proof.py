@@ -44,15 +44,29 @@ from pyrunir_mcp.output.policy import (
     successors_document,
     trace_document,
 )
-from pyrunir_mcp.output.proof_witness import successor as build_successor, witness_state, witness_transition
-from pyrunir_mcp.output.run import RunItem, build_run_envelope, status_category
+from pyrunir_mcp.output.proof_witness import (
+    successor as build_successor,
+    witness_state,
+    witness_transition,
+)
+from pyrunir_mcp.output.run import (
+    RunItem,
+    RunItemCategory,
+    RunStatus,
+    build_run_envelope,
+    status_category,
+)
 from pyrunir_mcp.planning import LoadedSearchContext
 from pyrunir_mcp.tables import Document
 
 
 ProofEdgeLabel: TypeAlias = StateGraphEdgeLabel | SketchProofEdgeLabel | ModuleProgramProofEdgeLabel
 ProofGraph: TypeAlias = GroundSketchProofGraph | GroundModuleProgramProofGraph
-ProofVertexLabel: TypeAlias = GroundAnnotatedStateGraphVertexLabel | GroundModuleProgramProofVertexLabel | GroundStateGraphVertexLabel
+ProofVertexLabel: TypeAlias = (
+    GroundAnnotatedStateGraphVertexLabel
+    | GroundModuleProgramProofVertexLabel
+    | GroundStateGraphVertexLabel
+)
 ProofResult: TypeAlias = GroundSketchProofResults | GroundModuleProgramProofResults
 ProofRule: TypeAlias = SketchRule | ModuleRule
 ProofStatus: TypeAlias = SketchProofStatus | ModuleProgramProofStatus
@@ -95,14 +109,16 @@ def is_goal_open_state_result(result: ProofResult) -> bool:
     return all(_open_state_is_goal(result, int(vertex)) for vertex in result.open_states)
 
 
-
-def _open_state_is_deadend(result: ProofResult, vertex: int, evidence: StateEvidence | None) -> bool:
+def _open_state_is_deadend(
+    result: ProofResult, vertex: int, evidence: StateEvidence | None
+) -> bool:
     if evidence is None:
         return False
     graph = getattr(result, "graph", None)
     if graph is None:
         return False
     return bool(state_summary(graph, int(vertex), evidence).get("is_unsolvable"))
+
 
 def task_name(task: LoadedSearchContext) -> str:
     return task.problem_path.name
@@ -112,7 +128,9 @@ def status_name(status: ProofStatus) -> str:
     return status.name
 
 
-def make_search_options(options: ProofSearchOptions, max_num_states: int, max_time_seconds: float) -> ProofSearchOptions:
+def make_search_options(
+    options: ProofSearchOptions, max_num_states: int, max_time_seconds: float
+) -> ProofSearchOptions:
     options.max_arity = 0
     max_time = timedelta(seconds=max_time_seconds)
     options.brfs_options.max_num_states = max_num_states
@@ -134,13 +152,10 @@ def failure_items(
         items.append((CounterexampleKind.CYCLE, [int(vertex) for vertex in result.cycle]))
 
     open_vertices = [
-        int(vertex)
-        for vertex in result.open_states
-        if not _open_state_is_goal(result, int(vertex))
+        int(vertex) for vertex in result.open_states if not _open_state_is_goal(result, int(vertex))
     ]
     classifier_deadends = [
-        vertex for vertex in open_vertices
-        if _open_state_is_deadend(result, vertex, evidence)
+        vertex for vertex in open_vertices if _open_state_is_deadend(result, vertex, evidence)
     ]
     ordinary_open = [vertex for vertex in open_vertices if vertex not in set(classifier_deadends)]
 
@@ -160,7 +175,6 @@ def failure_items(
             for edge in result.deadend_transitions[:max_deadend_transition_counterexamples]
         )
     return items
-
 
 
 def _vertex_indices(graph: ProofGraph) -> list[int]:
@@ -183,7 +197,9 @@ def _label_is_initial(label: ProofVertexLabel) -> bool:
 
 def _initial_vertices(graph: ProofGraph) -> list[int]:
     vertices = _vertex_indices(graph)
-    found = [vertex for vertex in vertices if _label_is_initial(graph.get_vertex_property(int(vertex)))]
+    found = [
+        vertex for vertex in vertices if _label_is_initial(graph.get_vertex_property(int(vertex)))
+    ]
     return found or ([vertices[0]] if vertices else [])
 
 
@@ -227,8 +243,12 @@ def _vertices_for_edges(graph: ProofGraph, path_edges: list[int] | None) -> list
     return vertices
 
 
-def _states_for_edges(graph: ProofGraph, path_edges: list[int], evidence: StateEvidence | None) -> list[JsonObject]:
-    return [state_summary(graph, vertex, evidence) for vertex in _vertices_for_edges(graph, path_edges)]
+def _states_for_edges(
+    graph: ProofGraph, path_edges: list[int], evidence: StateEvidence | None
+) -> list[JsonObject]:
+    return [
+        state_summary(graph, vertex, evidence) for vertex in _vertices_for_edges(graph, path_edges)
+    ]
 
 
 def _cycle_edges(graph: ProofGraph, vertices: list[int]) -> list[int]:
@@ -288,7 +308,9 @@ def _format_ground_action(action: GroundAction | StateGraphEdgeLabel | None) -> 
     if action is None:
         return None
 
-    ground_action = action.action if isinstance(action, StateGraphEdgeLabel) else cast(GroundAction, action)
+    ground_action = (
+        action.action if isinstance(action, StateGraphEdgeLabel) else cast(GroundAction, action)
+    )
     action_name = str(ground_action.get_action().get_name())
     arguments = ", ".join(str(obj) for obj in ground_action.get_objects())
     return f"{action_name}({arguments})"
@@ -324,16 +346,24 @@ def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
     return out
 
 
-def _transitions(graph: ProofGraph, edges: list[int], evidence: StateEvidence | None, *, ext: bool) -> list[WitnessTransition]:
+def _transitions(
+    graph: ProofGraph, edges: list[int], evidence: StateEvidence | None, *, ext: bool
+) -> list[WitnessTransition]:
     transitions = []
     for step, edge in enumerate(edges):
         source = state_summary(graph, int(graph.get_source(edge)), evidence)
         target = state_summary(graph, int(graph.get_target(edge)), evidence)
-        transitions.append(witness_transition(edge_summary(graph, edge), step=step, source=source, target=target, ext=ext))
+        transitions.append(
+            witness_transition(
+                edge_summary(graph, edge), step=step, source=source, target=target, ext=ext
+            )
+        )
     return transitions
 
 
-def _successors(graph: ProofGraph, vertices: list[int], evidence: StateEvidence | None, *, exclude: set[int]) -> list[Successor]:
+def _successors(
+    graph: ProofGraph, vertices: list[int], evidence: StateEvidence | None, *, exclude: set[int]
+) -> list[Successor]:
     successors = []
     for vertex in vertices:
         source = state_summary(graph, vertex, evidence)
@@ -404,8 +434,6 @@ def _expand_frontier(
     return expander(graph, vertices)
 
 
-
-
 def successful_trace_artifact(
     graph: ProofGraph,
     evidence: StateEvidence | None,
@@ -425,10 +453,19 @@ def successful_trace_artifact(
         if path_edges is None:
             continue
         return _trace_document(
-            graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
-            header=header, witness_vertices=set(), include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            graph,
+            path_edges,
+            evidence,
+            feature_symbols=feature_symbols,
+            dicts=dicts,
+            ext=ext,
+            header=header,
+            witness_vertices=set(),
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
     return None
+
 
 def witness_artifacts(
     graph: ProofGraph,
@@ -447,7 +484,9 @@ def witness_artifacts(
     """Return (counterexample, trace | None, successors | None) documents for one witness."""
     if kind == CounterexampleKind.CYCLE:
         vertices = [int(vertex) for vertex in witness]
-        cycle_states = [witness_state(state_summary(graph, vertex, evidence), cycle=True) for vertex in vertices]
+        cycle_states = [
+            witness_state(state_summary(graph, vertex, evidence), cycle=True) for vertex in vertices
+        ]
         cycle_edges = _cycle_edges(graph, vertices)
         cycle = Cycle(
             state_indices=tuple(state.state for state in cycle_states),
@@ -455,71 +494,137 @@ def witness_artifacts(
             transition_steps=tuple(range(len(cycle_edges))),
         )
         counterexample = counterexample_document(
-            header=header, feature_symbols=feature_symbols, states=cycle_states,
-            transitions=_transitions(graph, cycle_edges, evidence, ext=ext), cycle=cycle, dicts=dicts, ext=ext,
-            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            header=header,
+            feature_symbols=feature_symbols,
+            states=cycle_states,
+            transitions=_transitions(graph, cycle_edges, evidence, ext=ext),
+            cycle=cycle,
+            dicts=dicts,
+            ext=ext,
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         path_edges = _path_edges_to(graph, vertices[0]) if vertices else None
         trace = _trace_document(
-            graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
-            header=header, witness_vertices=set(), include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            graph,
+            path_edges,
+            evidence,
+            feature_symbols=feature_symbols,
+            dicts=dicts,
+            ext=ext,
+            header=header,
+            witness_vertices=set(),
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         successors = _expand_frontier(
-            graph, expander, evidence,
+            graph,
+            expander,
+            evidence,
             trace_vertices=_vertices_for_edges(graph, path_edges) + vertices,
-            graph_vertices=vertices, exclude=set(vertices),
+            graph_vertices=vertices,
+            exclude=set(vertices),
         )
     elif kind == CounterexampleKind.DEADEND:
         vertex = int(witness)
         counterexample = counterexample_document(
-            header=header, feature_symbols=feature_symbols,
+            header=header,
+            feature_symbols=feature_symbols,
             states=[witness_state(state_summary(graph, vertex, evidence), witness=True)],
-            transitions=[], cycle=None, dicts=dicts, ext=ext,
-            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            transitions=[],
+            cycle=None,
+            dicts=dicts,
+            ext=ext,
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         path_edges = _path_edges_to(graph, vertex)
         trace = _trace_document(
-            graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
-            header=header, witness_vertices={vertex}, include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            graph,
+            path_edges,
+            evidence,
+            feature_symbols=feature_symbols,
+            dicts=dicts,
+            ext=ext,
+            header=header,
+            witness_vertices={vertex},
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         successors = []
     elif kind == CounterexampleKind.DEADEND_TRANSITION:
         edge = int(witness)
         source_vertex, dead_vertex = int(graph.get_source(edge)), int(graph.get_target(edge))
         counterexample = counterexample_document(
-            header=header, feature_symbols=feature_symbols,
+            header=header,
+            feature_symbols=feature_symbols,
             states=[witness_state(state_summary(graph, dead_vertex, evidence), witness=True)],
-            transitions=[], cycle=None, dicts=dicts, ext=ext,
-            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            transitions=[],
+            cycle=None,
+            dicts=dicts,
+            ext=ext,
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         path_edges = _path_edges_to(graph, source_vertex)
         trace_edges = ([*path_edges, edge]) if path_edges is not None else None
         trace = _trace_document(
-            graph, trace_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
-            header=header, witness_vertices={dead_vertex}, include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            graph,
+            trace_edges,
+            evidence,
+            feature_symbols=feature_symbols,
+            dicts=dicts,
+            ext=ext,
+            header=header,
+            witness_vertices={dead_vertex},
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         successors = _expand_frontier(
-            graph, expander, evidence,
-            trace_vertices=_vertices_for_edges(graph, trace_edges) if trace_edges is not None else [source_vertex, dead_vertex],
-            graph_vertices=[source_vertex], exclude=set(),
+            graph,
+            expander,
+            evidence,
+            trace_vertices=_vertices_for_edges(graph, trace_edges)
+            if trace_edges is not None
+            else [source_vertex, dead_vertex],
+            graph_vertices=[source_vertex],
+            exclude=set(),
         )
     else:  # CounterexampleKind.OPEN_STATE
         vertex = int(witness)
         counterexample = counterexample_document(
-            header=header, feature_symbols=feature_symbols,
-            states=[witness_state(state_summary(graph, vertex, evidence), witness=True, open_state=True)],
-            transitions=[], cycle=None, dicts=dicts, ext=ext,
-            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            header=header,
+            feature_symbols=feature_symbols,
+            states=[
+                witness_state(state_summary(graph, vertex, evidence), witness=True, open_state=True)
+            ],
+            transitions=[],
+            cycle=None,
+            dicts=dicts,
+            ext=ext,
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         path_edges = _path_edges_to(graph, vertex)
         trace = _trace_document(
-            graph, path_edges, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
-            header=header, witness_vertices={vertex}, include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            graph,
+            path_edges,
+            evidence,
+            feature_symbols=feature_symbols,
+            dicts=dicts,
+            ext=ext,
+            header=header,
+            witness_vertices={vertex},
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         successors = _expand_frontier(
-            graph, expander, evidence,
+            graph,
+            expander,
+            evidence,
             trace_vertices=_vertices_for_edges(graph, path_edges),
-            graph_vertices=[vertex], exclude=set(),
+            graph_vertices=[vertex],
+            exclude=set(),
         )
 
     # Successors are generator-expanded 1-step planning moves; they are off-graph (no proof
@@ -528,8 +633,13 @@ def witness_artifacts(
     # them blank.
     successor_doc = (
         successors_document(
-            header=header, feature_symbols=feature_symbols, successors=successors, dicts=dicts, ext=ext,
-            include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+            header=header,
+            feature_symbols=feature_symbols,
+            successors=successors,
+            dicts=dicts,
+            ext=ext,
+            include_hstar=include_hstar,
+            include_hlmcut=include_hlmcut,
         )
         if successors
         else None
@@ -556,7 +666,7 @@ def build_proof_run(
 ) -> JsonObject:
     graph = result.graph
     effective_success = result.is_successful() or is_goal_open_state_result(result)
-    status = "success" if effective_success else "failure"
+    status = RunStatus.SUCCESS if effective_success else RunStatus.FAILURE
     artifacts: dict[str, Document] = {}
     items: list[RunItem] = []
     if not effective_success:
@@ -567,19 +677,29 @@ def build_proof_run(
             max_deadend_transition_counterexamples=max_deadend_transition_counterexamples,
             evidence=evidence,
         ):
-            category = kind.value
-            counts[category] = counts.get(category, 0) + 1
-            failure_id = f"{category}-{counts[category]:03d}"
+            category = RunItemCategory(kind.value)
+            category_value = category.value
+            counts[category_value] = counts.get(category_value, 0) + 1
+            failure_id = f"{category_value}-{counts[category_value]:03d}"
             header = [
                 ("tool", tool),
                 ("id", failure_id),
-                ("category", category),
+                ("category", category_value),
                 ("status", status_name(result.status)),
                 ("problem", task_name(task)),
             ]
             witness_doc, trace, successors = witness_artifacts(
-                graph, kind, witness, evidence, feature_symbols=feature_symbols, dicts=dicts, ext=ext,
-                header=header, expander=expander, include_hstar=include_hstar, include_hlmcut=include_hlmcut,
+                graph,
+                kind,
+                witness,
+                evidence,
+                feature_symbols=feature_symbols,
+                dicts=dicts,
+                ext=ext,
+                header=header,
+                expander=expander,
+                include_hstar=include_hstar,
+                include_hlmcut=include_hlmcut,
             )
             names = {"witness": f"failures/{failure_id}/witness"}
             artifacts[names["witness"]] = witness_doc

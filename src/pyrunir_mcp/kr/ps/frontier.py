@@ -99,10 +99,12 @@ def make_frontier_expander(
 
     def compatible_rule(source_state: State, target_state: State) -> str | None:
         context = GroundEvaluationContext(source_state, target_state, builder, denotations)
+        if not sketch.is_compatible_with(context):
+            return None
         for rule in rules:
             if rule.is_compatible_with(context):
                 return str(rule.get_symbol()).strip()
-        return None
+        return "<sketch-compatible>"
 
     def expand(graph: GroundSketchProofGraph, vertices: list[int]) -> list[Successor]:
         successors: list[Successor] = []

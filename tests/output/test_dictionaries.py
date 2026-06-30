@@ -1,4 +1,4 @@
-from pyrunir_mcp.output.dictionaries import Dictionaries, Dictionary
+from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries, Dictionary
 
 
 def test_intern_assigns_stable_ordered_aliases():
@@ -53,12 +53,12 @@ def test_dictionaries_memory_names_disambiguated_by_module():
 def test_dictionaries_omits_empty_tables():
     dicts = Dictionaries(ext=False)
     dicts.feature("b_holding")
-    dicts.atom("fluent", "at(a)")
+    dicts.atom(AtomKind.FLUENT, "at(a)")
     assert set(dicts.tables()) == {"features", "atoms"}  # no rules/actions/memory
 
 
 def test_feature_and_atom_dedup():
     dicts = Dictionaries()
     assert dicts.feature("x") == dicts.feature("x") == "f0"
-    assert dicts.atom("fluent", "at(a)") == "p0"
-    assert dicts.atom("derived", "at(a)") == "p1"  # kind is part of the key
+    assert dicts.atom(AtomKind.FLUENT, "at(a)") == "p0"
+    assert dicts.atom(AtomKind.DERIVED, "at(a)") == "p1"  # kind is part of the key

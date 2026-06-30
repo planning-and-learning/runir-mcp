@@ -3,7 +3,7 @@
 Consumes a normalized witness (raw symbols + resolved flags) and the run-global
 `Dictionaries`, interning symbols as it builds. Base policy and module-program (ext) share
 everything; ext adds the `vertex|state|module|memory` columns. See
-docs/output/runir.ps.base.counterexamples.md and runir.ps.ext.counterexamples.md.
+the shared policy/module-program witness output formats.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from pyrunir_mcp.json_types import JsonValue
-from pyrunir_mcp.output.dictionaries import Dictionaries
+from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
 from pyrunir_mcp.tables import Document, Table
 
 
@@ -56,7 +56,7 @@ class Successor:
 
 
 class Flag(StrEnum):
-    """State markers for the `flags` column (docs/output/runir.ps.base.counterexamples.md).
+    """State markers for the `flags` column in policy/module-program witness output.
 
     An empty `flags` cell means nothing notable (an unremarkable, alive state) or that the
     status was not evaluated. `DEADEND`/`GOAL` are the status exceptions worth flagging.
@@ -95,6 +95,7 @@ def resolve_flags(
 
 
 # -- cell helpers --------------------------------------------------------------
+
 
 def _scalar(value: JsonValue) -> str:
     return "T" if value is True else "F" if value is False else str(value)
@@ -135,10 +136,14 @@ def _rule_alias(symbol: str | None, dicts: Dictionaries) -> str:
 
 
 def _delta(delta: dict[str, tuple[JsonValue, JsonValue]], dicts: Dictionaries) -> str:
-    return " ".join(f"{dicts.feature(s)}:{_scalar(before)}>{_scalar(after)}" for s, (before, after) in delta.items())
+    return " ".join(
+        f"{dicts.feature(s)}:{_scalar(before)}>{_scalar(after)}"
+        for s, (before, after) in delta.items()
+    )
 
 
 # -- row + table builders (one `_x_row` / `_x_table` per section) ---------------
+
 
 def _memory_aliases(memory: tuple[str, str] | None, dicts: Dictionaries) -> tuple[str, str]:
     """(module alias, memory alias) for an ext vertex, or blanks when absent (off-graph / gap)."""
@@ -161,7 +166,13 @@ def _state_row(
     if ext:
         module, memory = _memory_aliases(state.memory, dicts)
         vertex = _vertex_id(state.vertex) if state.vertex is not None else ""
-        leading: list[JsonValue] = [vertex, _state_id(state.state), module, memory, _flags(state.flags)]
+        leading: list[JsonValue] = [
+            vertex,
+            _state_id(state.state),
+            module,
+            memory,
+            _flags(state.flags),
+        ]
     else:
         leading = [_state_id(state.state), _flags(state.flags)]
     if include_hstar:
@@ -201,7 +212,9 @@ def _states_table(
     return Table(name=name, columns=[*leading, *aliases], rows=rows)
 
 
-def _transition_row(transition: WitnessTransition, dicts: Dictionaries, *, ext: bool) -> list[JsonValue]:
+def _transition_row(
+    transition: WitnessTransition, dicts: Dictionaries, *, ext: bool
+) -> list[JsonValue]:
     # Transition endpoints are vertices for ext (a planning state can recur under several memory
     # locations) and planning states for base.
     endpoint = _vertex_id if ext else _state_id
@@ -215,9 +228,15 @@ def _transition_row(transition: WitnessTransition, dicts: Dictionaries, *, ext: 
     ]
 
 
-def _transitions_table(transitions: list[WitnessTransition], dicts: Dictionaries, *, ext: bool) -> Table:
+def _transitions_table(
+    transitions: list[WitnessTransition], dicts: Dictionaries, *, ext: bool
+) -> Table:
     rows = [_transition_row(transition, dicts, ext=ext) for transition in transitions]
-    return Table(name="transitions", columns=["step", "source", "target", "rule", "action", "delta"], rows=rows)
+    return Table(
+        name="transitions",
+        columns=["step", "source", "target", "rule", "action", "delta"],
+        rows=rows,
+    )
 
 
 def _successor_row(successor: Successor, dicts: Dictionaries, *, ext: bool) -> list[JsonValue]:
@@ -264,7 +283,7 @@ def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | Non
         # readable `p0,p1,p2,…` ordering that aligns across states.
         aliases = [
             dicts.atom(kind, atom)
-            for kind, group in (("fluent", state.fluent), ("derived", state.derived))
+            for kind, group in ((AtomKind.FLUENT, state.fluent), (AtomKind.DERIVED, state.derived))
             for atom in group
         ]
         if aliases:
@@ -286,8 +305,11 @@ def _cycle_table(cycle: Cycle, *, ext: bool) -> Table:
 
 # -- documents (each: intern features first, assemble sections, drop empty ones) --
 
+
 def _document(header: list[tuple[str, str]], sections: list[Table | None]) -> Document:
-    return Document(header=header, sections=[section for section in sections if section is not None])
+    return Document(
+        header=header, sections=[section for section in sections if section is not None]
+    )
 
 
 def _intern_features(features: list[str], dicts: Dictionaries) -> None:

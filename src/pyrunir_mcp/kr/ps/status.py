@@ -8,6 +8,7 @@ names. Comparing by name keeps a single source of truth across prove + execute.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Protocol
 
 
 class SuccessStatus(StrEnum):
@@ -18,5 +19,9 @@ class SuccessStatus(StrEnum):
 _SUCCESS_NAMES = frozenset(SuccessStatus)
 
 
-def is_success_status(status) -> bool:
+class NamedStatus(Protocol):
+    name: str
+
+
+def is_success_status(status: NamedStatus) -> bool:
     return status.name in _SUCCESS_NAMES

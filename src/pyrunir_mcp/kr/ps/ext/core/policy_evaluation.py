@@ -13,12 +13,10 @@ def execute_policy_on_tasks(
     execute_tasks: list[LoadedSearchContext],
     options: PolicySearchOptions | None = None,
 ) -> ExecutionFailure | None:
-    num_tasks = len(execute_tasks)
     search_options = options or PolicySearchOptions()
 
-    for index, task in enumerate(execute_tasks, start=1):
+    for task in execute_tasks:
         result = find_ground_solution(task.search_context, policy, search_options)
-        print(f"[{index}/{num_tasks}] {task.problem_path.name}: {result.status.name}", flush=True)
         if not is_success_status(result.status) and not is_goal_open_state_result(result):
             return ExecutionFailure(task=task, result=result)
 

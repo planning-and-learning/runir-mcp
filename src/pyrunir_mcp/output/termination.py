@@ -2,18 +2,26 @@
 
 Abstract vertices carry concept/boolean/numerical variables; edges carry the numerical
 changes they cause. We report the cycle and the changes as-is, without judging which measure
-ought to decrease. See docs/output/runir.ps.ext.prove_termination.md.
+ought to decrease.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from pyrunir_mcp.json_types import JsonValue
 from pyrunir_mcp.output.dictionaries import Dictionary
 from pyrunir_mcp.tables import Document, Table
 
-VARIABLE_KINDS = ("concept", "boolean", "numerical")
+
+class VariableKind(StrEnum):
+    CONCEPT = "concept"
+    BOOLEAN = "boolean"
+    NUMERICAL = "numerical"
+
+
+VARIABLE_KINDS = (VariableKind.CONCEPT, VariableKind.BOOLEAN, VariableKind.NUMERICAL)
 
 
 @dataclass(frozen=True)
@@ -24,8 +32,12 @@ class TerminationVertex:
     booleans: dict[str, str] = field(default_factory=dict)
     numericals: dict[str, str] = field(default_factory=dict)
 
-    def values(self) -> dict[str, dict[str, str]]:
-        return {"concept": self.concepts, "boolean": self.booleans, "numerical": self.numericals}
+    def values(self) -> dict[VariableKind, dict[str, str]]:
+        return {
+            VariableKind.CONCEPT: self.concepts,
+            VariableKind.BOOLEAN: self.booleans,
+            VariableKind.NUMERICAL: self.numericals,
+        }
 
 
 @dataclass(frozen=True)
@@ -43,8 +55,8 @@ class TerminationDictionaries:
         self.memories = Dictionary("m", ["memory"])
         self.rules = Dictionary("r", ["symbol"])
 
-    def variable(self, kind: str, symbol: str) -> str:
-        return self.variables.intern((kind, symbol), [kind, symbol])
+    def variable(self, kind: VariableKind, symbol: str) -> str:
+        return self.variables.intern((kind, symbol), [kind.value, symbol])
 
     def memory(self, memory: str) -> str:
         return self.memories.intern(memory, [memory])
@@ -57,7 +69,7 @@ class TerminationDictionaries:
         return {name: table for name, d in named.items() if (table := d.table(name)) is not None}
 
 
-def _ordered_variables(vertex: TerminationVertex) -> list[tuple[str, str]]:
+def _ordered_variables(vertex: TerminationVertex) -> list[tuple[VariableKind, str]]:
     values = vertex.values()
     return [(kind, name) for kind in VARIABLE_KINDS for name in values[kind]]
 
@@ -97,7 +109,8 @@ def counterexample_document(
     edge_rows: list[list[JsonValue]] = []
     for edge in edges:
         changes = " ".join(
-            f"{dicts.variable('numerical', name)}:{change}" for name, change in edge.numerical_changes.items()
+            f"{dicts.variable(VariableKind.NUMERICAL, name)}:{change}"
+            for name, change in edge.numerical_changes.items()
         )
         edge_rows.append([edge.index, edge.source, edge.target, dicts.rule(edge.rule), changes])
 

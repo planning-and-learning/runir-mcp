@@ -1,1 +1,1 @@
-"""Core policy-learning building blocks shared by scripts and tools."""
+"""Core policy-learning building blocks shared by Python API call sites."""

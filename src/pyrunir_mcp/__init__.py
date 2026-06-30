@@ -1,5 +1,83 @@
-"""MCP server exposing pyrunir tools."""
+"""Typed pyrunir validation API."""
 
-__all__ = ["__version__"]
+from pyrunir_mcp.callsite import (
+    create_classifier,
+    create_domain_context,
+    create_module_program,
+    create_policy,
+    create_task_context,
+    dump_result,
+    dump_validation_history,
+    execute_module_program,
+    execute_policy,
+    prove_classifier,
+    prove_module_program,
+    prove_policy,
+    write_empty_policy,
+)
+from pyrunir_mcp.candidates import Candidate, CandidateSource, Classifier, ModuleProgram, Policy
+from pyrunir_mcp.context import DomainContext, TaskContext
+from pyrunir_mcp.dumping import DumpFormat, DumpResult
+from pyrunir_mcp.history import HistoryFeedback, ValidationHistory
+from pyrunir_mcp.validation import (
+    ClassifierObservationDetails,
+    ClassifierProofCounts,
+    ExecuteModuleProgramResult,
+    ExecuteObservationDetails,
+    ExecutePolicyResult,
+    FailureFingerprint,
+    ObservationDetails,
+    ProofObservationDetails,
+    ProveClassifierResult,
+    ProveModuleProgramResult,
+    ProvePolicyResult,
+    ValidationKind,
+    ValidationObservation,
+    ValidationResult,
+    ValidationStatus,
+)
 
-__version__ = "0.0.19"
+__version__ = "0.0.20"
+
+__all__ = [
+    "__version__",
+    "Candidate",
+    "CandidateSource",
+    "Classifier",
+    "ClassifierObservationDetails",
+    "ClassifierProofCounts",
+    "DomainContext",
+    "DumpFormat",
+    "DumpResult",
+    "ExecuteModuleProgramResult",
+    "ExecuteObservationDetails",
+    "ExecutePolicyResult",
+    "FailureFingerprint",
+    "HistoryFeedback",
+    "ModuleProgram",
+    "ObservationDetails",
+    "Policy",
+    "ProofObservationDetails",
+    "ProveClassifierResult",
+    "ProveModuleProgramResult",
+    "ProvePolicyResult",
+    "TaskContext",
+    "ValidationHistory",
+    "ValidationKind",
+    "ValidationObservation",
+    "ValidationResult",
+    "ValidationStatus",
+    "create_classifier",
+    "create_domain_context",
+    "create_module_program",
+    "create_policy",
+    "create_task_context",
+    "dump_result",
+    "dump_validation_history",
+    "execute_module_program",
+    "execute_policy",
+    "prove_classifier",
+    "prove_module_program",
+    "prove_policy",
+    "write_empty_policy",
+]
