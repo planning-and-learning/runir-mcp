@@ -82,6 +82,7 @@ class CounterexampleKind(StrEnum):
 FailureWitness: TypeAlias = int | list[int]
 FailureItem: TypeAlias = tuple[CounterexampleKind, FailureWitness]
 StateEvidence: TypeAlias = Callable[[GroundState], JsonObject]
+PlanTraceBuilder: TypeAlias = Callable[[GroundState], Document | None]
 
 
 def _witness_vertices(witness: FailureWitness) -> list[int]:
@@ -280,6 +281,10 @@ def _label_state(label: ProofVertexLabel) -> GroundState:
     if isinstance(label, GroundAnnotatedStateGraphVertexLabel | GroundStateGraphVertexLabel):
         return label.state
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
+
+
+def witness_ground_state(graph: ProofGraph, witness: FailureWitness) -> GroundState:
+    return _label_state(graph.get_vertex_property(_witness_vertex(witness)))
 
 
 def state_summary(
@@ -667,6 +672,7 @@ def build_proof_run(
     max_deadend_transition_counterexamples: int = 1,
     include_hstar: bool = True,
     include_hlmcut: bool = True,
+    open_state_plan: PlanTraceBuilder | None = None,
 ) -> JsonObject:
     graph = result.graph
     effective_success = result.is_successful() or is_goal_open_state_result(result)
@@ -705,6 +711,11 @@ def build_proof_run(
                 include_hstar=include_hstar,
                 include_hlmcut=include_hlmcut,
             )
+            plan_trace = None
+            if kind == CounterexampleKind.OPEN_STATE and open_state_plan is not None:
+                plan_trace = open_state_plan(witness_ground_state(graph, witness))
+                if plan_trace is not None:
+                    plan_trace = Document(header=[*header, ("source", "ff")], sections=plan_trace.sections)
             names = {"witness": f"failures/{failure_id}/witness"}
             artifacts[names["witness"]] = witness_doc
             if trace is not None:
@@ -713,6 +724,9 @@ def build_proof_run(
             if successors is not None:
                 names["successors"] = f"failures/{failure_id}/successors"
                 artifacts[names["successors"]] = successors
+            if plan_trace is not None:
+                names["plan_trace"] = f"failures/{failure_id}/plan_trace"
+                artifacts[names["plan_trace"]] = plan_trace
             items.append(
                 RunItem(
                     id=failure_id,
@@ -721,6 +735,7 @@ def build_proof_run(
                     witness=names["witness"],
                     trace=names.get("trace"),
                     successors=names.get("successors"),
+                    plan_trace=names.get("plan_trace"),
                 )
             )
     return build_run_envelope(

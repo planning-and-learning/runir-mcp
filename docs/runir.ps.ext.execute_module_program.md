@@ -12,8 +12,8 @@ result = execute_module_program(
     random_seed_start=0,
     shuffle_labeled_succ_nodes=True,
     max_arity=0,
-    max_num_states=None,
-    max_time_seconds=None,
+    search_budget=SearchBudget(max_num_states=None, max_time_seconds=None),
+    plan_trace_budget=SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0),
 )
 ```
 
@@ -31,8 +31,8 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.M
 | `random_seed_start` | `int` | `0` | First seed used when `num_rollouts > 1`. |
 | `shuffle_labeled_succ_nodes` | `bool` | `True` | Shuffle successor labels during rollout search. |
 | `max_arity` | `int` | `0` | Maximum module-program arity. |
-| `max_num_states` | `int | None` | `None` | Per-subgoal state budget. |
-| `max_time_seconds` | `float | None` | `None` | Per-subgoal wall-clock budget in seconds. |
+| `search_budget` | `SearchBudget` | `SearchBudget(max_num_states=None, max_time_seconds=None)` | Per-subgoal execute search budget; `None` fields mean no explicit limit. |
+| `plan_trace_budget` | `SearchBudget` | `SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0)` | FF plan-trace budget used by `dump_result(...)` for reported open-state failures. |
 
 ## Output / Dump Artifacts
 Same structure as `runir.ps.base.execute_policy`, with module/memory control state. `hstar` and `hlmcut` have the same semantics as base. Dictionaries, failures, successors, and success traces use the [module-program table schema](tables/runir.ps.ext.counterexamples.md).
@@ -56,9 +56,10 @@ output_dir/
   failures/
     <id>/                                # <id> already encodes the category (e.g. open_state-001, cycle-001)
       meta.json                          # per-failure metadata (see docs/index.md)
-      witness.{psv,md,json}              # witness vertex or cycle
+      witness.{psv,md,json}              # witness control state or cycle
       trace.{psv,md,json}                # path to the witness, present when a path exists
       successors.{psv,md,json}           # 1-step successors of the witness (open_state, cycle, deadend)
+      plan_trace.{psv,md,json}           # FF plan trace from an open-state witness, when available
   successes/
     <id>/                                # one directory per successful rollout
       meta.json                          # per-success metadata (see docs/index.md)
@@ -71,6 +72,8 @@ The shared [module-program table schema](tables/runir.ps.ext.counterexamples.md)
 
 - `source` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
+- `plan_trace.*` uses the [open-state FF plan trace schema](tables/runir.ps.open_state.plan_trace.md) and is present for `open_state` failures when FF finds a plan from the witness state.
+- `result.json` records both `search_budget` and `plan_trace_budget`; plan traces use the latter, not the execute budget.
 
 `failures`, `successes`, and `summary` indexes match `execute_policy`; their columns are defined in [Index Tables](tables/index-tables.md). `manifest.json` is JSON-only metadata.
 

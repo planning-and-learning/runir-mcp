@@ -54,6 +54,7 @@ class RunItem:
     witness: str  # artifact name (e.g. "failures/cycle-001/witness")
     trace: str | None = None  # artifact name, when a path trace exists
     successors: str | None = None  # artifact name, when successors were dumped
+    plan_trace: str | None = None  # artifact name, when an open-state FF plan was dumped
 
 
 def _write_item_meta(output_dir: Path, item: RunItem, primary: Fmt) -> str:
@@ -65,6 +66,7 @@ def _write_item_meta(output_dir: Path, item: RunItem, primary: Fmt) -> str:
             ("witness", item.witness),
             ("trace", item.trace),
             ("successors", item.successors),
+            ("plan_trace", item.plan_trace),
         )
         if name is not None
     }
@@ -100,6 +102,7 @@ def _result_item(item: RunItem, paths: dict[str, str], meta_path: str) -> JsonOb
         "trace_path": paths[item.trace] if item.trace else None,
         "trace_available": item.trace is not None,
         "successors_path": paths[item.successors] if item.successors else None,
+        "plan_trace_path": paths[item.plan_trace] if item.plan_trace else None,
         "meta_path": meta_path,
     }
 

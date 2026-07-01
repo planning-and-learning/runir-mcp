@@ -35,4 +35,6 @@ Run-global dictionary files live under `dicts/`.
 
 `successors.*` contains the one-step frontier from each source control location on the trace/cycle. Generated successors are off-graph, so both source and target are represented as planning state plus control location: `source_state`/`source_module`/`source_memory` and `target_state`/`target_module`/`target_memory`. For a gap, `rule`, `target_module`, and `target_memory` are blank.
 
+`plan_trace.*` uses the shared [open-state FF plan trace](runir.ps.open_state.plan_trace.md) schema. It is planner evidence from an open-state witness, not module-program execution.
+
 Successful rollout traces use the module-program trace schema and contain no witness or successor frontier.

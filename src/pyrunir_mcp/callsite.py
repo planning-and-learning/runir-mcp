@@ -12,6 +12,7 @@ from pyrunir_mcp.validation import (
     ProveClassifierResult,
     ProveModuleProgramResult,
     ProvePolicyResult,
+    SearchBudget,
     ValidationResult,
 )
 import pyrunir_mcp.dumping as _dumping
@@ -58,8 +59,10 @@ def execute_policy(
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
     max_arity: int = 0,
-    max_num_states: int | None = None,
-    max_time_seconds: float | None = None,
+    search_budget: SearchBudget = _validation.SearchBudget(
+        max_num_states=None, max_time_seconds=None
+    ),
+    plan_trace_budget: SearchBudget = _validation.PLAN_TRACE_BUDGET,
 ) -> ExecutePolicyResult:
     return _validation.execute_policy(
         context,
@@ -70,8 +73,8 @@ def execute_policy(
         random_seed_start=random_seed_start,
         shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
         max_arity=max_arity,
-        max_num_states=max_num_states,
-        max_time_seconds=max_time_seconds,
+        search_budget=search_budget,
+        plan_trace_budget=plan_trace_budget,
     )
 
 
@@ -85,8 +88,10 @@ def execute_module_program(
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
     max_arity: int = 0,
-    max_num_states: int | None = None,
-    max_time_seconds: float | None = None,
+    search_budget: SearchBudget = _validation.SearchBudget(
+        max_num_states=None, max_time_seconds=None
+    ),
+    plan_trace_budget: SearchBudget = _validation.PLAN_TRACE_BUDGET,
 ) -> ExecuteModuleProgramResult:
     return _validation.execute_module_program(
         context,
@@ -97,8 +102,8 @@ def execute_module_program(
         random_seed_start=random_seed_start,
         shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
         max_arity=max_arity,
-        max_num_states=max_num_states,
-        max_time_seconds=max_time_seconds,
+        search_budget=search_budget,
+        plan_trace_budget=plan_trace_budget,
     )
 
 
@@ -107,15 +112,17 @@ def prove_policy(
     policy: Policy,
     *,
     classifier: Classifier | None = None,
-    max_num_states: int = 100_000,
-    max_time_seconds: float = 5.0,
+    search_budget: SearchBudget = _validation.SearchBudget(
+        max_num_states=100_000, max_time_seconds=5.0
+    ),
+    plan_trace_budget: SearchBudget = _validation.PLAN_TRACE_BUDGET,
 ) -> ProvePolicyResult:
     return _validation.prove_policy(
         context,
         policy,
         classifier=classifier,
-        max_num_states=max_num_states,
-        max_time_seconds=max_time_seconds,
+        search_budget=search_budget,
+        plan_trace_budget=plan_trace_budget,
     )
 
 
@@ -124,16 +131,18 @@ def prove_module_program(
     module_program: ModuleProgram,
     *,
     classifier: Classifier | None = None,
-    max_num_states: int = 100_000,
-    max_time_seconds: float = 5.0,
+    search_budget: SearchBudget = _validation.SearchBudget(
+        max_num_states=100_000, max_time_seconds=5.0
+    ),
+    plan_trace_budget: SearchBudget = _validation.PLAN_TRACE_BUDGET,
     max_arity: int = 0,
 ) -> ProveModuleProgramResult:
     return _validation.prove_module_program(
         context,
         module_program,
         classifier=classifier,
-        max_num_states=max_num_states,
-        max_time_seconds=max_time_seconds,
+        search_budget=search_budget,
+        plan_trace_budget=plan_trace_budget,
         max_arity=max_arity,
     )
 

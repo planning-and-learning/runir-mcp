@@ -18,6 +18,7 @@ from typing import Protocol, TypeAlias, overload
 
 from pyrunir.datasets import GroundTaskSearchContext
 from pyrunir.kr.ps.base import GroundSketchSearchOptions
+from pytyr.planning.ground import State as GroundState
 from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions
 
 from pyrunir_mcp.json_types import JsonObject
@@ -30,6 +31,7 @@ from pyrunir_mcp.kr.ps.proof import (
     is_goal_open_state_result,
     successful_trace_artifact,
     witness_artifacts,
+    witness_ground_state,
 )
 from pyrunir_mcp.kr.ps.status import AnyStatus, SuccessStatus, is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
@@ -145,6 +147,7 @@ class _Representative:
     witness: str | None
     trace: str | None
     successors: str | None
+    plan_trace: str | None
 
 
 @dataclass(frozen=True)
@@ -202,6 +205,7 @@ def _write_failure_meta(output_dir: Path, rep: _Representative, source: str, pri
             ("witness", rep.witness),
             ("trace", rep.trace),
             ("successors", rep.successors),
+            ("plan_trace", rep.plan_trace),
         )
         if name is not None
     }
@@ -236,6 +240,7 @@ def run_execute(
     include_hlmcut: bool = True,
     expander_factory: Callable[[Task], FrontierExpander] | None = None,
     rollout_fallback: RolloutFallback | None = None,
+    open_state_plan: Callable[[Task, GroundState], Document | None] | None = None,
     formats: tuple[Fmt, ...] | None = None,
 ) -> tuple[Task, ProofResult] | None:
     """Run rollouts and write the new-format artifacts. Returns the first failing (task, result)."""
@@ -306,7 +311,7 @@ def run_execute(
             else RunCategory(category_value)
         )
         failure_id = f"{category.value}-{index:03d}"
-        names: dict[str, str | None] = {"witness": None, "trace": None, "successors": None}
+        names: dict[str, str | None] = {"witness": None, "trace": None, "successors": None, "plan_trace": None}
         if witness is not None:
             header = [
                 ("tool", tool),
@@ -378,6 +383,11 @@ def run_execute(
                     include_hlmcut=include_hlmcut,
                 )
             witness_doc, trace, successors = docs
+            plan_trace = None
+            if kind == CounterexampleKind.OPEN_STATE and open_state_plan is not None:
+                plan_trace = open_state_plan(task, witness_ground_state(result.graph, witness))
+                if plan_trace is not None:
+                    plan_trace = Document(header=[*header, ("source", "ff")], sections=plan_trace.sections)
             names["witness"] = f"failures/{failure_id}/witness"
             artifacts[names["witness"]] = witness_doc
             if trace is not None:
@@ -386,6 +396,9 @@ def run_execute(
             if successors is not None:
                 names["successors"] = f"failures/{failure_id}/successors"
                 artifacts[names["successors"]] = successors
+            if plan_trace is not None:
+                names["plan_trace"] = f"failures/{failure_id}/plan_trace"
+                artifacts[names["plan_trace"]] = plan_trace
         reps.append(
             _Representative(
                 failure_id,
@@ -396,6 +409,7 @@ def run_execute(
                 names["witness"],
                 names["trace"],
                 names["successors"],
+                names["plan_trace"],
             )
         )
 
@@ -448,6 +462,7 @@ def run_execute(
             "trace",
             "witness",
             "successors",
+            "plan_trace",
         ],
         rows=[
             [
@@ -460,6 +475,7 @@ def run_execute(
                 _relative(r.trace),
                 _relative(r.witness),
                 _relative(r.successors),
+                _relative(r.plan_trace),
             ]
             for r in reps
         ],
@@ -512,6 +528,7 @@ def run_execute(
                 "witness_path": paths.get(r.witness) if r.witness is not None else None,
                 "trace_path": paths.get(r.trace) if r.trace is not None else None,
                 "successors_path": paths.get(r.successors) if r.successors is not None else None,
+                "plan_trace_path": paths.get(r.plan_trace) if r.plan_trace is not None else None,
                 "meta_path": meta_paths[r.id],
                 "trace_available": r.trace is not None,
             }

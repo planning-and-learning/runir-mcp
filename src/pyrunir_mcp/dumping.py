@@ -22,6 +22,7 @@ from pyrunir_mcp.kr.ps.ext.rules import (
 from pyrunir_mcp.kr.ps.execute import RolloutFallbackResult, Task, run_execute
 from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key, state_evidence
 from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander, make_frontier_expander
+from pyrunir_mcp.kr.ps.plan_trace import plan_open_state_trace
 from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, build_proof_run
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.writer import Fmt
@@ -35,6 +36,7 @@ from pyrunir_mcp.validation import (
     ProofObservationDetails,
     ProveModuleProgramResult,
     ProvePolicyResult,
+    SearchBudget,
     ValidationObservation,
     ValidationResult,
 )
@@ -68,6 +70,12 @@ def _counts_json(counts: ClassifierProofCounts) -> JsonObject:
         "false_negative": counts.false_negative,
     }
 
+
+def _budget_json(budget: SearchBudget) -> JsonObject:
+    return {
+        "max_num_states": budget.max_num_states,
+        "max_time_seconds": budget.max_time_seconds,
+    }
 
 def _observation_details_json(details: ObservationDetails) -> JsonObject:
     if isinstance(details, ExecuteObservationDetails):
@@ -141,6 +149,9 @@ def _result_json(result: ValidationResult) -> JsonObject:
         "candidate": _candidate_json(result.candidate),
         "observation": _observation_json(result.observation),
     }
+    if isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult, ProvePolicyResult, ProveModuleProgramResult)):
+        base["search_budget"] = _budget_json(result.search_budget)
+        base["plan_trace_budget"] = _budget_json(result.plan_trace_budget)
     if isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult)):
         base["num_rollouts"] = result.num_rollouts
         base["failure"] = (
@@ -247,6 +258,15 @@ def _dump_execute_policy_artifacts(
             if result.classifier is not None
             else None
         ),
+        open_state_plan=lambda _task, state: plan_open_state_trace(
+            ground_context=result.context.base_task.search_context,
+            lifted_context=result.context.base_lifted_task.search_context,
+            state=state,
+            features=features,
+            dicts=dicts,
+            max_num_states=result.plan_trace_budget.max_num_states,
+            max_time_seconds=result.plan_trace_budget.max_time_seconds,
+        ),
         formats=formats,
     )
     manifest = output_path / "manifest.json"
@@ -289,6 +309,15 @@ def _dump_execute_module_program_artifacts(
         expander_factory=lambda loaded_task: make_ext_frontier_expander(
             loaded_task.search_context, result.candidate.value, evidence
         ),
+        open_state_plan=lambda _task, state: plan_open_state_trace(
+            ground_context=result.context.ext_task.search_context,
+            lifted_context=result.context.ext_lifted_task.search_context,
+            state=state,
+            features=features,
+            dicts=dicts,
+            max_num_states=result.plan_trace_budget.max_num_states,
+            max_time_seconds=result.plan_trace_budget.max_time_seconds,
+        ),
         formats=formats,
     )
     manifest = output_path / "manifest.json"
@@ -316,6 +345,15 @@ def _dump_prove_policy_artifacts(
         ext=False,
         evidence=evidence,
         expander=make_frontier_expander(result.context.base_task.search_context, result.candidate.value, evidence),
+        open_state_plan=lambda state: plan_open_state_trace(
+            ground_context=result.context.base_task.search_context,
+            lifted_context=result.context.base_lifted_task.search_context,
+            state=state,
+            features=features,
+            dicts=dicts,
+            max_num_states=result.plan_trace_budget.max_num_states,
+            max_time_seconds=result.plan_trace_budget.max_time_seconds,
+        ),
         include_hstar=False,
         include_hlmcut=False,
     )
@@ -345,6 +383,15 @@ def _dump_prove_module_program_artifacts(
         ext=True,
         evidence=evidence,
         expander=make_ext_frontier_expander(result.context.ext_task.search_context, result.candidate.value, evidence),
+        open_state_plan=lambda state: plan_open_state_trace(
+            ground_context=result.context.ext_task.search_context,
+            lifted_context=result.context.ext_lifted_task.search_context,
+            state=state,
+            features=features,
+            dicts=dicts,
+            max_num_states=result.plan_trace_budget.max_num_states,
+            max_time_seconds=result.plan_trace_budget.max_time_seconds,
+        ),
         include_hstar=False,
         include_hlmcut=False,
     )

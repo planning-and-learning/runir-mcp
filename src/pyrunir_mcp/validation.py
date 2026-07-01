@@ -148,6 +148,21 @@ ExecutionFailure: TypeAlias = BaseExecutionFailure | ExtExecutionFailure
 
 
 @dataclass(frozen=True, slots=True)
+class SearchBudget:
+    max_num_states: int | None
+    max_time_seconds: float | None
+
+
+PLAN_TRACE_BUDGET = SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0)
+
+
+def _required_budget_values(budget: SearchBudget, *, name: str) -> tuple[int, float]:
+    if budget.max_num_states is None or budget.max_time_seconds is None:
+        raise ValueError(f"{name} requires max_num_states and max_time_seconds")
+    return budget.max_num_states, budget.max_time_seconds
+
+
+@dataclass(frozen=True, slots=True)
 class ExecutePolicyResult:
     id: str
     kind: ValidationKind
@@ -159,6 +174,8 @@ class ExecutePolicyResult:
     failure: BaseExecutionFailure | None
     successful_results: tuple[tuple[int, ProofResult], ...]
     num_rollouts: int
+    search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None)
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +190,8 @@ class ExecuteModuleProgramResult:
     failure: ExtExecutionFailure | None
     successful_results: tuple[tuple[int, ProofResult], ...]
     num_rollouts: int
+    search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None)
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +203,8 @@ class ProvePolicyResult:
     candidate: Policy
     observation: ValidationObservation
     proof: ProofResult
+    search_budget: SearchBudget = SearchBudget(max_num_states=100_000, max_time_seconds=5.0)
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +216,8 @@ class ProveModuleProgramResult:
     candidate: ModuleProgram
     observation: ValidationObservation
     proof: ProofResult
+    search_budget: SearchBudget = SearchBudget(max_num_states=100_000, max_time_seconds=5.0)
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,8 +600,8 @@ def execute_policy(
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
     max_arity: int = 0,
-    max_num_states: int | None = None,
-    max_time_seconds: float | None = None,
+    search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None),
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
 ) -> ExecutePolicyResult:
     first_failure = None
     successful_results: list[tuple[int, ProofResult]] = []
@@ -591,8 +614,8 @@ def execute_policy(
                 random_seed=seed,
                 shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
                 max_arity=max_arity,
-                max_num_states=max_num_states,
-                max_time_seconds=max_time_seconds,
+                max_num_states=search_budget.max_num_states,
+                max_time_seconds=search_budget.max_time_seconds,
             ),
         )
         if is_success_status(proof.status) or is_goal_open_state_result(proof):
@@ -624,6 +647,8 @@ def execute_policy(
         first_failure,
         tuple(successful_results),
         num_rollouts,
+        search_budget,
+        plan_trace_budget,
     )
 
 
@@ -637,8 +662,8 @@ def execute_module_program(
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
     max_arity: int = 0,
-    max_num_states: int | None = None,
-    max_time_seconds: float | None = None,
+    search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None),
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
 ) -> ExecuteModuleProgramResult:
     first_failure = None
     successful_results: list[tuple[int, ProofResult]] = []
@@ -651,8 +676,8 @@ def execute_module_program(
                 random_seed=seed,
                 shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
                 max_arity=max_arity,
-                max_num_states=max_num_states,
-                max_time_seconds=max_time_seconds,
+                max_num_states=search_budget.max_num_states,
+                max_time_seconds=search_budget.max_time_seconds,
             ),
         )
         if is_success_status(proof.status) or is_goal_open_state_result(proof):
@@ -684,6 +709,8 @@ def execute_module_program(
         first_failure,
         tuple(successful_results),
         num_rollouts,
+        search_budget,
+        plan_trace_budget,
     )
 
 
@@ -692,9 +719,12 @@ def prove_policy(
     policy: Policy,
     *,
     classifier: Classifier | None = None,
-    max_num_states: int = 100_000,
-    max_time_seconds: float = 5.0,
+    search_budget: SearchBudget = SearchBudget(max_num_states=100_000, max_time_seconds=5.0),
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
 ) -> ProvePolicyResult:
+    max_num_states, max_time_seconds = _required_budget_values(
+        search_budget, name="prove_policy search_budget"
+    )
     proof = prove_base_solution(
         context.base_task.search_context,
         policy.value,
@@ -717,7 +747,15 @@ def prove_policy(
         ),
     )
     return ProvePolicyResult(
-        result_id, ValidationKind.BASE_PROVE, status, context, policy, observation, proof
+        result_id,
+        ValidationKind.BASE_PROVE,
+        status,
+        context,
+        policy,
+        observation,
+        proof,
+        search_budget,
+        plan_trace_budget,
     )
 
 
@@ -726,10 +764,13 @@ def prove_module_program(
     module_program: ModuleProgram,
     *,
     classifier: Classifier | None = None,
-    max_num_states: int = 100_000,
-    max_time_seconds: float = 5.0,
+    search_budget: SearchBudget = SearchBudget(max_num_states=100_000, max_time_seconds=5.0),
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
     max_arity: int = 0,
 ) -> ProveModuleProgramResult:
+    max_num_states, max_time_seconds = _required_budget_values(
+        search_budget, name="prove_module_program search_budget"
+    )
     options = make_search_options(
         GroundModuleProgramSearchOptions(), max_num_states, max_time_seconds
     )
@@ -752,7 +793,15 @@ def prove_module_program(
         ),
     )
     return ProveModuleProgramResult(
-        result_id, ValidationKind.EXT_PROVE, status, context, module_program, observation, proof
+        result_id,
+        ValidationKind.EXT_PROVE,
+        status,
+        context,
+        module_program,
+        observation,
+        proof,
+        search_budget,
+        plan_trace_budget,
     )
 
 

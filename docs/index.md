@@ -9,9 +9,11 @@ Typed Python API with in-memory domains, task contexts, candidates, observations
 - [Candidates](candidates.md): `create_policy(...)`, `write_empty_policy(...)`, `create_module_program(...)`, `create_classifier(...)`
 - [Validation History](history.md): `ValidationHistory`, `HistoryFeedback`
 - [Dumping](dumping.md): `dump_result(...)`, `dump_validation_history(...)`, `DumpFormat`
+- [Search budgets](api.md#searchbudget): `SearchBudget` for validation and open-state FF plan traces
 
 ```python
 from pyrunir_mcp import (
+    SearchBudget,
     ValidationHistory,
     create_classifier,
     create_domain_context,
@@ -64,6 +66,7 @@ Workflow-specific arguments, result shapes, and output tables:
 - [Index tables](tables/index-tables.md)
 - Base sketch-policy counterexamples: [tables](tables/runir.ps.base.counterexamples.md)
 - Module-program counterexamples: [tables](tables/runir.ps.ext.counterexamples.md)
+- Open-state FF plan trace: [tables](tables/runir.ps.open_state.plan_trace.md)
 - Structural termination: [tables](tables/runir.ps.ext.prove_termination.md)
 - Unsolvability classifier: [tables](tables/runir.uns.prove_classifier.md)
 

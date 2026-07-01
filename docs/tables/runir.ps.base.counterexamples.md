@@ -23,6 +23,8 @@ Run-global dictionary files live under `dicts/`. Every witness, trace, and succe
 
 Cycle witnesses use `[states]`, `[transitions]`, and `[facts]`; `[states]` is a closed path with the first state row repeated as the final row.
 
+`plan_trace.*` uses the shared [open-state FF plan trace](runir.ps.open_state.plan_trace.md) schema. It is planner evidence from an open-state witness, not policy execution.
+
 
 
 ## Flag Values

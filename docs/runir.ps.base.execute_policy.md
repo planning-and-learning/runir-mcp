@@ -12,8 +12,8 @@ result = execute_policy(
     random_seed_start=0,
     shuffle_labeled_succ_nodes=True,
     max_arity=0,
-    max_num_states=None,
-    max_time_seconds=None,
+    search_budget=SearchBudget(max_num_states=None, max_time_seconds=None),
+    plan_trace_budget=SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0),
 )
 ```
 
@@ -31,8 +31,8 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.M
 | `random_seed_start` | `int` | `0` | First seed used when `num_rollouts > 1`. |
 | `shuffle_labeled_succ_nodes` | `bool` | `True` | Shuffle successor labels during rollout search. |
 | `max_arity` | `int` | `0` | Maximum sketch arity. |
-| `max_num_states` | `int | None` | `None` | Per-subgoal state budget. |
-| `max_time_seconds` | `float | None` | `None` | Per-subgoal wall-clock budget in seconds. |
+| `search_budget` | `SearchBudget` | `SearchBudget(max_num_states=None, max_time_seconds=None)` | Per-subgoal execute search budget; `None` fields mean no explicit limit. |
+| `plan_trace_budget` | `SearchBudget` | `SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0)` | FF plan-trace budget used by `dump_result(...)` for reported open-state failures. |
 
 ## Output / Dump Artifacts
 Normalized execution output contains one task entry per rollout seed, representative failures, and trace-only successes. State rows carry feature values plus `fluent`/`derived` facts for witness/cycle states; transition rows carry action labels and matched rule symbols. `hstar` is exact remaining lifted plan length in actions (`inf` = proven dead, empty = budget exhausted); `hlmcut` is the raw LM-cut lower bound. Dictionaries, counterexamples, traces, and successors use the [base sketch-policy table schema](tables/runir.ps.base.counterexamples.md).
@@ -58,6 +58,7 @@ output_dir/
       witness.{psv,md,json}              # witness state or cycle
       trace.{psv,md,json}                # path to the witness, present when a path exists
       successors.{psv,md,json}           # 1-step successors of the witness (open_state, cycle, deadend)
+      plan_trace.{psv,md,json}           # FF plan trace from an open-state witness, when available
   successes/
     <id>/                                # one directory per successful rollout
       meta.json                          # per-success metadata (see docs/index.md)
@@ -73,5 +74,7 @@ The shared [base sketch-policy table schema](tables/runir.ps.base.counterexample
 
 - `source` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
+- `plan_trace.*` uses the [open-state FF plan trace schema](tables/runir.ps.open_state.plan_trace.md) and is present for `open_state` failures when FF finds a plan from the witness state.
+- `result.json` records both `search_budget` and `plan_trace_budget`; plan traces use the latter, not the execute budget.
 
 `failures`, `successes`, and `summary` indexes are written in requested formats; their columns are defined in [Index Tables](tables/index-tables.md). `manifest.json` is JSON-only metadata.

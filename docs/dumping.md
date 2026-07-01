@@ -22,12 +22,14 @@ dumped = dump_result(result, output_dir, formats=(DumpFormat.JSON,))
 | `output_dir` | `str | Path` | required | Directory to create and write into. |
 | `formats` | `tuple[DumpFormat, ...]` | `(DumpFormat.JSON,)` | Requested output formats. |
 
-Always writes compact `result.json`. Policy/module-program execute/prove results also write requested witness/trace artifacts.
+Always writes compact `result.json`. Policy/module-program execute/prove results also write requested witness/trace artifacts. For reported open-state failures, `dump_result(...)` may also write `plan_trace.*` when FF finds a plan from the witness state; this uses `result.plan_trace_budget`, not `result.search_budget`.
 
 | Field | Type | Description |
 |---|---|---|
 | `output_dir` | `Path` | Absolute output directory. |
 | `files` | `tuple[Path, ...]` | Files or rich artifact entry points written by the dump call. |
+
+For base/ext execute and prove results, `result.json` records both `search_budget` and `plan_trace_budget`. The default plan-trace budget is 1,000,000 states and 10 seconds.
 
 ## `dump_validation_history`
 

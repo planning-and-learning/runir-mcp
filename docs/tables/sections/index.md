@@ -17,6 +17,11 @@
 - [`[facts]`](runir.ps.ext.facts.md)
 - [`[successors]`](runir.ps.ext.successors.md)
 
+## Open-State FF Plan Trace
+
+- [`[states]`](runir.ps.plan_trace.states.md)
+- [`[plan]`](runir.ps.plan_trace.plan.md)
+
 ## Structural Termination
 
 - [`[cycle]`](runir.ps.ext.termination.cycle.md)

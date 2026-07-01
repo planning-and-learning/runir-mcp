@@ -24,6 +24,7 @@ feedback = history.fold(result.observation)
 
 ```python
 from pyrunir_mcp import (
+    SearchBudget,
     ValidationHistory,
     create_domain_context,
     create_policy,
@@ -69,6 +70,12 @@ Pass `None` for an empty candidate. Use `write_empty_policy(domain, path)` when 
 - `prove_classifier(task, classifier, ...)`
 
 Every result includes `kind`, `status`, candidate, `observation`, optional `FailureFingerprint`, and validation-specific payload such as failure, proof, or classifier counts.
+
+## SearchBudget
+
+`SearchBudget(max_num_states, max_time_seconds)` groups a state limit and a wall-clock limit. `None` means that side of the budget is left unconstrained for searches that support optional limits.
+
+Policy/module-program execute and prove calls take two budgets: `search_budget` for the validation search itself, and `plan_trace_budget` for optional FF plan traces emitted later by `dump_result(...)` for open-state failures. Execute defaults to `SearchBudget(max_num_states=None, max_time_seconds=None)`, prove defaults to `SearchBudget(max_num_states=100_000, max_time_seconds=5.0)`, and plan traces default to `SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0)`. Prove `search_budget` values must set both fields.
 
 ## Dumping
 

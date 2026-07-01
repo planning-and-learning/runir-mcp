@@ -9,6 +9,7 @@ This directory collects the output table definitions separately from the narrati
 - [Section table definitions](sections/index.md)
 - [Base sketch-policy counterexamples, traces, and successors](runir.ps.base.counterexamples.md)
 - [Module-program counterexamples, traces, and successors](runir.ps.ext.counterexamples.md)
+- [Open-state FF plan trace](runir.ps.open_state.plan_trace.md)
 - [Module-program termination counterexamples](runir.ps.ext.prove_termination.md)
 - [Unsolvability-classifier counterexamples](runir.uns.prove_classifier.md)
 
