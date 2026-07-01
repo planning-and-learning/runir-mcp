@@ -35,7 +35,7 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.M
 | `max_time_seconds` | `float | None` | `None` | Per-subgoal wall-clock budget in seconds. |
 
 ## Output / Dump Artifacts
-Normalized execution output contains one task entry per rollout seed, representative failures, and trace-only successes. State rows carry feature values plus `fluent`/`derived` facts for witness/cycle states; transition rows carry action labels and matched rule symbols. `hstar` is exact remaining lifted plan length in actions (`inf` = proven dead, empty = budget exhausted); `hlmcut` is the raw LM-cut lower bound. Dictionaries, counterexamples, traces, and successors use the [base sketch-policy output format](output/runir.ps.base.counterexamples.md).
+Normalized execution output contains one task entry per rollout seed, representative failures, and trace-only successes. State rows carry feature values plus `fluent`/`derived` facts for witness/cycle states; transition rows carry action labels and matched rule symbols. `hstar` is exact remaining lifted plan length in actions (`inf` = proven dead, empty = budget exhausted); `hlmcut` is the raw LM-cut lower bound. Dictionaries, counterexamples, traces, and successors use the [base sketch-policy table schema](tables/runir.ps.base.counterexamples.md).
 
 ## Output Directory
 
@@ -69,50 +69,9 @@ Everything for one failure is local to `failures/<id>/`; everything for one succ
 
 ## Output Files
 
-The shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md) defines dictionary, witness, trace, successor, section, and flag schemas. Execute-specific details:
+The shared [base sketch-policy table schema](tables/runir.ps.base.counterexamples.md) defines dictionary, witness, trace, successor, section, and flag schemas. Rendering rules are in [Table Rendering](tables/rendering.md). Execute-specific details:
 
 - `source` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 
-`failures` and `successes` indexes are written in requested formats. `summary.*` is the run/counts table; `manifest.json` is JSON-only metadata.
-
-### Failures
-
-`failures.{psv,md,json}`: one row per representative failure, each pointing into `failures/<id>/`.
-
-| Column | Meaning |
-|---|---|
-| `id` | Stable failure id, e.g. `cycle-001` (also the `failures/<id>/` directory name). |
-| `category` | Failure category (`cycle`, `deadend`, `open_state`, `resource_limit`, …). |
-| `status` | Execution status that produced the failure (e.g. `CYCLE`). |
-| `seed` | Rollout seed. |
-| `problem` | Problem file path. |
-| `source` | Counterexample source (e.g. `find_solution`). |
-| `trace` | Relative path to the trace file, or empty if none. |
-| `witness` | Relative path to the witness file. |
-| `successors` | Relative path to the successors file, or empty if none. |
-
-```text
-id|category|status|seed|problem|source|trace|witness|successors
-cycle-001|cycle|CYCLE|0|p01.pddl|find_solution|failures/cycle-001/trace.psv|failures/cycle-001/witness.psv|failures/cycle-001/successors.psv
-```
-
-
-### Successes
-
-`successes.{psv,md,json}`: one row per successful rollout. Success artifacts contain only `successes/<id>/trace.*`; all successful seeds are listed.
-
-| Column | Meaning |
-|---|---|
-| `id` | Stable success id, e.g. `success-001` (also the `successes/<id>/` directory name). |
-| `category` | Always `success`. |
-| `status` | Execution status, usually `SUCCESS`. |
-| `seed` | Rollout seed. |
-| `problem` | Problem file path. |
-| `source` | Trace source (e.g. `find_solution`). |
-| `trace` | Relative path to the successful trace file. |
-
-```text
-id|category|status|seed|problem|source|trace
-success-001|success|SUCCESS|0|p01.pddl|find_solution|successes/success-001/trace.psv
-```
+`failures`, `successes`, and `summary` indexes are written in requested formats; their columns are defined in [Index Tables](tables/index-tables.md). `manifest.json` is JSON-only metadata.

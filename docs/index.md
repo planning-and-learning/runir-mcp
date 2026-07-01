@@ -57,11 +57,14 @@ Workflow-specific arguments, result shapes, and output tables:
 - [`runir.uns.reformat_classifier`](runir.uns.reformat_classifier.md): formatting workflow/table notes
 - [`runir.uns.prove_classifier`](runir.uns.prove_classifier.md): `prove_classifier(...)`, optional `dump_result(...)`
 
-## Output Formats
+## Output Tables
 
-- Base sketch-policy counterexamples: [base format](output/runir.ps.base.counterexamples.md)
-- Module-program counterexamples: [module-program format](output/runir.ps.ext.counterexamples.md)
-- Structural termination: [termination format](output/runir.ps.ext.prove_termination.md)
-- Unsolvability classifier: [classifier format](output/runir.uns.prove_classifier.md)
+- [Table definitions](tables/index.md)
+- [Rendering conventions](tables/rendering.md)
+- [Index tables](tables/index-tables.md)
+- Base sketch-policy counterexamples: [tables](tables/runir.ps.base.counterexamples.md)
+- Module-program counterexamples: [tables](tables/runir.ps.ext.counterexamples.md)
+- Structural termination: [tables](tables/runir.ps.ext.prove_termination.md)
+- Unsolvability classifier: [tables](tables/runir.uns.prove_classifier.md)
 
 `docs/AGENT.md` records the output policy: JSON for machine metadata, PSV for LLM-readable artifacts, Markdown for human summaries.

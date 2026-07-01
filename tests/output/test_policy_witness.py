@@ -118,8 +118,7 @@ def test_cycle_counterexample_matches_doc():
     )
     assert render_document(doc, "psv") == (
         "@tool execute_policy\n@id cycle-001\n@category cycle\n@status CYCLE\n@problem p01.pddl\n"
-        "\n[cycle]\nkey|value\ncycle_state_indices|s1,s2,s1\ncycle_transition_steps|0,1\n"
-        "\n[states]\nid|flags|hstar|hlmcut|f0|f1|f2\ns1|CYCLE|||2|1|F\ns2|CYCLE|||2|0|F\n"
+        "\n[states]\nid|flags|hstar|hlmcut|f0|f1|f2\ns1|CYCLE|||2|1|F\ns2|CYCLE|||2|0|F\ns1|CYCLE|||2|1|F\n"
         "\n[transitions]\nstep|source|target|rule|action|delta\n0|s1|s2|r1|a1|f1:1>0\n1|s2|s1|r0|a0|f1:0>1\n"
         "\n[facts]\nstate|atoms\ns1|p1\ns2|p0"
     )
@@ -209,7 +208,7 @@ def test_ext_state_columns_can_include_hstar_without_hlmcut():
         include_hlmcut=False,
     )
     psv = render_document(doc, "psv")
-    assert "[states]\nvertex|state|module|memory|flags|hstar|f0\nv4|s2|M0|m0||5|1" in psv
+    assert "[states]\nstate|module|memory|flags|hstar|f0\ns2|M0|m0||5|1\ns2|M0|m0||5|1" in psv
     assert "hlmcut" not in psv
 
 
@@ -226,24 +225,22 @@ def test_ext_successor_state_columns_include_hlmcut_by_default():
     assert "[states]\nid|flags|hstar|hlmcut|f0\ns1|||4|9" in psv
 
 
-def test_ext_state_columns_include_vtx_mod_and_mem():
+def test_ext_state_columns_include_mod_and_mem_without_vertex():
     dicts = Dictionaries(ext=True)
     mem = ("deliver", "q_init")  # (module, memory)
-    state = WitnessState(10, {"n_held": 1}, flags=("CYCLE",), vertex=3, memory=mem)
+    state = WitnessState(10, {"n_held": 1}, flags=("CYCLE",), memory=mem)
     doc = counterexample_document(
         header=[("id", "c")],
         feature_symbols=["n_held"],
         states=[state],
         transitions=[],
-        cycle=Cycle(vertex_indices=(3,), state_indices=(10,)),
+        cycle=Cycle(state_indices=(10,)),
         dicts=dicts,
         ext=True,
     )
     psv = render_document(doc, "psv")
-    assert (
-        "[states]\nvertex|state|module|memory|flags|hstar|hlmcut|f0\nv3|s10|M0|m0|CYCLE|||1" in psv
-    )
-    assert "cycle_vertex_indices|v3" in psv
+    assert "[states]\nstate|module|memory|flags|hstar|hlmcut|f0\ns10|M0|m0|CYCLE|||1\ns10|M0|m0|CYCLE|||1" in psv
+    assert "[cycle]" not in psv
 
 
 def test_ext_successors_carry_module_and_memory():
@@ -253,6 +250,7 @@ def test_ext_successors_carry_module_and_memory():
         # a taken move lands in module M's memory state; a gap leaves mod/mem blank
         Successor(
             src=5,
+            source_memory=("gripper", "free"),
             target=WitnessState(7, {"n": 1}, memory=("gripper", "carry")),
             action="(move a b)",
             rule="load0",
@@ -260,6 +258,7 @@ def test_ext_successors_carry_module_and_memory():
         ),
         Successor(
             src=5,
+            source_memory=("gripper", "free"),
             target=WitnessState(8, {"n": 2}, flags=("GOAL",)),
             action="(move a c)",
             rule=None,
@@ -270,7 +269,7 @@ def test_ext_successors_carry_module_and_memory():
         header=[("id", "s")], feature_symbols=["n"], successors=successors, dicts=dicts, ext=True
     )
     psv = render_document(doc, "psv")
-    assert "[successors]\nsource|action|target|rule|module|memory|flags|delta" in psv
+    assert "[successors]\nsource_state|source_module|source_memory|action|target_state|target_module|target_memory|rule|flags|delta" in psv
     assert "[states]\nid|flags|hstar|hlmcut|f0" in psv
-    assert "s5|a0|s7|r0|M0|m0||" in psv
-    assert "s5|a1|s8||||GOAL|" in psv
+    assert "s5|M0|m0|a0|s7|M0|m1|r0||" in psv
+    assert "s5|M0|m0|a1|s8||||GOAL|" in psv

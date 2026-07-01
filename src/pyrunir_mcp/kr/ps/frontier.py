@@ -14,13 +14,13 @@ with the policy:
 
 A successor that advances toward the goal with an empty `rule` is the gap. Successors are
 off-graph planning moves (no proof vertex), so they are emitted state-indexed; ext additionally
-carries the resulting `mod`/`mem` per taken move (see `proof.witness_artifacts`).
+carries source and target module/memory context per taken move (see `proof.witness_artifacts`).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TypeAlias, cast
+from typing import Protocol, TypeAlias, cast
 
 from pyrunir.datasets import GroundTaskSearchContext
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
@@ -76,8 +76,11 @@ def successor(
     *,
     module: str | None = None,
     memory: str | None = None,
+    source_memory: tuple[str, str] | None = None,
 ) -> Successor:
     source = {"state_index": int(source_state.get_index()), **evidence(source_state)}
+    if source_memory is not None:
+        source["module"], source["memory_state"] = source_memory
     target = {"state_index": int(target_state.get_index()), "is_goal": is_goal(target_state), **evidence(target_state)}
     if module is not None:
         target["module"] = module
@@ -123,8 +126,18 @@ def make_frontier_expander(
     return expand
 
 
-def _memory_name(memory_state: InternalMemoryState | ExternalMemoryState) -> str:
-    return str(memory_state.value.get_name())
+class _NamedMemory(Protocol):
+    def get_name(self) -> object: ...
+
+
+def _memory_name(memory_state: MemoryState) -> str:
+    # Pybind memory-state stubs do not expose get_name(), but the runtime object does.
+    return str(cast(_NamedMemory, memory_state).get_name())
+
+
+def _wrapped_memory_name(memory_state: InternalMemoryState | ExternalMemoryState) -> str:
+    # Internal/external wrappers expose the runtime memory object through value.
+    return str(cast(_NamedMemory, memory_state.value).get_name())
 
 
 def make_ext_frontier_expander(
@@ -174,9 +187,19 @@ def make_ext_frontier_expander(
                     if applied is not None:
                         _edge, node = applied
                         res_module = str(node.module.get_name())
-                        res_memory = _memory_name(node.memory_state)
+                        res_memory = _wrapped_memory_name(node.memory_state)
                 successors.append(
-                    successor(source_state, target_state, labeled.label, rule, evidence, is_goal, module=res_module, memory=res_memory)
+                    successor(
+                        source_state,
+                        target_state,
+                        labeled.label,
+                        rule,
+                        evidence,
+                        is_goal,
+                        module=res_module,
+                        memory=res_memory,
+                        source_memory=(str(module.get_name()), _memory_name(memory)),
+                    )
                 )
         return successors
 

@@ -23,7 +23,7 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.JSON,))`.
 | `max_time_seconds` | `float` | `1_000_000_000.0` | Enumeration/proof wall-clock budget in seconds. |
 
 ## Output / Dump Artifacts
-`dump_result(...)` writes `result.json`: validation kind/status, task context ID/index, classifier metadata, typed observation payload, and aggregate counts. Classifier witness tables: [unsolvability-classifier output format](output/runir.uns.prove_classifier.md).
+`dump_result(...)` writes `result.json`: validation kind/status, task context ID/index, classifier metadata, typed observation payload, and aggregate counts. Classifier witness table design: [unsolvability-classifier table schema](tables/runir.uns.prove_classifier.md).
 
 Categories:
 

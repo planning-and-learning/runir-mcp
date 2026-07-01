@@ -31,20 +31,21 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.M
 
 Counterexamples are bounded by category: at most `max_open_state_counterexamples`, at most `max_deadend_transition_counterexamples`, and one cycle if present; cycle does not count against the other bounds.
 
-Dictionaries and per-failure files use the [module-program output format](output/runir.ps.ext.counterexamples.md). `summary.*` indexes them; `manifest.json` is JSON-only metadata. Failure categories: `open_state`, `deadend_transition`, `cycle`. Proof has no rollout seeds, so no `@seed` header.
+Dictionaries and per-failure files use the [module-program table schema](tables/runir.ps.ext.counterexamples.md). `summary.*` uses the [native summary table](tables/indexes/native.summary.md); `run.json` is JSON-only run metadata. Failure categories: `open_state`, `deadend_transition`, `cycle`. Proof has no rollout seeds, so no `@seed` header.
 
 ## Output Directory
 
 ```text
 output_dir/
   .pyrunir-mcp-output
-  manifest.json                          # run metadata: config, proof budgets, hstar budgets (JSON only)
+  run.json                               # run envelope: metadata, counts, artifact paths (JSON only)
   summary.{psv,md,json}                  # run index/counts table
   dicts/
     features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol
     rules.{psv,md,json}                  # run-global dictionary: r0,r1,… -> module rule (+ src/tgt memory)
     actions.{psv,md,json}                # run-global dictionary: a0,a1,… -> ground action
     atoms.{psv,md,json}                  # run-global dictionary: p0,p1,… -> ground atom (+ kind)
+    modules.{psv,md,json}                # run-global dictionary: M0,M1,… -> module name
     memory.{psv,md,json}                 # run-global dictionary: m0,m1,… -> (module, memory-state)
   failures/
     <id>/                                # <id> already encodes the category (e.g. open_state-001, cycle-001)

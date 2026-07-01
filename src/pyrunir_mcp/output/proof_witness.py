@@ -87,11 +87,12 @@ def witness_transition(
     target: JsonObject,
     ext: bool,
 ) -> WitnessTransition:
-    endpoint = "vertex_index" if ext else "state_index"
     return WitnessTransition(
         step=step,
-        source=_int(source[endpoint]),
-        target=_int(target[endpoint]),
+        source=_int(source["state_index"]),
+        target=_int(target["state_index"]),
+        source_memory=_memory(source) if ext else None,
+        target_memory=_memory(target) if ext else None,
         action=_str_opt(edge.get("action")),
         rule=_str_opt(edge.get("module_rule")),
         delta=_delta(_json_object(source.get("feature_values", {})), _json_object(target.get("feature_values", {}))),
@@ -104,7 +105,8 @@ def successor(
     target: JsonObject,
 ) -> Successor:
     return Successor(
-        src=_int(source["vertex_index"] if "memory_state" in source else source["state_index"]),
+        src=_int(source["state_index"]),
+        source_memory=_memory(source),
         target=witness_state(target),
         action=_str_opt(edge.get("action")),
         rule=_str_opt(edge.get("module_rule")),

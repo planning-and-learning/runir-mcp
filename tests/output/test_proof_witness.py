@@ -60,7 +60,7 @@ def test_open_state_counterexample_document():
 def test_trace_transitions_alias_and_delta():
     dicts = Dictionaries()
     dicts.rule("deliver")
-    edge: JsonObject = {"source_vertex_index": 0, "target_vertex_index": 1, "action": "(deliver ball1)", "module_rule": "deliver"}
+    edge: JsonObject = {"action": "(deliver ball1)", "module_rule": "deliver"}
     transition = witness_transition(edge, step=0, source=BASE_STATE, target={**OPEN_STATE, "feature_values": {"n_undeliv": 2, "b_goal": False}}, ext=False)
     doc = trace_document(
         header=[("tool", "prove_policy")],
@@ -75,11 +75,13 @@ def test_trace_transitions_alias_and_delta():
     assert "0|s10|s11|r0|a0|f0:3>2" in psv
 
 
-def test_ext_transition_uses_vertex_endpoints():
+def test_ext_transition_uses_control_tuple_endpoints():
     src: JsonObject = {**BASE_STATE, "memory_state": "q0", "module": "m"}
     tgt: JsonObject = {**OPEN_STATE, "memory_state": "q1", "module": "m", "feature_values": {"n_undeliv": 2, "b_goal": False}}
     transition = witness_transition({"action": "(a)", "module_rule": "r"}, step=0, source=src, target=tgt, ext=True)
-    assert transition.source == 0 and transition.target == 1  # vertex indices, not state indices
+    assert transition.source == 10 and transition.target == 11
+    assert transition.source_memory == ("m", "q0")
+    assert transition.target_memory == ("m", "q1")
 
 
 def test_successor_targets_and_gap():

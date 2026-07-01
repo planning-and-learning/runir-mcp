@@ -2,7 +2,7 @@
 
 ## Python API Status
 
-This page documents the structural-termination output table design.
+This page documents the structural-termination output layout. Table schemas are in [module-program termination tables](tables/runir.ps.ext.prove_termination.md).
 
 ## Current Status
 
@@ -13,7 +13,7 @@ The artifact layout below defines the structural-termination output format.
 ```text
 output_dir/
   .pyrunir-mcp-output
-  manifest.json                          # run metadata: config (JSON only)
+  run.json                               # run envelope: metadata, counts, artifact paths (JSON only)
   summary.{psv,md,json}                  # run index/counts table
   dicts/
     variables.{psv,md,json}              # dictionary: v0,v1,… -> (kind, variable symbol)

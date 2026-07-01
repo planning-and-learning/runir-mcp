@@ -29,14 +29,14 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.M
 
 Counterexamples are bounded by category: at most `max_open_state_counterexamples`, at most `max_deadend_transition_counterexamples`, and one cycle if present; cycle does not count against the other bounds.
 
-Dictionaries and per-failure files use the [base sketch-policy output format](output/runir.ps.base.counterexamples.md). `summary.*` indexes the single task; `manifest.json` is JSON-only metadata. Failure categories: `open_state`, `deadend_transition`, `cycle`. Proof has no rollout seeds, so no `@seed` header.
+Dictionaries and per-failure files use the [base sketch-policy table schema](tables/runir.ps.base.counterexamples.md). `summary.*` uses the [native summary table](tables/indexes/native.summary.md); `run.json` is JSON-only run metadata. Failure categories: `open_state`, `deadend_transition`, `cycle`. Proof has no rollout seeds, so no `@seed` header.
 
 ## Output Directory
 
 ```text
 output_dir/
   .pyrunir-mcp-output
-  manifest.json                          # run metadata: config, proof budgets, hstar budgets (JSON only)
+  run.json                               # run envelope: metadata, counts, artifact paths (JSON only)
   summary.{psv,md,json}                  # run index/counts table
   dicts/
     features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol

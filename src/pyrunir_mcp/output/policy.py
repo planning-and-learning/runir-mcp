@@ -2,8 +2,8 @@
 
 Consumes a normalized witness (raw symbols + resolved flags) and the run-global
 `Dictionaries`, interning symbols as it builds. Base policy and module-program (ext) share
-everything; ext adds the `vertex|state|module|memory` columns. See
-the shared policy/module-program witness output formats.
+the same witness shape; ext adds module/memory control context where needed. See the shared
+policy/module-program witness output formats.
 """
 
 from __future__ import annotations
@@ -42,6 +42,8 @@ class WitnessTransition:
     step: int
     source: int
     target: int
+    source_memory: tuple[str, str] | None = None
+    target_memory: tuple[str, str] | None = None
     action: str | None = None
     rule: str | None = None  # raw rule symbol; looked up in the rules dictionary
     delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=_delta_dict)
@@ -58,6 +60,7 @@ class Cycle:
 class Successor:
     src: int
     target: WitnessState
+    source_memory: tuple[str, str] | None = None  # (module, memory) source control for ext
     action: str | None = None
     rule: str | None = None
     delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=_delta_dict)
@@ -118,23 +121,6 @@ def _state_id(index: int) -> str:
     return f"s{index}"
 
 
-def _vertex_id(index: int) -> str:
-    """Proof-graph vertex index as a prefixed id (`v3`); vertex indices are already dense per graph."""
-    return f"v{index}"
-
-
-def _state_ids(indices: tuple[int, ...]) -> str:
-    return ",".join(_state_id(int(i)) for i in indices)
-
-
-def _vertex_ids(indices: tuple[int, ...]) -> str:
-    return ",".join(_vertex_id(int(i)) for i in indices)
-
-
-def _steps(indices: tuple[int, ...]) -> str:
-    return ",".join(map(str, indices))
-
-
 def _action_alias(symbol: str | None, dicts: Dictionaries) -> str:
     return dicts.action(symbol) if symbol else ""
 
@@ -173,9 +159,7 @@ def _state_row(
     values = [state.features.get(symbol) for symbol in features]
     if ext:
         module, memory = _memory_aliases(state.memory, dicts)
-        vertex = _vertex_id(state.vertex) if state.vertex is not None else ""
         leading: list[JsonValue] = [
-            vertex,
             _state_id(state.state),
             module,
             memory,
@@ -201,7 +185,7 @@ def _states_table(
 ) -> Table:
     features = dicts.feature_symbols()
     aliases = [f"f{index}" for index in range(len(features))]
-    leading = ["vertex", "state", "module", "memory", "flags"] if ext else ["id", "flags"]
+    leading = ["state", "module", "memory", "flags"] if ext else ["id", "flags"]
     if include_hstar:
         leading.append("hstar")
     if include_hlmcut:
@@ -223,13 +207,25 @@ def _states_table(
 def _transition_row(
     transition: WitnessTransition, dicts: Dictionaries, *, ext: bool
 ) -> list[JsonValue]:
-    # Transition endpoints are vertices for ext (a planning state can recur under several memory
-    # locations) and planning states for base.
-    endpoint = _vertex_id if ext else _state_id
+    if ext:
+        source_module, source_memory = _memory_aliases(transition.source_memory, dicts)
+        target_module, target_memory = _memory_aliases(transition.target_memory, dicts)
+        return [
+            transition.step,
+            _state_id(transition.source),
+            source_module,
+            source_memory,
+            _state_id(transition.target),
+            target_module,
+            target_memory,
+            _rule_alias(transition.rule, dicts),
+            _action_alias(transition.action, dicts),
+            _delta(transition.delta, dicts),
+        ]
     return [
         transition.step,
-        endpoint(transition.source),
-        endpoint(transition.target),
+        _state_id(transition.source),
+        _state_id(transition.target),
         _rule_alias(transition.rule, dicts),
         _action_alias(transition.action, dicts),
         _delta(transition.delta, dicts),
@@ -242,24 +238,42 @@ def _transitions_table(
     rows = [_transition_row(transition, dicts, ext=ext) for transition in transitions]
     return Table(
         name="transitions",
-        columns=["step", "source", "target", "rule", "action", "delta"],
+        columns=(
+            [
+                "step",
+                "source_state",
+                "source_module",
+                "source_memory",
+                "target_state",
+                "target_module",
+                "target_memory",
+                "rule",
+                "action",
+                "delta",
+            ]
+            if ext
+            else ["step", "source", "target", "rule", "action", "delta"]
+        ),
         rows=rows,
     )
 
 
 def _successor_row(successor: Successor, dicts: Dictionaries, *, ext: bool) -> list[JsonValue]:
-    # Successors are off-graph 1-step moves, so source/target are planning states. For ext,
-    # module/memory carry the resulting memory the selecting rule lands in (blank for a gap).
+    # Successors are off-graph 1-step moves. For ext, source and target are represented as
+    # planning state plus control location. Target control is blank for a gap.
     target = successor.target
     if ext:
-        module, memory = _memory_aliases(target.memory, dicts)
+        source_module, source_memory = _memory_aliases(successor.source_memory, dicts)
+        target_module, target_memory = _memory_aliases(target.memory, dicts)
         return [
             _state_id(successor.src),
+            source_module,
+            source_memory,
             _action_alias(successor.action, dicts),
             _state_id(target.state),
+            target_module,
+            target_memory,
             _rule_alias(successor.rule, dicts),
-            module,
-            memory,
             _flags(target.flags),
             _delta(successor.delta, dicts),
         ]
@@ -275,7 +289,18 @@ def _successor_row(successor: Successor, dicts: Dictionaries, *, ext: bool) -> l
 
 def _successors_table(successors: list[Successor], dicts: Dictionaries, *, ext: bool) -> Table:
     columns = (
-        ["source", "action", "target", "rule", "module", "memory", "flags", "delta"]
+        [
+            "source_state",
+            "source_module",
+            "source_memory",
+            "action",
+            "target_state",
+            "target_module",
+            "target_memory",
+            "rule",
+            "flags",
+            "delta",
+        ]
         if ext
         else ["source", "action", "target", "rule", "flags", "delta"]
     )
@@ -285,7 +310,11 @@ def _successors_table(successors: list[Successor], dicts: Dictionaries, *, ext: 
 
 def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | None:
     rows: list[list[JsonValue]] = []
+    seen_states: set[int] = set()
     for state in states:
+        if state.state in seen_states:
+            continue
+        seen_states.add(state.state)
         # Atoms are interned in first-appearance order, so a state's list would otherwise read in
         # an arbitrary order (e.g. p12 before p1). Sort each row by alias index for a stable,
         # readable `p0,p1,p2,…` ordering that aligns across states.
@@ -298,17 +327,6 @@ def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | Non
             aliases.sort(key=lambda alias: int(alias[1:]))
             rows.append([_state_id(state.state), ",".join(aliases)])
     return Table(name="facts", columns=["state", "atoms"], rows=rows) if rows else None
-
-
-def _cycle_table(cycle: Cycle, *, ext: bool) -> Table:
-    rows: list[list[JsonValue]] = []
-    if ext and cycle.vertex_indices:
-        rows.append(["cycle_vertex_indices", _vertex_ids(cycle.vertex_indices)])
-    if cycle.state_indices:
-        rows.append(["cycle_state_indices", _state_ids(cycle.state_indices)])
-    if cycle.transition_steps:
-        rows.append(["cycle_transition_steps", _steps(cycle.transition_steps)])
-    return Table(name="cycle", columns=["key", "value"], rows=rows)
 
 
 # -- documents (each: intern features first, assemble sections, drop empty ones) --
@@ -340,11 +358,11 @@ def counterexample_document(
 ) -> Document:
     _intern_features(feature_symbols, dicts)
     if cycle is not None:
+        cycle_states = [*states, states[0]] if states else states
         sections = [
-            _cycle_table(cycle, ext=ext),
             _states_table(
                 "states",
-                states,
+                cycle_states,
                 dicts,
                 ext=ext,
                 include_hstar=include_hstar,

@@ -35,7 +35,7 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.M
 | `max_time_seconds` | `float | None` | `None` | Per-subgoal wall-clock budget in seconds. |
 
 ## Output / Dump Artifacts
-Same structure as `runir.ps.base.execute_policy`, with module/memory control state. `hstar` and `hlmcut` have the same semantics as base. Dictionaries, failures, successors, and success traces use the [module-program output format](output/runir.ps.ext.counterexamples.md).
+Same structure as `runir.ps.base.execute_policy`, with module/memory control state. `hstar` and `hlmcut` have the same semantics as base. Dictionaries, failures, successors, and success traces use the [module-program table schema](tables/runir.ps.ext.counterexamples.md).
 
 ## Output Directory
 
@@ -51,6 +51,7 @@ output_dir/
     rules.{psv,md,json}                  # run-global dictionary: r0,r1,… -> module rule (+ src/tgt memory)
     actions.{psv,md,json}                # run-global dictionary: a0,a1,… -> ground action
     atoms.{psv,md,json}                  # run-global dictionary: p0,p1,… -> ground atom (+ kind)
+    modules.{psv,md,json}                # run-global dictionary: M0,M1,… -> module name
     memory.{psv,md,json}                 # run-global dictionary: m0,m1,… -> (module, memory-state)
   failures/
     <id>/                                # <id> already encodes the category (e.g. open_state-001, cycle-001)
@@ -66,12 +67,12 @@ output_dir/
 
 ## Output Files
 
-The shared [module-program output format](output/runir.ps.ext.counterexamples.md) defines dictionaries and per-failure files. Execute-specific details:
+The shared [module-program table schema](tables/runir.ps.ext.counterexamples.md) defines dictionaries and per-failure files. Rendering rules are in [Table Rendering](tables/rendering.md). Execute-specific details:
 
 - `source` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 
-`failures` and `successes` indexes match `execute_policy`. `summary.*` is the run index; `manifest.json` is JSON-only metadata.
+`failures`, `successes`, and `summary` indexes match `execute_policy`; their columns are defined in [Index Tables](tables/index-tables.md). `manifest.json` is JSON-only metadata.
 
 
 Successful rollout entries are trace-only: `meta.json` and `trace.*`, no `witness` or `successors`; all successful seeds are listed.
