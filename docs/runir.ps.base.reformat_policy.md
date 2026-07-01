@@ -20,4 +20,4 @@ The current public API parses candidates into typed objects. It does not expose 
 
 `create_policy(domain_context, policy_file)` returns a typed `Policy` with `source == CandidateSource.FILE` and `source_file` set to the resolved path. It does not rewrite the policy file.
 
-There is no current public API function that reformats an existing policy file in place.
+This page documents the policy formatting workflow and expected formatted policy behavior.

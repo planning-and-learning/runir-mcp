@@ -26,7 +26,6 @@ from pyrunir.kr.ps.ext import (
     GroundModuleProgramProofResults,
     GroundModuleProgramProofVertexLabel,
     GroundModuleProgramSearchOptions,
-    ModuleProgramProofEdgeLabel,
     ModuleProgramProofStatus,
     RuleVariant,
 )
@@ -342,13 +341,12 @@ def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
         out["action"] = _format_ground_action(prop.transition)
         out["module_rule"] = _format_module_rule(prop.rule)
         out["transition"] = str(prop.transition).strip()
-    elif isinstance(prop, ModuleProgramProofEdgeLabel):
-        if prop.state_transition is not None:
-            out["action"] = _format_ground_action(prop.state_transition)
-            out["transition"] = str(prop.state_transition).strip()
-        out["module_rule"] = _format_module_rule(prop.rule)
-    else:
-        raise TypeError(f"unsupported proof edge label: {type(prop).__name__}")
+        return out
+    state_transition = prop.state_transition
+    if state_transition is not None:
+        out["action"] = _format_ground_action(state_transition)
+        out["transition"] = str(state_transition).strip()
+    out["module_rule"] = _format_module_rule(prop.rule)
     return out
 
 

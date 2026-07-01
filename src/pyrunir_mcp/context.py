@@ -38,6 +38,7 @@ class DomainContext:
 @dataclass(slots=True)
 class TaskContext:
     id: str
+    domain_context: DomainContext
     index: int
     problem_file: Path
     execution_context: ExecutionContext

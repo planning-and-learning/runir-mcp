@@ -167,11 +167,11 @@ def _with_header(doc: Document | None, header: list[tuple[str, str]]) -> Documen
     return Document(header=list(header), sections=doc.sections)
 
 
-def _with_docs_header(
+def with_docs_header(
     docs: tuple[Document, Document | None, Document | None], header: list[tuple[str, str]]
 ) -> tuple[Document, Document | None, Document | None]:
     return (
-        _with_header(docs[0], header),
+        Document(header=list(header), sections=docs[0].sections),
         _with_header(docs[1], header),
         _with_header(docs[2], header),
     )
@@ -355,7 +355,7 @@ def run_execute(
                                 (key, value if key != "category" else category.value)
                                 for key, value in header
                             ]
-                            docs = _with_docs_header(docs, header)
+                            docs = with_docs_header(docs, header)
                     else:
                         docs = fallback
             if docs is None:

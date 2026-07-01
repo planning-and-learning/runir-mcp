@@ -49,7 +49,6 @@ def create_classifier(
 
 
 def execute_policy(
-    domain_context: DomainContext,
     context: TaskContext,
     policy: Policy,
     *,
@@ -63,7 +62,6 @@ def execute_policy(
     max_time_seconds: float | None = None,
 ) -> ExecutePolicyResult:
     return _validation.execute_policy(
-        domain_context,
         context,
         policy,
         classifier=classifier,
@@ -78,7 +76,6 @@ def execute_policy(
 
 
 def execute_module_program(
-    domain_context: DomainContext,
     context: TaskContext,
     module_program: ModuleProgram,
     *,
@@ -92,7 +89,6 @@ def execute_module_program(
     max_time_seconds: float | None = None,
 ) -> ExecuteModuleProgramResult:
     return _validation.execute_module_program(
-        domain_context,
         context,
         module_program,
         classifier=classifier,
@@ -107,7 +103,6 @@ def execute_module_program(
 
 
 def prove_policy(
-    domain_context: DomainContext,
     context: TaskContext,
     policy: Policy,
     *,
@@ -116,7 +111,6 @@ def prove_policy(
     max_time_seconds: float = 5.0,
 ) -> ProvePolicyResult:
     return _validation.prove_policy(
-        domain_context,
         context,
         policy,
         classifier=classifier,
@@ -126,7 +120,6 @@ def prove_policy(
 
 
 def prove_module_program(
-    domain_context: DomainContext,
     context: TaskContext,
     module_program: ModuleProgram,
     *,
@@ -136,7 +129,6 @@ def prove_module_program(
     max_arity: int = 0,
 ) -> ProveModuleProgramResult:
     return _validation.prove_module_program(
-        domain_context,
         context,
         module_program,
         classifier=classifier,
@@ -147,7 +139,6 @@ def prove_module_program(
 
 
 def prove_classifier(
-    domain_context: DomainContext,
     context: TaskContext,
     classifier: Classifier,
     *,
@@ -155,7 +146,6 @@ def prove_classifier(
     max_time_seconds: float = 1_000_000_000.0,
 ) -> ProveClassifierResult:
     return _validation.prove_classifier(
-        domain_context,
         context,
         classifier,
         max_num_states=max_num_states,

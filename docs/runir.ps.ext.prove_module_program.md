@@ -4,7 +4,6 @@
 
 ```python
 result = prove_module_program(
-    domain_context,
     task_context,
     module_program,
     classifier=None,
@@ -14,15 +13,13 @@ result = prove_module_program(
 )
 ```
 
-Use `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`
-when filesystem artifacts are needed. Validation itself is in-memory.
+Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`.
 
 ## Arguments
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `domain_context` | `DomainContext` | required | Parsed domain context returned by `create_domain_context(...)`. |
-| `task_context` | `TaskContext` | required | Parsed/grounded task context returned by `create_task_context(...)`. |
+| `task_context` | `TaskContext` | required | Parsed/grounded task context returned by `create_task_context(...)`; contains its parent `DomainContext`. |
 | `module_program` | `ModuleProgram` | required | Module-program candidate returned by `create_module_program(...)`. |
 | `classifier` | `Classifier | None` | `None` | Optional unsolvability classifier candidate returned by `create_classifier(...)`. |
 | `max_num_states` | `int` | `100_000` | Proof search state budget. |
@@ -30,11 +27,11 @@ when filesystem artifacts are needed. Validation itself is in-memory.
 | `max_arity` | `int` | `0` | Maximum module-program arity. |
 
 ## Output / Dump Artifacts
-`hstar` values in witness, trace, and successor state rows are computed by converting each reported state into the lifted task and running A* guided by LM-cut. The value is shortest remaining plan length in number of actions, not action cost. `inf` means the state is proven dead; an empty cell means the h* computation exhausted its internal time or state budget before proving a value. The `hlmcut` column reports the raw LM-cut heuristic value for the same lifted planning state as an admissible lower bound, including when exact `hstar` is too costly.
+`hstar` is exact remaining lifted plan length in actions (`inf` = proven dead, empty = budget exhausted). `hlmcut` is the raw LM-cut lower bound.
 
-Counterexample output is bounded by category: at most `max_open_state_counterexamples` open states, at most `max_deadend_transition_counterexamples` deadend transitions, and exactly one cycle counterexample if a cycle exists. Cycle witnesses are not counted against the open/deadend bounds.
+Counterexamples are bounded by category: at most `max_open_state_counterexamples`, at most `max_deadend_transition_counterexamples`, and one cycle if present; cycle does not count against the other bounds.
 
-The dictionaries (under `dicts/`) and the per-failure witness, trace, and successors files (under `failures/<id>/`) use the shared [module-program output format](output/runir.ps.ext.counterexamples.md) with `tool: "runir.ps.ext.prove_module_program"`; `summary.{psv,md,json}` indexes them and `manifest.json` holds run metadata (JSON-only). Failure categories are `open_state`, `deadend_transition`, and `cycle`. Like `prove_policy`, proof has no rollout seeds (no `@seed`); otherwise each failure produces the same `failures/<id>/` directory (`meta.json` + `witness` + `trace` when a path exists + `successors`).
+Dictionaries and per-failure files use the [module-program output format](output/runir.ps.ext.counterexamples.md). `summary.*` indexes them; `manifest.json` is JSON-only metadata. Failure categories: `open_state`, `deadend_transition`, `cycle`. Proof has no rollout seeds, so no `@seed` header.
 
 ## Output Directory
 

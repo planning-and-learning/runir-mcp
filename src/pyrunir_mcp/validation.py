@@ -265,6 +265,7 @@ def create_task_context(
     ground_context = GroundTaskSearchContext(grounded.task, execution_context)
     return TaskContext(
         id=f"task_{index:06d}",
+        domain_context=domain_context,
         index=index,
         problem_file=problem_path,
         execution_context=execution_context,
@@ -415,9 +416,12 @@ def _state_id_for_vertex(proof: ProofResult, vertex: int) -> str:
     if graph is None:
         return f"s{int(vertex)}"
     try:
-        return f"s{int(state_summary(graph, int(vertex))["state_index"])}"
+        state_index = state_summary(graph, int(vertex))["state_index"]
     except Exception:
         return f"s{int(vertex)}"
+    if isinstance(state_index, int | str | float):
+        return f"s{int(state_index)}"
+    return f"s{int(vertex)}"
 
 
 def _state_id_for_deadend_transition(proof: ProofResult, edge: int) -> str:
@@ -430,7 +434,7 @@ def _state_id_for_deadend_transition(proof: ProofResult, edge: int) -> str:
         return str(int(edge))
 
 
-def _rotate_smallest_state_id_first(state_ids: list[str]) -> tuple[str, ...]:
+def rotate_smallest_state_id_first(state_ids: list[str]) -> tuple[str, ...]:
     if not state_ids:
         return ()
 
@@ -449,7 +453,7 @@ def _witness_parts(
     *, proof: ProofResult, category: CounterexampleKind, witness: FailureWitness
 ) -> tuple[str, ...]:
     if category is CounterexampleKind.CYCLE and isinstance(witness, list):
-        return _rotate_smallest_state_id_first(
+        return rotate_smallest_state_id_first(
             [_state_id_for_vertex(proof, int(vertex)) for vertex in witness]
         )
     if category is CounterexampleKind.DEADEND_TRANSITION and not isinstance(witness, list):
@@ -564,7 +568,6 @@ def _validation_observation(
 
 
 def execute_policy(
-    domain_context: DomainContext,
     context: TaskContext,
     policy: Policy,
     *,
@@ -597,7 +600,7 @@ def execute_policy(
         elif first_failure is None:
             first_failure = BaseExecutionFailure(task=context.base_task, result=proof)
     status = ValidationStatus.SUCCESS if first_failure is None else ValidationStatus.FAILURE
-    result_id = _next_result_id(domain_context)
+    result_id = _next_result_id(context.domain_context)
     details = _execute_details(first_failure, num_rollouts)
     observation = _validation_observation(
         result_id=result_id,
@@ -625,7 +628,6 @@ def execute_policy(
 
 
 def execute_module_program(
-    domain_context: DomainContext,
     context: TaskContext,
     module_program: ModuleProgram,
     *,
@@ -658,7 +660,7 @@ def execute_module_program(
         elif first_failure is None:
             first_failure = ExtExecutionFailure(task=context.ext_task, result=proof)
     status = ValidationStatus.SUCCESS if first_failure is None else ValidationStatus.FAILURE
-    result_id = _next_result_id(domain_context)
+    result_id = _next_result_id(context.domain_context)
     details = _execute_details(first_failure, num_rollouts)
     observation = _validation_observation(
         result_id=result_id,
@@ -686,7 +688,6 @@ def execute_module_program(
 
 
 def prove_policy(
-    domain_context: DomainContext,
     context: TaskContext,
     policy: Policy,
     *,
@@ -700,7 +701,7 @@ def prove_policy(
         make_search_options(GroundSketchSearchOptions(), max_num_states, max_time_seconds),
     )
     status = ValidationStatus.SUCCESS if proof.is_successful() else ValidationStatus.FAILURE
-    result_id = _next_result_id(domain_context)
+    result_id = _next_result_id(context.domain_context)
     observation = _validation_observation(
         result_id=result_id,
         kind=ValidationKind.BASE_PROVE,
@@ -721,7 +722,6 @@ def prove_policy(
 
 
 def prove_module_program(
-    domain_context: DomainContext,
     context: TaskContext,
     module_program: ModuleProgram,
     *,
@@ -736,7 +736,7 @@ def prove_module_program(
     options.max_arity = max_arity
     proof = prove_ext_solution(context.ext_task.search_context, module_program.value, options)
     status = ValidationStatus.SUCCESS if proof.is_successful() else ValidationStatus.FAILURE
-    result_id = _next_result_id(domain_context)
+    result_id = _next_result_id(context.domain_context)
     observation = _validation_observation(
         result_id=result_id,
         kind=ValidationKind.EXT_PROVE,
@@ -757,7 +757,6 @@ def prove_module_program(
 
 
 def prove_classifier(
-    domain_context: DomainContext,
     context: TaskContext,
     classifier: Classifier,
     *,
@@ -772,7 +771,7 @@ def prove_classifier(
     )
     if graph_result.status != SearchStatus.EXHAUSTED:
         counts = ClassifierProofCounts(states=0, unsolvable=0, false_positive=0, false_negative=0)
-        result_id = _next_result_id(domain_context)
+        result_id = _next_result_id(context.domain_context)
         details = _classifier_details(counts, state_graph_status=graph_result.status)
         observation = _validation_observation(
             result_id=result_id,
@@ -832,7 +831,7 @@ def prove_classifier(
         if false_positive == 0 and false_negative == 0
         else ValidationStatus.FAILURE
     )
-    result_id = _next_result_id(domain_context)
+    result_id = _next_result_id(context.domain_context)
     observation = _validation_observation(
         result_id=result_id,
         kind=ValidationKind.UNS_PROVE,

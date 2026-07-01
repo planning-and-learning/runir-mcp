@@ -8,9 +8,9 @@ import pyrunir_mcp as public
 from pyrunir.kr.ps.base import Sketch
 from pytyr.planning import SearchStatus
 
-from pyrunir_mcp.validation import _rotate_smallest_state_id_first
-from pyrunir_mcp.dumping import _refresh_execute_fingerprint_from_manifest
-from pyrunir_mcp.kr.ps.execute import _with_docs_header
+from pyrunir_mcp.validation import rotate_smallest_state_id_first
+from pyrunir_mcp.dumping import refresh_execute_fingerprint_from_manifest
+from pyrunir_mcp.kr.ps.execute import with_docs_header
 from pyrunir_mcp.tables import Document, Table
 
 from pyrunir_mcp import (
@@ -20,6 +20,7 @@ from pyrunir_mcp import (
     DumpFormat,
     ExecuteObservationDetails,
     ExecutePolicyResult,
+    TaskContext,
     FailureFingerprint,
     Policy,
     ValidationKind,
@@ -38,12 +39,12 @@ def test_public_exports_use_typed_names() -> None:
 
 
 def test_cycle_fingerprint_rotates_smallest_state_id_first() -> None:
-    assert _rotate_smallest_state_id_first(["s3384", "s3403", "s3384"]) == (
+    assert rotate_smallest_state_id_first(["s3384", "s3403", "s3384"]) == (
         "s3384",
         "s3403",
         "s3384",
     )
-    assert _rotate_smallest_state_id_first(["s42", "s7", "s11"]) == (
+    assert rotate_smallest_state_id_first(["s42", "s7", "s11"]) == (
         "s7",
         "s11",
         "s42",
@@ -57,7 +58,7 @@ def test_execute_fallback_docs_are_reheaded_after_reclassification() -> None:
     witness = Document(old_header, [table])
     trace = Document(old_header, [table])
 
-    updated_witness, updated_trace, updated_successors = _with_docs_header(
+    updated_witness, updated_trace, updated_successors = with_docs_header(
         (witness, trace, None), new_header
     )
 
@@ -118,8 +119,8 @@ s8666|OPEN,WITNESS,CYCLE
         "result_000001",
         ValidationKind.BASE_EXECUTE,
         ValidationStatus.FAILURE,
-        cast(object, None),
-        cast(object, None),
+        cast(TaskContext, None),
+        cast(Policy, None),
         observation,
         None,
         None,
@@ -127,7 +128,7 @@ s8666|OPEN,WITNESS,CYCLE
         1,
     )
 
-    _refresh_execute_fingerprint_from_manifest(result, manifest_path)
+    refresh_execute_fingerprint_from_manifest(result, manifest_path)
 
     assert result.observation.fingerprint == FailureFingerprint(
         kind=ValidationKind.BASE_EXECUTE,
@@ -190,8 +191,8 @@ s339|p0
         "result_000001",
         ValidationKind.BASE_EXECUTE,
         ValidationStatus.FAILURE,
-        cast(object, None),
-        cast(object, None),
+        cast(TaskContext, None),
+        cast(Policy, None),
         observation,
         None,
         None,
@@ -199,7 +200,7 @@ s339|p0
         1,
     )
 
-    _refresh_execute_fingerprint_from_manifest(result, manifest_path)
+    refresh_execute_fingerprint_from_manifest(result, manifest_path)
 
     assert result.observation.fingerprint == FailureFingerprint(
         kind=ValidationKind.BASE_EXECUTE,

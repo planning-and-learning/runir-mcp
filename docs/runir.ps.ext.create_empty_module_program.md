@@ -19,4 +19,4 @@ The current public API does not expose a top-level writer for an empty module-pr
 
 `create_module_program(domain_context, None)` returns a `ModuleProgram` with `source == CandidateSource.EMPTY` and does not write files.
 
-There is no current public API function that writes a canonical empty module-program file.
+The empty module program is available in memory via `create_module_program(domain_context, None)`.

@@ -18,4 +18,4 @@ The current public API works at module-program granularity and does not expose a
 
 ## Return / Side Effects
 
-The current public API does not expose standalone module parsing or reformatting. Use `create_module_program(domain_context, module_program_file)` to parse a complete module program into a typed `ModuleProgram`.
+Use `create_module_program(domain_context, module_program_file)` to parse a complete module program into a typed `ModuleProgram`. This page documents standalone module formatting conventions used inside a module program.

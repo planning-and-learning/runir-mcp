@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pyrunir_mcp.candidates import Candidate
 from pyrunir_mcp.json_types import JsonObject
@@ -372,7 +372,7 @@ def _state_id_sort_key(value: str) -> tuple[int, str]:
         return (0, value)
 
 
-def _rotate_smallest_state_id_first(state_ids: tuple[str, ...]) -> tuple[str, ...]:
+def rotate_smallest_state_id_first(state_ids: tuple[str, ...]) -> tuple[str, ...]:
     if not state_ids:
         return ()
     start = min(range(len(state_ids)), key=lambda index: _state_id_sort_key(state_ids[index]))
@@ -421,12 +421,12 @@ def _witness_info_from_file(path: Path) -> tuple[str | None, tuple[str, ...]]:
     return None, tuple(ids)
 
 
-def _refresh_execute_fingerprint_from_manifest(result: ValidationResult, manifest_path: Path | None) -> None:
+def refresh_execute_fingerprint_from_manifest(result: ValidationResult, manifest_path: Path | None) -> None:
     if not isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult)):
         return
     if manifest_path is None or not manifest_path.exists():
         return
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = cast(JsonObject, json.loads(manifest_path.read_text(encoding="utf-8")))
     failures = manifest.get("distinct_failures")
     if not isinstance(failures, list) or not failures:
         return
@@ -444,7 +444,7 @@ def _refresh_execute_fingerprint_from_manifest(result: ValidationResult, manifes
         if category_override is not None:
             category = category_override
         if category == "cycle":
-            witness_ids = _rotate_smallest_state_id_first(witness_ids)
+            witness_ids = rotate_smallest_state_id_first(witness_ids)
     fingerprint = FailureFingerprint(
         kind=result.kind,
         status=result.status,
@@ -473,7 +473,7 @@ def dump_result(
     rich_path = _dump_rich_artifacts(result, output_path, rich_formats)
     if rich_path:
         files.append(rich_path)
-    _refresh_execute_fingerprint_from_manifest(result, rich_path)
+    refresh_execute_fingerprint_from_manifest(result, rich_path)
 
     # Always keep the compact machine-readable sidecar; callers use it for state/history plumbing.
     path = output_path / "result.json"

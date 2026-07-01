@@ -4,7 +4,6 @@
 
 ```python
 result = execute_module_program(
-    domain_context,
     task_context,
     module_program,
     classifier=None,
@@ -18,15 +17,13 @@ result = execute_module_program(
 )
 ```
 
-Use `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`
-when filesystem artifacts are needed. Validation itself is in-memory.
+Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`.
 
 ## Arguments
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `domain_context` | `DomainContext` | required | Parsed domain context returned by `create_domain_context(...)`. |
-| `task_context` | `TaskContext` | required | Parsed/grounded task context returned by `create_task_context(...)`. |
+| `task_context` | `TaskContext` | required | Parsed/grounded task context returned by `create_task_context(...)`; contains its parent `DomainContext`. |
 | `module_program` | `ModuleProgram` | required | Module-program candidate returned by `create_module_program(...)`. |
 | `classifier` | `Classifier | None` | `None` | Optional unsolvability classifier candidate returned by `create_classifier(...)`. |
 | `num_rollouts` | `int` | `1` | Number of rollout seeds to execute. |
@@ -38,7 +35,7 @@ when filesystem artifacts are needed. Validation itself is in-memory.
 | `max_time_seconds` | `float | None` | `None` | Per-subgoal wall-clock budget in seconds. |
 
 ## Output / Dump Artifacts
-Same normalized structure as `runir.ps.base.execute_policy`, with `tool: "runir.ps.ext.execute_module_program"`. `hstar` has the same semantics as base: shortest remaining lifted plan length in number of actions, `inf` for proven deadends, and empty when the per-state A*+LM-cut timeout/state budget is exhausted. `hlmcut` reports the raw LM-cut heuristic value for the same lifted planning state as an admissible lower bound, including when exact `hstar` is too costly. The dictionaries (under `dicts/`), the per-failure witness, trace, and successors files (under `failures/<id>/`), and trace-only successful rollout files (under `successes/<id>/`) use the shared [module-program output format](output/runir.ps.ext.counterexamples.md) (vertices carry their `(module, memory-state)` location).
+Same structure as `runir.ps.base.execute_policy`, with module/memory control state. `hstar` and `hlmcut` have the same semantics as base. Dictionaries, failures, successors, and success traces use the [module-program output format](output/runir.ps.ext.counterexamples.md).
 
 ## Output Directory
 
@@ -69,12 +66,12 @@ output_dir/
 
 ## Output Files
 
-The dictionaries under `dicts/` (`features`/`rules`/`actions`/`atoms`/`memory`) and the per-failure `witness`/`trace`/`successors` files use the shared [module-program output format](output/runir.ps.ext.counterexamples.md). This tool's specifics:
+The shared [module-program output format](output/runir.ps.ext.counterexamples.md) defines dictionaries and per-failure files. Execute-specific details:
 
 - `source` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 
-It also writes the `failures` index (one row per representative failure) and `successes` index (one row per successful rollout), identical in shape to `execute_policy`'s. Artifacts are written in the formats requested via `dump_result(..., formats=...)`; `summary.{psv,md,json}` is the run index and `manifest.json` holds run metadata (JSON-only).
+`failures` and `successes` indexes match `execute_policy`. `summary.*` is the run index; `manifest.json` is JSON-only metadata.
 
 
-Successful rollout entries are trace-only: each `successes/<id>/` directory contains `meta.json` and `trace.{psv,md,json}`, but no `witness` and no `successors`. All successful rollouts from the requested seeds are listed.
+Successful rollout entries are trace-only: `meta.json` and `trace.*`, no `witness` or `successors`; all successful seeds are listed.

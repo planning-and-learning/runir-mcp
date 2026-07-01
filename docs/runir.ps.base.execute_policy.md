@@ -4,7 +4,6 @@
 
 ```python
 result = execute_policy(
-    domain_context,
     task_context,
     policy,
     classifier=None,
@@ -18,15 +17,13 @@ result = execute_policy(
 )
 ```
 
-Use `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`
-when filesystem artifacts are needed. Validation itself is in-memory.
+Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`.
 
 ## Arguments
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `domain_context` | `DomainContext` | required | Parsed domain context returned by `create_domain_context(...)`. |
-| `task_context` | `TaskContext` | required | Parsed/grounded task context returned by `create_task_context(...)`. |
+| `task_context` | `TaskContext` | required | Parsed/grounded task context returned by `create_task_context(...)`; contains its parent `DomainContext`. |
 | `policy` | `Policy` | required | Policy candidate returned by `create_policy(...)` or `write_empty_policy(...)`. |
 | `classifier` | `Classifier | None` | `None` | Optional unsolvability classifier candidate returned by `create_classifier(...)`. |
 | `num_rollouts` | `int` | `1` | Number of rollout seeds to execute. |
@@ -38,7 +35,7 @@ when filesystem artifacts are needed. Validation itself is in-memory.
 | `max_time_seconds` | `float | None` | `None` | Per-subgoal wall-clock budget in seconds. |
 
 ## Output / Dump Artifacts
-Returns normalized execution output with one task entry per rollout seed, representative failure entries, and trace-only entries for every rollout that succeeds. `hstar` values in witness, trace, and successor state rows are computed by converting each reported state into the lifted task and running A* guided by LM-cut; the value is shortest remaining plan length in number of actions, not action cost. `inf` means the state is proven dead; an empty cell means the h* computation exhausted its internal time or state budget before proving a value. The `hlmcut` column reports the raw LM-cut heuristic value for the same lifted state as an admissible lower bound, including when exact `hstar` is too costly. State rows always carry feature values and (for witness/cycle states) `fluent`/`derived` facts. Transition rows always carry concrete action labels and the matched rule symbol. The on-disk encoding of the dictionaries, counterexamples, traces, and successors is the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md).
+Normalized execution output contains one task entry per rollout seed, representative failures, and trace-only successes. State rows carry feature values plus `fluent`/`derived` facts for witness/cycle states; transition rows carry action labels and matched rule symbols. `hstar` is exact remaining lifted plan length in actions (`inf` = proven dead, empty = budget exhausted); `hlmcut` is the raw LM-cut lower bound. Dictionaries, counterexamples, traces, and successors use the [base sketch-policy output format](output/runir.ps.base.counterexamples.md).
 
 ## Output Directory
 
@@ -72,16 +69,16 @@ Everything for one failure is local to `failures/<id>/`; everything for one succ
 
 ## Output Files
 
-The alias dictionaries under `dicts/` (`features`/`rules`/`actions`/`atoms`) and the per-failure `witness`/`trace`/`successors` files use the shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md) — PSV/Markdown/JSON renderings, alias dictionaries, sectioned witness files, the section reference, and the flag vocabulary. This tool's specifics:
+The shared [base sketch-policy output format](output/runir.ps.base.counterexamples.md) defines dictionary, witness, trace, successor, section, and flag schemas. Execute-specific details:
 
 - `source` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 
-It also writes the `failures` and `successes` indexes below (execute-specific). Artifacts are written in the formats requested via `dump_result(..., formats=...)`. `summary.{psv,md,json}` is the run index/counts table; `manifest.json` holds run metadata (config, command, budgets) and stays JSON-only per the project output policy.
+`failures` and `successes` indexes are written in requested formats. `summary.*` is the run/counts table; `manifest.json` is JSON-only metadata.
 
 ### Failures
 
-Files `failures.psv` / `failures.md` / `failures.json` — one row per representative failure (the first failure seen per task/category), each pointing into its `failures/<id>/` directory.
+`failures.{psv,md,json}`: one row per representative failure, each pointing into `failures/<id>/`.
 
 | Column | Meaning |
 |---|---|
@@ -103,7 +100,7 @@ cycle-001|cycle|CYCLE|0|p01.pddl|find_solution|failures/cycle-001/trace.psv|fail
 
 ### Successes
 
-Files `successes.psv` / `successes.md` / `successes.json` — one row per rollout seed that succeeds. Unlike failures, a success has no witness state and no successor frontier: its artifact is only the complete trace under `successes/<id>/trace.{psv,md,json}`. All successful rollouts from the requested seeds are listed, not just one representative.
+`successes.{psv,md,json}`: one row per successful rollout. Success artifacts contain only `successes/<id>/trace.*`; all successful seeds are listed.
 
 | Column | Meaning |
 |---|---|

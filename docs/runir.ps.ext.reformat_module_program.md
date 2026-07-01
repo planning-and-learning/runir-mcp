@@ -20,4 +20,4 @@ The current public API parses candidates into typed objects. It does not expose 
 
 `create_module_program(domain_context, module_program_file)` returns a typed `ModuleProgram` with `source == CandidateSource.FILE` and `source_file` set to the resolved path. It does not rewrite the module-program file.
 
-There is no current public API function that reformats an existing module-program file in place.
+This page documents the module-program formatting workflow and expected formatted program behavior.

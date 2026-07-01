@@ -1,7 +1,6 @@
 # Dumping
 
-Validation calls return typed Python result objects and do not write files. Dumping is the explicit
-boundary for external processes that need JSON, PSV, or Markdown artifacts on disk.
+Validation is in-memory. Dump only when external processes need JSON, PSV, or Markdown files.
 
 ## `DumpFormat`
 
@@ -14,11 +13,7 @@ boundary for external processes that need JSON, PSV, or Markdown artifacts on di
 ## `dump_result`
 
 ```python
-dumped = dump_result(
-    result,
-    output_dir,
-    formats=(DumpFormat.JSON,),
-)
+dumped = dump_result(result, output_dir, formats=(DumpFormat.JSON,))
 ```
 
 | Name | Type | Default | Description |
@@ -27,11 +22,7 @@ dumped = dump_result(
 | `output_dir` | `str | Path` | required | Directory to create and write into. |
 | `formats` | `tuple[DumpFormat, ...]` | `(DumpFormat.JSON,)` | Requested output formats. |
 
-Always writes compact `result.json`. For policy/module-program execute/prove results, requesting
-`DumpFormat.PSV`, `DumpFormat.MD`, or `DumpFormat.JSON` also writes the richer witness/trace artifact
-tree described by the output-format docs.
-
-Returns `DumpResult`:
+Always writes compact `result.json`. Policy/module-program execute/prove results also write requested witness/trace artifacts.
 
 | Field | Type | Description |
 |---|---|---|
@@ -41,22 +32,16 @@ Returns `DumpResult`:
 ## `dump_validation_history`
 
 ```python
-dumped = dump_validation_history(
-    history,
-    output_dir,
-    formats=(DumpFormat.JSON,),
-)
+dumped = dump_validation_history(history, output_dir, formats=(DumpFormat.JSON,))
 ```
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `history` | `ValidationHistory` | required | History object managed by the caller. |
+| `history` | `ValidationHistory` | required | Caller-owned history object. |
 | `output_dir` | `str | Path` | required | Directory to create and write into. |
-| `formats` | `tuple[DumpFormat, ...]` | `(DumpFormat.JSON,)` | Currently writes `history.json` when `DumpFormat.JSON` is included. |
-
-## Example
+| `formats` | `tuple[DumpFormat, ...]` | `(DumpFormat.JSON,)` | Writes `history.json` when JSON is included. |
 
 ```python
-result = prove_policy(domain, task, policy)
+result = prove_policy(task, policy)
 dump_result(result, "artifacts/prove-policy", formats=(DumpFormat.PSV, DumpFormat.JSON))
 ```

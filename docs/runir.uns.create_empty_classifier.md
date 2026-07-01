@@ -19,4 +19,4 @@ The current public API does not expose a top-level writer for an empty classifie
 
 `create_classifier(domain_context, None)` returns a `Classifier` with `source == CandidateSource.EMPTY` and does not write files.
 
-There is no current public API function that writes a canonical empty classifier file.
+The empty classifier is available in memory via `create_classifier(domain_context, None)`.

@@ -2,11 +2,11 @@
 
 ## Python API Status
 
-There is no top-level Python `prove_termination` entry point in the current public API. This page is retained only as the structural-termination output-format reference from the old tool surface.
+This page documents the structural-termination output table design.
 
 ## Current Status
 
-No current public Python function runs structural termination proof. The artifact layout below is retained as historical output-format reference only.
+The artifact layout below defines the structural-termination output format.
 
 ## Output Directory
 

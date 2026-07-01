@@ -20,4 +20,4 @@ The current public API parses classifiers into typed objects. It does not expose
 
 `create_classifier(domain_context, classifier_file)` returns a typed `Classifier` with `source == CandidateSource.FILE` and `source_file` set to the resolved path. It does not rewrite the classifier file.
 
-There is no current public API function that reformats an existing classifier file in place.
+This page documents the classifier formatting workflow and expected formatted classifier behavior.
