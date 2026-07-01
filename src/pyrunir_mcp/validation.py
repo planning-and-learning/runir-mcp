@@ -67,12 +67,14 @@ from pyrunir_mcp.kr.ps.ext.core.features import (
 from pyrunir_mcp.kr.ps.classifier import ClassifierContext
 from pyrunir_mcp.kr.ps.status import is_success_status
 from pyrunir_mcp.kr.ps.proof import (
+    CounterexampleKind,
     FailureWitness,
     ProofResult,
     ProofStatus,
     failure_items,
     is_goal_open_state_result,
     make_search_options,
+    state_summary,
 )
 from pyrunir_mcp.planning import parse_task_file
 
@@ -408,10 +410,53 @@ def _proof_details(proof: ProofResult) -> ProofObservationDetails:
     )
 
 
-def _witness_parts(witness: FailureWitness) -> tuple[str, ...]:
+def _state_id_for_vertex(proof: ProofResult, vertex: int) -> str:
+    graph = getattr(proof, "graph", None)
+    if graph is None:
+        return f"s{int(vertex)}"
+    try:
+        return f"s{int(state_summary(graph, int(vertex))["state_index"])}"
+    except Exception:
+        return f"s{int(vertex)}"
+
+
+def _state_id_for_deadend_transition(proof: ProofResult, edge: int) -> str:
+    graph = getattr(proof, "graph", None)
+    if graph is None:
+        return str(int(edge))
+    try:
+        return _state_id_for_vertex(proof, int(graph.get_target(int(edge))))
+    except Exception:
+        return str(int(edge))
+
+
+def _rotate_smallest_state_id_first(state_ids: list[str]) -> tuple[str, ...]:
+    if not state_ids:
+        return ()
+
+    def key(value: str) -> tuple[int, str]:
+        suffix = value[1:] if value.startswith("s") else value
+        try:
+            return (int(suffix), value)
+        except ValueError:
+            return (0, value)
+
+    start = min(range(len(state_ids)), key=lambda index: key(state_ids[index]))
+    return tuple(state_ids[start:] + state_ids[:start])
+
+
+def _witness_parts(
+    *, proof: ProofResult, category: CounterexampleKind, witness: FailureWitness
+) -> tuple[str, ...]:
+    if category is CounterexampleKind.CYCLE and isinstance(witness, list):
+        return _rotate_smallest_state_id_first(
+            [_state_id_for_vertex(proof, int(vertex)) for vertex in witness]
+        )
+    if category is CounterexampleKind.DEADEND_TRANSITION and not isinstance(witness, list):
+        return (_state_id_for_deadend_transition(proof, int(witness)),)
     if isinstance(witness, list):
-        return tuple(str(int(item)) for item in witness)
-    return (str(int(witness)),)
+        return tuple(_state_id_for_vertex(proof, int(vertex)) for vertex in witness)
+    return (_state_id_for_vertex(proof, int(witness)),)
 
 
 def _proof_fingerprint(
@@ -435,7 +480,7 @@ def _proof_fingerprint(
             status=status,
             problem_file=problem_file,
             category=category.value,
-            witness=_witness_parts(witness),
+            witness=_witness_parts(proof=proof, category=category, witness=witness),
         )
     return FailureFingerprint(
         kind=kind,

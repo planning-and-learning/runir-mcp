@@ -73,8 +73,11 @@ or JSON formats:
 
 - Base sketch-policy counterexamples: [base output format](output/runir.ps.base.counterexamples.md).
 - Module-program counterexamples: [module-program output format](output/runir.ps.ext.counterexamples.md).
-- Structural termination: [termination output format](output/runir.ps.ext.prove_termination.md).
-- Unsolvability classifier: [classifier output format](output/runir.uns.prove_classifier.md).
+- Structural termination: [termination output format](output/runir.ps.ext.prove_termination.md)
+  (historical reference; no current public dump path emits it).
+- Unsolvability classifier: [classifier output format](output/runir.uns.prove_classifier.md)
+  (historical reference; current `dump_result(...)` writes `result.json` only for
+  `prove_classifier(...)`).
 
 `docs/AGENT.md` records the output policy: JSON for machine metadata, PSV for LLM-readable
 artifacts, and Markdown for human summaries.

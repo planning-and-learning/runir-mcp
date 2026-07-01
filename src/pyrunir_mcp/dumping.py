@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from collections.abc import Sequence
 from pathlib import Path
@@ -364,6 +364,101 @@ def _dump_rich_artifacts(result: ValidationResult, output_path: Path, formats: t
         return _dump_prove_module_program_artifacts(result, output_path, formats)
     return None
 
+def _state_id_sort_key(value: str) -> tuple[int, str]:
+    suffix = value[1:] if value.startswith("s") else value
+    try:
+        return (int(suffix), value)
+    except ValueError:
+        return (0, value)
+
+
+def _rotate_smallest_state_id_first(state_ids: tuple[str, ...]) -> tuple[str, ...]:
+    if not state_ids:
+        return ()
+    start = min(range(len(state_ids)), key=lambda index: _state_id_sort_key(state_ids[index]))
+    return state_ids[start:] + state_ids[:start]
+
+
+def _witness_info_from_file(path: Path) -> tuple[str | None, tuple[str, ...]]:
+    ids: list[str] = []
+    cycle_ids: tuple[str, ...] | None = None
+    section: str | None = None
+    id_column: int | None = None
+    key_column: int | None = None
+    value_column: int | None = None
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("@"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1]
+            id_column = None
+            key_column = None
+            value_column = None
+            continue
+        parts = [part.strip() for part in line.split("|")]
+        if section == "cycle":
+            if key_column is None or value_column is None:
+                if "key" in parts and "value" in parts:
+                    key_column = parts.index("key")
+                    value_column = parts.index("value")
+                continue
+            if (
+                key_column < len(parts)
+                and value_column < len(parts)
+                and parts[key_column] == "cycle_state_indices"
+            ):
+                cycle_ids = tuple(value for value in parts[value_column].split(",") if value)
+        elif section == "state":
+            if id_column is None:
+                if "id" in parts:
+                    id_column = parts.index("id")
+                continue
+            if id_column < len(parts) and parts[id_column]:
+                ids.append(parts[id_column])
+    if cycle_ids is not None:
+        return "cycle", cycle_ids
+    return None, tuple(ids)
+
+
+def _refresh_execute_fingerprint_from_manifest(result: ValidationResult, manifest_path: Path | None) -> None:
+    if not isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult)):
+        return
+    if manifest_path is None or not manifest_path.exists():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    failures = manifest.get("distinct_failures")
+    if not isinstance(failures, list) or not failures:
+        return
+    failure = failures[0]
+    if not isinstance(failure, dict):
+        return
+    category = failure.get("failure_category")
+    problem_file = failure.get("problem_file")
+    if not isinstance(category, str):
+        return
+    witness_ids: tuple[str, ...] = ()
+    witness_path = failure.get("witness_path")
+    if isinstance(witness_path, str):
+        category_override, witness_ids = _witness_info_from_file(Path(witness_path))
+        if category_override is not None:
+            category = category_override
+        if category == "cycle":
+            witness_ids = _rotate_smallest_state_id_first(witness_ids)
+    fingerprint = FailureFingerprint(
+        kind=result.kind,
+        status=result.status,
+        problem_file=problem_file if isinstance(problem_file, str) else None,
+        category=category,
+        witness=witness_ids,
+    )
+    object.__setattr__(
+        result,
+        "observation",
+        replace(result.observation, fingerprint=fingerprint),
+    )
+
+
 def dump_result(
     result: ValidationResult,
     output_dir: str | Path,
@@ -375,8 +470,10 @@ def dump_result(
     files: list[Path] = []
 
     rich_formats = _render_formats(formats)
-    if rich_path := _dump_rich_artifacts(result, output_path, rich_formats):
+    rich_path = _dump_rich_artifacts(result, output_path, rich_formats)
+    if rich_path:
         files.append(rich_path)
+    _refresh_execute_fingerprint_from_manifest(result, rich_path)
 
     # Always keep the compact machine-readable sidecar; callers use it for state/history plumbing.
     path = output_path / "result.json"

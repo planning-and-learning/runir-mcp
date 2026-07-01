@@ -300,5 +300,5 @@ def rollout_artifacts(
         if successors
         else None
     )
-    category_override = "deadend" if terminal_unsolvable else None
+    category_override = "deadend" if terminal_unsolvable else "cycle" if is_cycle else None
     return counterexample, trace, successors_doc, category_override

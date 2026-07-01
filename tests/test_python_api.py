@@ -8,12 +8,18 @@ import pyrunir_mcp as public
 from pyrunir.kr.ps.base import Sketch
 from pytyr.planning import SearchStatus
 
+from pyrunir_mcp.validation import _rotate_smallest_state_id_first
+from pyrunir_mcp.dumping import _refresh_execute_fingerprint_from_manifest
+from pyrunir_mcp.kr.ps.execute import _with_docs_header
+from pyrunir_mcp.tables import Document, Table
+
 from pyrunir_mcp import (
     CandidateSource,
     ClassifierObservationDetails,
     ClassifierProofCounts,
     DumpFormat,
     ExecuteObservationDetails,
+    ExecutePolicyResult,
     FailureFingerprint,
     Policy,
     ValidationKind,
@@ -29,6 +35,179 @@ def test_public_exports_use_typed_names() -> None:
     assert public.Policy is Policy
     assert public.ExecuteObservationDetails is ExecuteObservationDetails
     assert public.ClassifierObservationDetails is ClassifierObservationDetails
+
+
+def test_cycle_fingerprint_rotates_smallest_state_id_first() -> None:
+    assert _rotate_smallest_state_id_first(["s3384", "s3403", "s3384"]) == (
+        "s3384",
+        "s3403",
+        "s3384",
+    )
+    assert _rotate_smallest_state_id_first(["s42", "s7", "s11"]) == (
+        "s7",
+        "s11",
+        "s42",
+    )
+
+
+def test_execute_fallback_docs_are_reheaded_after_reclassification() -> None:
+    old_header = [("id", "open_state-001"), ("category", "open_state")]
+    new_header = [("id", "deadend-001"), ("category", "deadend")]
+    table = Table("state", ["id", "flags"], [["s87", "WITNESS,DEADEND"]])
+    witness = Document(old_header, [table])
+    trace = Document(old_header, [table])
+
+    updated_witness, updated_trace, updated_successors = _with_docs_header(
+        (witness, trace, None), new_header
+    )
+
+    assert updated_witness.header == new_header
+    assert updated_trace is not None
+    assert updated_trace.header == new_header
+    assert updated_successors is None
+    assert witness.header == old_header
+
+
+def test_execute_fingerprint_refresh_promotes_cycle_witness(tmp_path: Path) -> None:
+    witness_path = tmp_path / "cycle_witness.psv"
+    witness_path.write_text(
+        """@tool base_execute
+@id open_state-001
+@category open_state
+
+[cycle]
+key|value
+cycle_state_indices|s8666,s8698,s8793,s8697,s8666
+
+[states]
+id|flags
+s0|INIT
+s8666|OPEN,WITNESS,CYCLE
+s8698|
+s8793|
+s8697|
+s8666|OPEN,WITNESS,CYCLE
+""",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "distinct_failures": [
+                    {
+                        "failure_category": "open_state",
+                        "problem_file": "p03.pddl",
+                        "witness_path": witness_path.as_posix(),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    observation = ValidationObservation(
+        result_id="result_000001",
+        kind=ValidationKind.BASE_EXECUTE,
+        status=ValidationStatus.FAILURE,
+        candidate_id="policy_000001",
+        classifier_id=None,
+        details=ExecuteObservationDetails("p03.pddl", SearchStatus.FAILED, 1),
+        fingerprint=None,
+    )
+    result = ExecutePolicyResult(
+        "result_000001",
+        ValidationKind.BASE_EXECUTE,
+        ValidationStatus.FAILURE,
+        cast(object, None),
+        cast(object, None),
+        observation,
+        None,
+        None,
+        (),
+        1,
+    )
+
+    _refresh_execute_fingerprint_from_manifest(result, manifest_path)
+
+    assert result.observation.fingerprint == FailureFingerprint(
+        kind=ValidationKind.BASE_EXECUTE,
+        status=ValidationStatus.FAILURE,
+        problem_file="p03.pddl",
+        category="cycle",
+        witness=("s8666", "s8698", "s8793", "s8697", "s8666"),
+    )
+
+
+def test_execute_fingerprint_refresh_uses_manifest_witness(tmp_path: Path) -> None:
+    witness_path = tmp_path / "witness.psv"
+    witness_path.write_text(
+        """@tool base_execute
+@id deadend-001
+@category deadend
+
+[state]
+id|flags|f0
+s339|WITNESS,DEADEND|2
+
+[facts]
+state|atoms
+s339|p0
+""",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "distinct_failures": [
+                    {
+                        "failure_category": "deadend",
+                        "problem_file": "p01.pddl",
+                        "witness_path": witness_path.as_posix(),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    original = FailureFingerprint(
+        kind=ValidationKind.BASE_EXECUTE,
+        status=ValidationStatus.FAILURE,
+        problem_file="p01.pddl",
+        category="open_state",
+        witness=("s0",),
+    )
+    observation = ValidationObservation(
+        result_id="result_000001",
+        kind=ValidationKind.BASE_EXECUTE,
+        status=ValidationStatus.FAILURE,
+        candidate_id="policy_000001",
+        classifier_id=None,
+        details=ExecuteObservationDetails("p01.pddl", SearchStatus.FAILED, 1),
+        fingerprint=original,
+    )
+    result = ExecutePolicyResult(
+        "result_000001",
+        ValidationKind.BASE_EXECUTE,
+        ValidationStatus.FAILURE,
+        cast(object, None),
+        cast(object, None),
+        observation,
+        None,
+        None,
+        (),
+        1,
+    )
+
+    _refresh_execute_fingerprint_from_manifest(result, manifest_path)
+
+    assert result.observation.fingerprint == FailureFingerprint(
+        kind=ValidationKind.BASE_EXECUTE,
+        status=ValidationStatus.FAILURE,
+        problem_file="p01.pddl",
+        category="deadend",
+        witness=("s339",),
+    )
 
 
 def test_validation_history_keeps_typed_observations_until_dump(tmp_path: Path) -> None:
@@ -99,7 +278,7 @@ def test_history_fold_uses_failure_fingerprint_when_present() -> None:
         status=ValidationStatus.FAILURE,
         problem_file="p01.pddl",
         category="open_state",
-        witness=("7",),
+        witness=("s7",),
     )
     first_observation = ValidationObservation(
         result_id="result_000001",

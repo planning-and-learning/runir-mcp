@@ -161,6 +161,22 @@ def _relative(name: str | None) -> str:
     return f"{name}.psv" if name else ""
 
 
+def _with_header(doc: Document | None, header: list[tuple[str, str]]) -> Document | None:
+    if doc is None:
+        return None
+    return Document(header=list(header), sections=doc.sections)
+
+
+def _with_docs_header(
+    docs: tuple[Document, Document | None, Document | None], header: list[tuple[str, str]]
+) -> tuple[Document, Document | None, Document | None]:
+    return (
+        _with_header(docs[0], header),
+        _with_header(docs[1], header),
+        _with_header(docs[2], header),
+    )
+
+
 def _write_success_meta(output_dir: Path, success: _SuccessTrace, source: str, primary: str) -> str:
     meta = {
         "id": success.id,
@@ -339,6 +355,7 @@ def run_execute(
                                 (key, value if key != "category" else category.value)
                                 for key, value in header
                             ]
+                            docs = _with_docs_header(docs, header)
                     else:
                         docs = fallback
             if docs is None:
