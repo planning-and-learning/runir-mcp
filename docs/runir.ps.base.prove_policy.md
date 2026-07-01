@@ -27,7 +27,7 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.M
 ## Output / Dump Artifacts
 `hstar` is exact remaining lifted plan length in actions (`inf` = proven dead, empty = budget exhausted). `hlmcut` is the raw LM-cut lower bound for the same lifted state.
 
-Counterexamples are bounded by category: at most `max_open_state_counterexamples`, at most `max_deadend_transition_counterexamples`, and one cycle if present; cycle does not count against the other bounds.
+Counterexample output keeps one representative open state, one representative deadend transition, and one cycle if present; cycle does not count against the other categories.
 
 Dictionaries and per-failure files use the [base sketch-policy table schema](tables/runir.ps.base.counterexamples.md). `plan_trace.*` uses the [open-state FF plan trace schema](tables/runir.ps.open_state.plan_trace.md) and is generated during dumping when FF finds a plan from an open-state witness. `result.json` records both `search_budget` and `plan_trace_budget`; plan traces use the latter, not the proof budget. `summary.*` uses the [native summary table](tables/indexes/native.summary.md); `run.json` is JSON-only run metadata. Failure categories: `open_state`, `deadend_transition`, `cycle`. Proof has no rollout seeds, so no `@seed` header.
 
