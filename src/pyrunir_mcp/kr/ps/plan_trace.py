@@ -18,10 +18,11 @@ from pyrunir_mcp.kr.ps.feature_evidence import (
     evaluate_features,
     feature_key,
     heuristic_json_value,
+    state_atom_evidence,
 )
 from pyrunir_mcp.kr.ps.frontier import format_ground_action
 from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions
-from pyrunir_mcp.output.dictionaries import Dictionaries
+from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
 from pyrunir_mcp.output.plan_trace import PlanStep, PlanTraceState, plan_trace_document
 from pyrunir_mcp.tables import Document
 
@@ -31,6 +32,11 @@ def _feature_symbols(features: Sequence[Feature], dicts: Dictionaries) -> list[s
     for symbol in symbols:
         dicts.feature(symbol)
     return symbols
+
+
+def _intern_state_atoms(state: GroundState, dicts: Dictionaries) -> None:
+    for kind, atom in state_atom_evidence(state):
+        dicts.atom(AtomKind(kind), atom)
 
 
 def _state_row(
@@ -123,6 +129,7 @@ def plan_open_state_trace(
     state_rows: list[PlanTraceState] = []
     last_index = len(ground_states) - 1
     for index, ground_state in enumerate(ground_states):
+        _intern_state_atoms(ground_state, dicts)
         flags: tuple[str, ...]
         if index == 0 and index == last_index:
             flags = ("OPEN", "GOAL")

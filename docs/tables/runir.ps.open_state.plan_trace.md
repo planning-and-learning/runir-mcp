@@ -4,14 +4,14 @@ Used by base sketch-policy and module-program open-state failures when FF finds 
 
 A `plan_trace.*` artifact is planner evidence, not policy or module-program execution. It records a task-level FF plan from the open state toward a goal. The policy/module-program did not select these steps, so the plan uses planning-state ids and action aliases only: no rule, module, memory, or proof vertex columns.
 
-For module-program failures, the open control context remains in `witness.*` and may be repeated in document headers such as `@start_module` and `@start_memory`; the FF plan rows themselves stay task-level.
+For module-program failures, the open control context remains in `witness.*` and may be repeated in document headers such as `@start_module` and `@start_memory`; the FF plan rows themselves stay task-level. Plan-trace states are also interned into the run-global `atoms.*` dictionary, including static atoms, but `plan_trace.*` does not emit a `[facts]` section.
 
 ## Dictionary Tables
 
 The artifact reuses the run-global dictionaries for the producing tool.
 
-- Base: [`features.*`](dictionaries/runir.ps.base.features.md), [`actions.*`](dictionaries/runir.ps.base.actions.md)
-- Module program: [`features.*`](dictionaries/runir.ps.ext.features.md), [`actions.*`](dictionaries/runir.ps.ext.actions.md)
+- Base: [`features.*`](dictionaries/runir.ps.base.features.md), [`actions.*`](dictionaries/runir.ps.base.actions.md), [`atoms.*`](dictionaries/runir.ps.base.atoms.md)
+- Module program: [`features.*`](dictionaries/runir.ps.ext.features.md), [`actions.*`](dictionaries/runir.ps.ext.actions.md), [`atoms.*`](dictionaries/runir.ps.ext.atoms.md)
 
 ## Section Tables
 

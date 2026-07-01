@@ -63,3 +63,4 @@ def test_feature_and_atom_dedup():
     assert dicts.feature("x") == dicts.feature("x") == "f0"
     assert dicts.atom(AtomKind.FLUENT, "at(a)") == "p0"
     assert dicts.atom(AtomKind.DERIVED, "at(a)") == "p1"  # kind is part of the key
+    assert dicts.atom(AtomKind.STATIC, "at(a)") == "p2"

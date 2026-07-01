@@ -20,11 +20,12 @@ from pyrunir_mcp.kr.ps.ext.rules import (
     intern_rules as intern_ext_rules,
 )
 from pyrunir_mcp.kr.ps.execute import RolloutFallbackResult, Task, run_execute
-from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key, state_evidence
+from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key, state_atom_evidence, state_evidence
 from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander, make_frontier_expander
 from pyrunir_mcp.kr.ps.plan_trace import plan_open_state_trace
 from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, build_proof_run
-from pyrunir_mcp.output.dictionaries import Dictionaries
+from pytyr.planning.ground import State as GroundState
+from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
 from pyrunir_mcp.output.writer import Fmt
 from pyrunir_mcp.validation import (
     ClassifierProofCounts,
@@ -184,6 +185,12 @@ def _candidate_source_metadata(result: ValidationResult) -> JsonObject:
     }
 
 
+
+def _populate_state_atoms(dicts: Dictionaries, state: GroundState) -> None:
+    for kind, atom in state_atom_evidence(state):
+        dicts.atom(AtomKind(kind), atom)
+
+
 def _populate_feature_dictionary(dicts: Dictionaries, features: Sequence[Feature]) -> list[str]:
     for feature in features:
         dicts.feature(feature_key(feature))
@@ -227,6 +234,7 @@ def _dump_execute_policy_artifacts(
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_base_rules(result.candidate.value, dicts)
     evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
+    _populate_state_atoms(dicts, result.context.base_task.search_context.state_repository.get_initial_state())
     task = result.context.base_task
     proofs_by_seed = {seed: proof for seed, proof in result.successful_results}
     if result.failure is not None:
@@ -283,6 +291,7 @@ def _dump_execute_module_program_artifacts(
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_ext_rules(result.candidate.value, dicts)
     evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
+    _populate_state_atoms(dicts, result.context.ext_task.search_context.state_repository.get_initial_state())
     task = result.context.ext_task
     proofs_by_seed = {seed: proof for seed, proof in result.successful_results}
     if result.failure is not None:
@@ -334,6 +343,7 @@ def _dump_prove_policy_artifacts(
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_base_rules(result.candidate.value, dicts)
     evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
+    _populate_state_atoms(dicts, result.context.base_task.search_context.state_repository.get_initial_state())
     envelope: JsonObject = build_proof_run(
         tool=result.kind.value,
         output_dir=output_path,
@@ -372,6 +382,7 @@ def _dump_prove_module_program_artifacts(
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_ext_rules(result.candidate.value, dicts)
     evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
+    _populate_state_atoms(dicts, result.context.ext_task.search_context.state_repository.get_initial_state())
     envelope: JsonObject = build_proof_run(
         tool=result.kind.value,
         output_dir=output_path,

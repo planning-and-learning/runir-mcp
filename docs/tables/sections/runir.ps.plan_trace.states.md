@@ -2,7 +2,7 @@
 
 Used by: [`../runir.ps.open_state.plan_trace.md`](../runir.ps.open_state.plan_trace.md).
 
-Planning states visited by the FF plan from an open-state witness. These are task-level states, not policy/module-program control states.
+Planning states visited by the FF plan from an open-state witness. These are task-level states, not policy/module-program control states. Their atoms are interned in the run-global `atoms.*` dictionary, including static atoms, but this artifact does not emit `[facts]` rows.
 
 | Column | Meaning |
 |---|---|

@@ -11,15 +11,15 @@ from pyrunir_mcp.tables import render_document
 
 DOMAIN = """(define (domain seq)
   (:requirements :strips)
-  (:predicates (a ?x) (b ?x))
-  (:action setA :parameters (?x) :precondition (not (a ?x)) :effect (a ?x))
-  (:action setB :parameters (?x) :precondition (and (a ?x) (not (b ?x))) :effect (b ?x)))
+  (:predicates (fixed ?x) (a ?x) (b ?x))
+  (:action setA :parameters (?x) :precondition (and (fixed ?x) (not (a ?x))) :effect (a ?x))
+  (:action setB :parameters (?x) :precondition (and (fixed ?x) (a ?x) (not (b ?x))) :effect (b ?x)))
 """
 
 PROBLEM = """(define (problem p)
   (:domain seq)
   (:objects x0)
-  (:init)
+  (:init (fixed x0))
   (:goal (b x0)))
 """
 
@@ -59,4 +59,10 @@ def test_plan_open_state_trace_uses_ff_plan_and_shared_action_dictionary(tmp_pat
         ["a0", "preexisting"],
         ["a1", "seta(x0)"],
         ["a2", "setb(x0)"],
+    ]
+    assert dicts.tables()["atoms"].rows == [
+        ["p0", "static", "(fixed x0)"],
+        ["p1", "static", "(object x0)"],
+        ["p2", "fluent", "(a x0)"],
+        ["p3", "fluent", "(b x0)"],
     ]

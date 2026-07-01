@@ -28,6 +28,7 @@ Feature: TypeAlias = (
     | ExtNumericalFeature
 )
 FeatureEvidence: TypeAlias = Callable[[GroundState], JsonObject]
+AtomEvidence: TypeAlias = tuple[str, str]
 
 
 @runtime_checkable
@@ -107,10 +108,19 @@ def evaluate_features(state: GroundState, features: list[Feature]) -> JsonObject
     return values
 
 
+def state_atom_evidence(state: GroundState) -> list[AtomEvidence]:
+    return [
+        *(("fluent", str(fact.get_atom())) for fact in state.fluent_facts()),
+        *(("derived", str(atom)) for atom in state.derived_atoms()),
+        *(("static", str(atom)) for atom in state.static_atoms()),
+    ]
+
+
 def state_facts(state: GroundState) -> JsonObject:
+    atoms = state_atom_evidence(state)
     return {
-        "fluent_facts": [str(fact.get_atom()) for fact in state.fluent_facts()],
-        "derived_atoms": [str(atom) for atom in state.derived_atoms()],
+        "fluent_facts": [atom for kind, atom in atoms if kind == "fluent"],
+        "derived_atoms": [atom for kind, atom in atoms if kind == "derived"],
     }
 
 

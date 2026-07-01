@@ -18,6 +18,7 @@ from pyrunir_mcp.tables import Table
 class AtomKind(StrEnum):
     FLUENT = "fluent"
     DERIVED = "derived"
+    STATIC = "static"
 
 
 class Dictionary:
