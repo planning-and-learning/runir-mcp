@@ -29,6 +29,7 @@ Feature: TypeAlias = (
 )
 FeatureEvidence: TypeAlias = Callable[[GroundState], JsonObject]
 AtomEvidence: TypeAlias = tuple[str, str]
+_ATOM_KIND_ORDER = {"static": 0, "fluent": 1, "derived": 2}
 
 
 @runtime_checkable
@@ -109,11 +110,12 @@ def evaluate_features(state: GroundState, features: list[Feature]) -> JsonObject
 
 
 def state_atom_evidence(state: GroundState) -> list[AtomEvidence]:
-    return [
+    atoms = [
         *(("fluent", str(fact.get_atom())) for fact in state.fluent_facts()),
         *(("derived", str(atom)) for atom in state.derived_atoms()),
         *(("static", str(atom)) for atom in state.static_atoms()),
     ]
+    return sorted(atoms, key=lambda atom: (_ATOM_KIND_ORDER[atom[0]], atom[1]))
 
 
 def state_facts(state: GroundState) -> JsonObject:

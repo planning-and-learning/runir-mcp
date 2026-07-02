@@ -163,6 +163,8 @@ def _result_json(result: ValidationResult) -> JsonObject:
                 "status": result.failure.result.status.name,
             }
         )
+        base["failure_seeds"] = [seed for seed, _failure in result.failure_results]
+        base["success_seeds"] = [seed for seed, _proof in result.successful_results]
     elif isinstance(result, (ProvePolicyResult, ProveModuleProgramResult)):
         base["proof"] = {
             "status": result.proof.status.name,
@@ -237,7 +239,8 @@ def _dump_execute_policy_artifacts(
     _populate_state_atoms(dicts, result.context.base_task.search_context.state_repository.get_initial_state())
     task = result.context.base_task
     proofs_by_seed = {seed: proof for seed, proof in result.successful_results}
-    if result.failure is not None:
+    proofs_by_seed.update((seed, failure.result) for seed, failure in result.failure_results)
+    if result.failure is not None and not result.failure_results:
         proofs_by_seed.setdefault(0, result.failure.result)
     if not proofs_by_seed:
         return None
@@ -294,7 +297,8 @@ def _dump_execute_module_program_artifacts(
     _populate_state_atoms(dicts, result.context.ext_task.search_context.state_repository.get_initial_state())
     task = result.context.ext_task
     proofs_by_seed = {seed: proof for seed, proof in result.successful_results}
-    if result.failure is not None:
+    proofs_by_seed.update((seed, failure.result) for seed, failure in result.failure_results)
+    if result.failure is not None and not result.failure_results:
         proofs_by_seed.setdefault(0, result.failure.result)
     if not proofs_by_seed:
         return None
@@ -430,11 +434,22 @@ def _state_id_sort_key(value: str) -> tuple[int, str]:
         return (0, value)
 
 
+def _cycle_part_key(value: str) -> tuple[tuple[int, str], tuple[int, str], tuple[int, str]]:
+    parts = value.split("|", 2)
+    if len(parts) == 3:
+        module, memory, state = parts
+        return ((0, module), (0, memory), _state_id_sort_key(state))
+    return ((0, ""), (0, ""), _state_id_sort_key(value))
+
+
 def rotate_smallest_state_id_first(state_ids: tuple[str, ...]) -> tuple[str, ...]:
     if not state_ids:
         return ()
-    start = min(range(len(state_ids)), key=lambda index: _state_id_sort_key(state_ids[index]))
-    return state_ids[start:] + state_ids[:start]
+    closed = len(state_ids) > 1 and state_ids[0] == state_ids[-1]
+    ring = state_ids[:-1] if closed else state_ids
+    start = min(range(len(ring)), key=lambda index: _cycle_part_key(ring[index]))
+    rotated = ring[start:] + ring[:start]
+    return (*rotated, rotated[0]) if closed and rotated else rotated
 
 
 def _witness_info_from_file(path: Path) -> tuple[str | None, tuple[str, ...]]:
@@ -442,6 +457,8 @@ def _witness_info_from_file(path: Path) -> tuple[str | None, tuple[str, ...]]:
     cycle_ids: tuple[str, ...] | None = None
     section: str | None = None
     id_column: int | None = None
+    module_column: int | None = None
+    memory_column: int | None = None
     key_column: int | None = None
     value_column: int | None = None
     for raw_line in path.read_text(encoding="utf-8").splitlines():
@@ -467,13 +484,28 @@ def _witness_info_from_file(path: Path) -> tuple[str | None, tuple[str, ...]]:
                 and parts[key_column] == "cycle_state_indices"
             ):
                 cycle_ids = tuple(value for value in parts[value_column].split(",") if value)
-        elif section == "state":
+        elif section in {"state", "states"}:
             if id_column is None:
                 if "id" in parts:
                     id_column = parts.index("id")
+                elif "state" in parts:
+                    id_column = parts.index("state")
+                module_column = parts.index("module") if "module" in parts else None
+                memory_column = parts.index("memory") if "memory" in parts else None
                 continue
             if id_column < len(parts) and parts[id_column]:
-                ids.append(parts[id_column])
+                state_id = parts[id_column]
+                if (
+                    module_column is not None
+                    and memory_column is not None
+                    and module_column < len(parts)
+                    and memory_column < len(parts)
+                    and parts[module_column]
+                    and parts[memory_column]
+                ):
+                    ids.append(f"{parts[module_column]}|{parts[memory_column]}|{state_id}")
+                else:
+                    ids.append(state_id)
     if cycle_ids is not None:
         return "cycle", cycle_ids
     return None, tuple(ids)

@@ -11,4 +11,4 @@ Trace or cycle edges between base planning states.
 | `target` | Target planning-state id (`sK`). |
 | `rule` | Sketch-rule alias (`rK`) from [`rules.*`](../dictionaries/runir.ps.base.rules.md). |
 | `action` | Ground-action alias (`aK`) from [`actions.*`](../dictionaries/runir.ps.base.actions.md). |
-| `delta` | Space-separated changed features as `fK:before>after`. |
+| `delta` | Space-separated changed features as `fK:before>after`, using aliases from [`features.*`](../dictionaries/runir.ps.base.features.md). |

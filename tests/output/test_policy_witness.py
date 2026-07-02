@@ -46,7 +46,12 @@ def test_trace_document_matches_doc():
     ]
     transitions = [
         WitnessTransition(
-            0, 0, 1, action="(pickup ball1 roomA)", rule="pickup_r1", delta={"n_held": (0, 1)}
+            0,
+            0,
+            1,
+            action="(pickup ball1 roomA)",
+            rule="pickup_r1",
+            delta={"n_held": (0, 1)},
         ),
         WitnessTransition(
             1,
@@ -124,6 +129,64 @@ def test_cycle_counterexample_matches_doc():
     )
 
 
+def test_cycle_counterexample_rotates_smallest_base_state_first():
+    dicts = Dictionaries()
+    states = [
+        WitnessState(3, {"n": 3}, flags=("CYCLE",)),
+        WitnessState(1, {"n": 1}, flags=("CYCLE",)),
+        WitnessState(2, {"n": 2}, flags=("CYCLE",)),
+    ]
+    transitions = [
+        WitnessTransition(0, 3, 1, action="a31", delta={"n": (3, 1)}),
+        WitnessTransition(1, 1, 2, action="a12", delta={"n": (1, 2)}),
+        WitnessTransition(2, 2, 3, action="a23", delta={"n": (2, 3)}),
+    ]
+    doc = counterexample_document(
+        header=[],
+        feature_symbols=["n"],
+        states=states,
+        transitions=transitions,
+        cycle=Cycle(state_indices=(3, 1, 2), transition_steps=(0, 1, 2)),
+        dicts=dicts,
+        ext=False,
+    )
+    psv = render_document(doc, "psv")
+    assert "[states]\nid|flags|hstar|hlmcut|f0\ns1|CYCLE|||1\ns2|CYCLE|||2\ns3|CYCLE|||3\ns1|CYCLE|||1" in psv
+    assert "[transitions]\nstep|source|target|rule|action|delta\n0|s1|s2||a0|f0:1>2\n1|s2|s3||a1|f0:2>3\n2|s3|s1||a2|f0:3>1" in psv
+
+
+def test_ext_cycle_counterexample_rotates_by_module_memory_state_triple():
+    dicts = Dictionaries(ext=True)
+    states = [
+        WitnessState(1, {"n": 1}, flags=("CYCLE",), memory=("z", "m0")),
+        WitnessState(0, {"n": 0}, flags=("CYCLE",), memory=("a", "m2")),
+        WitnessState(2, {"n": 2}, flags=("CYCLE",), memory=("a", "m1")),
+    ]
+    transitions = [
+        WitnessTransition(
+            0, 1, 0, source_memory=("z", "m0"), target_memory=("a", "m2"), action="a10", delta={"n": (1, 0)}
+        ),
+        WitnessTransition(
+            1, 0, 2, source_memory=("a", "m2"), target_memory=("a", "m1"), action="a02", delta={"n": (0, 2)}
+        ),
+        WitnessTransition(
+            2, 2, 1, source_memory=("a", "m1"), target_memory=("z", "m0"), action="a21", delta={"n": (2, 1)}
+        ),
+    ]
+    doc = counterexample_document(
+        header=[],
+        feature_symbols=["n"],
+        states=states,
+        transitions=transitions,
+        cycle=Cycle(state_indices=(1, 0, 2), transition_steps=(0, 1, 2)),
+        dicts=dicts,
+        ext=True,
+    )
+    psv = render_document(doc, "psv")
+    assert "[states]\nstate|module|memory|flags|hstar|hlmcut|f0\ns2|M0|m0|CYCLE|||2\ns1|M1|m1|CYCLE|||1\ns0|M0|m2|CYCLE|||0\ns2|M0|m0|CYCLE|||2" in psv
+    assert "[transitions]\nstep|source_state|source_module|source_memory|target_state|target_module|target_memory|rule|action|delta\n0|s2|M0|m0|s1|M1|m1||a0|f0:2>1\n1|s1|M1|m1|s0|M0|m2||a1|f0:1>0\n2|s0|M0|m2|s2|M0|m0||a2|f0:0>2" in psv
+
+
 def test_state_witness_uses_singular_state_section():
     dicts = Dictionaries()
     state = WitnessState(
@@ -176,6 +239,24 @@ def test_successors_document_shows_empty_rule_gap():
     assert "s2|a1|s61|r0|DEADEND|f0:2>3" in psv
 
 
+def test_successors_document_includes_source_state_once_with_facts():
+    source = WitnessState(0, {"n": 2}, fluent=("at(a)",), flags=("OPEN", "WITNESS"))
+    successors = [
+        Successor(src=0, source=source, target=WitnessState(1, {"n": 1}, fluent=("at(b)",)), action="move(a,b)"),
+        Successor(src=0, source=source, target=WitnessState(0, {"n": 2}, fluent=("at(a)",)), action="wait"),
+    ]
+    doc = successors_document(
+        header=[("id", "successors-001")],
+        feature_symbols=["n"],
+        successors=successors,
+        dicts=Dictionaries(),
+        ext=False,
+    )
+    psv = render_document(doc, "psv")
+    assert psv.count("\ns0|OPEN,WITNESS|||2") == 1
+    assert "[facts]\nstate|atoms\ns0|p0\ns1|p1" in psv
+
+
 def test_base_state_columns_can_include_hlmcut_without_hstar():
     state = WitnessState(1, {"n_undeliv": 2}, hstar=7, hlmcut=3)
     doc = counterexample_document(
@@ -222,7 +303,7 @@ def test_ext_successor_state_columns_include_hlmcut_by_default():
         ext=True,
     )
     psv = render_document(doc, "psv")
-    assert "[states]\nid|flags|hstar|hlmcut|f0\ns1|||4|9" in psv
+    assert "[states]\nid|flags|hstar|hlmcut|f0\ns0||||\ns1|||4|9" in psv
 
 
 def test_ext_state_columns_include_mod_and_mem_without_vertex():
@@ -254,7 +335,7 @@ def test_ext_successors_carry_module_and_memory():
             target=WitnessState(7, {"n": 1}, memory=("gripper", "carry")),
             action="(move a b)",
             rule="load0",
-            delta={},
+            delta={"n": (0, 1)},
         ),
         Successor(
             src=5,
@@ -262,7 +343,7 @@ def test_ext_successors_carry_module_and_memory():
             target=WitnessState(8, {"n": 2}, flags=("GOAL",)),
             action="(move a c)",
             rule=None,
-            delta={},
+            delta={"n": (0, 2)},
         ),
     ]
     doc = successors_document(
@@ -271,5 +352,5 @@ def test_ext_successors_carry_module_and_memory():
     psv = render_document(doc, "psv")
     assert "[successors]\nsource_state|source_module|source_memory|action|target_state|target_module|target_memory|rule|flags|delta" in psv
     assert "[states]\nid|flags|hstar|hlmcut|f0" in psv
-    assert "s5|M0|m0|a0|s7|M0|m1|r0||" in psv
-    assert "s5|M0|m0|a1|s8||||GOAL|" in psv
+    assert "s5|M0|m0|a0|s7|M0|m1|r0||f0:0>1" in psv
+    assert "s5|M0|m0|a1|s8||||GOAL|f0:0>2" in psv

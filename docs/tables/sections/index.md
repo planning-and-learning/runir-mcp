@@ -21,6 +21,7 @@
 
 - [`[states]`](runir.ps.plan_trace.states.md)
 - [`[plan]`](runir.ps.plan_trace.plan.md)
+- [`[facts]`](runir.ps.plan_trace.facts.md)
 
 ## Structural Termination
 

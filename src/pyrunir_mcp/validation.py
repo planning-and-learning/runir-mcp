@@ -174,6 +174,7 @@ class ExecutePolicyResult:
     failure: BaseExecutionFailure | None
     successful_results: tuple[tuple[int, ProofResult], ...]
     num_rollouts: int
+    failure_results: tuple[tuple[int, BaseExecutionFailure], ...] = ()
     search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None)
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
@@ -190,6 +191,7 @@ class ExecuteModuleProgramResult:
     failure: ExtExecutionFailure | None
     successful_results: tuple[tuple[int, ProofResult], ...]
     num_rollouts: int
+    failure_results: tuple[tuple[int, ExtExecutionFailure], ...] = ()
     search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None)
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
@@ -457,19 +459,47 @@ def _state_id_for_deadend_transition(proof: ProofResult, edge: int) -> str:
         return str(int(edge))
 
 
+def _state_id_key(value: str) -> tuple[int, str]:
+    suffix = value[1:] if value.startswith("s") else value
+    try:
+        return (int(suffix), value)
+    except ValueError:
+        return (0, value)
+
+
+def _cycle_part_key(value: str) -> tuple[tuple[int, str], tuple[int, str], tuple[int, str]]:
+    parts = value.split("|", 2)
+    if len(parts) == 3:
+        module, memory, state = parts
+        return ((0, module), (0, memory), _state_id_key(state))
+    return ((0, ""), (0, ""), _state_id_key(value))
+
+
 def rotate_smallest_state_id_first(state_ids: list[str]) -> tuple[str, ...]:
     if not state_ids:
         return ()
+    closed = len(state_ids) > 1 and state_ids[0] == state_ids[-1]
+    ring = state_ids[:-1] if closed else state_ids
+    start = min(range(len(ring)), key=lambda index: _cycle_part_key(ring[index]))
+    rotated = tuple(ring[start:] + ring[:start])
+    return (*rotated, rotated[0]) if closed and rotated else rotated
 
-    def key(value: str) -> tuple[int, str]:
-        suffix = value[1:] if value.startswith("s") else value
-        try:
-            return (int(suffix), value)
-        except ValueError:
-            return (0, value)
 
-    start = min(range(len(state_ids)), key=lambda index: key(state_ids[index]))
-    return tuple(state_ids[start:] + state_ids[:start])
+def _cycle_vertex_part(proof: ProofResult, vertex: int) -> str:
+    graph = getattr(proof, "graph", None)
+    if graph is None:
+        return f"s{int(vertex)}"
+    try:
+        summary = state_summary(graph, int(vertex))
+    except Exception:
+        return f"s{int(vertex)}"
+    state_index = summary.get("state_index")
+    state = f"s{int(state_index)}" if isinstance(state_index, int | str | float) else f"s{int(vertex)}"
+    module = summary.get("module")
+    memory = summary.get("memory_state")
+    if isinstance(module, str) and isinstance(memory, str):
+        return f"{module}|{memory}|{state}"
+    return state
 
 
 def _witness_parts(
@@ -477,7 +507,7 @@ def _witness_parts(
 ) -> tuple[str, ...]:
     if category is CounterexampleKind.CYCLE and isinstance(witness, list):
         return rotate_smallest_state_id_first(
-            [_state_id_for_vertex(proof, int(vertex)) for vertex in witness]
+            [_cycle_vertex_part(proof, int(vertex)) for vertex in witness]
         )
     if category is CounterexampleKind.DEADEND_TRANSITION and not isinstance(witness, list):
         return (_state_id_for_deadend_transition(proof, int(witness)),)
@@ -605,6 +635,7 @@ def execute_policy(
 ) -> ExecutePolicyResult:
     first_failure = None
     successful_results: list[tuple[int, ProofResult]] = []
+    failure_results: list[tuple[int, BaseExecutionFailure]] = []
     for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
         proof = find_base_solution(
             context.base_task.search_context,
@@ -620,8 +651,11 @@ def execute_policy(
         )
         if is_success_status(proof.status) or is_goal_open_state_result(proof):
             successful_results.append((seed, proof))
-        elif first_failure is None:
-            first_failure = BaseExecutionFailure(task=context.base_task, result=proof)
+        else:
+            failure = BaseExecutionFailure(task=context.base_task, result=proof)
+            failure_results.append((seed, failure))
+            if first_failure is None:
+                first_failure = failure
     status = ValidationStatus.SUCCESS if first_failure is None else ValidationStatus.FAILURE
     result_id = _next_result_id(context.domain_context)
     details = _execute_details(first_failure, num_rollouts)
@@ -647,6 +681,7 @@ def execute_policy(
         first_failure,
         tuple(successful_results),
         num_rollouts,
+        tuple(failure_results),
         search_budget,
         plan_trace_budget,
     )
@@ -667,6 +702,7 @@ def execute_module_program(
 ) -> ExecuteModuleProgramResult:
     first_failure = None
     successful_results: list[tuple[int, ProofResult]] = []
+    failure_results: list[tuple[int, ExtExecutionFailure]] = []
     for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
         proof = find_ext_solution(
             context.ext_task.search_context,
@@ -682,8 +718,11 @@ def execute_module_program(
         )
         if is_success_status(proof.status) or is_goal_open_state_result(proof):
             successful_results.append((seed, proof))
-        elif first_failure is None:
-            first_failure = ExtExecutionFailure(task=context.ext_task, result=proof)
+        else:
+            failure = ExtExecutionFailure(task=context.ext_task, result=proof)
+            failure_results.append((seed, failure))
+            if first_failure is None:
+                first_failure = failure
     status = ValidationStatus.SUCCESS if first_failure is None else ValidationStatus.FAILURE
     result_id = _next_result_id(context.domain_context)
     details = _execute_details(first_failure, num_rollouts)
@@ -709,6 +748,7 @@ def execute_module_program(
         first_failure,
         tuple(successful_results),
         num_rollouts,
+        tuple(failure_results),
         search_budget,
         plan_trace_budget,
     )

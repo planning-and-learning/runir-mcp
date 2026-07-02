@@ -247,7 +247,7 @@ def run_execute(
     rollouts: list[JsonObject] = []
     task_rows: list[JsonObject] = []
     representatives: dict[
-        tuple[str, str], tuple[int, Task, ProofResult, int | list[int] | None]
+        tuple[str, str, int], tuple[int, Task, ProofResult, int | list[int] | None]
     ] = {}
     successful_runs: list[tuple[int, Task, ProofResult]] = []
     first_failure: tuple[Task, ProofResult] | None = None
@@ -288,7 +288,7 @@ def run_execute(
                     first_failure = (task, result)
                 if failure_category is not None and category_value is not None:
                     representatives.setdefault(
-                        (task.problem_path.name, category_value), (seed, task, result, witness)
+                        (task.problem_path.name, category_value, seed), (seed, task, result, witness)
                     )
         rollouts.append(
             {
@@ -302,7 +302,7 @@ def run_execute(
     # Everything for one failure is local to `failures/<id>/`; <id> already encodes the category.
     artifacts: dict[str, Artifact] = {}
     reps: list[_Representative] = []
-    for index, ((problem, category_value), (seed, task, result, witness)) in enumerate(
+    for index, ((problem, category_value, _seed_key), (seed, task, result, witness)) in enumerate(
         representatives.items(), start=1
     ):
         category: FailureCategory = (

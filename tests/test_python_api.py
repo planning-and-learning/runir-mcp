@@ -51,6 +51,17 @@ def test_cycle_fingerprint_rotates_smallest_state_id_first() -> None:
     )
 
 
+def test_ext_cycle_fingerprint_rotates_by_module_memory_state_triple() -> None:
+    assert rotate_smallest_state_id_first(
+        ["M1|m0|s1", "M0|m2|s0", "M0|m1|s2", "M1|m0|s1"]
+    ) == (
+        "M0|m1|s2",
+        "M1|m0|s1",
+        "M0|m2|s0",
+        "M0|m1|s2",
+    )
+
+
 def test_execute_fallback_docs_are_reheaded_after_reclassification() -> None:
     old_header = [("id", "open_state-001"), ("category", "open_state")]
     new_header = [("id", "deadend-001"), ("category", "deadend")]

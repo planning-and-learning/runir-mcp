@@ -106,6 +106,7 @@ def successor(
 ) -> Successor:
     return Successor(
         src=_int(source["state_index"]),
+        source=witness_state(source),
         source_memory=_memory(source),
         target=witness_state(target),
         action=_str_opt(edge.get("action")),

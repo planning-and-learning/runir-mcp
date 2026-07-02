@@ -15,6 +15,6 @@ Off-graph one-step successor frontier from module-program source control locatio
 | `target_memory` | Resulting memory-location alias (`mK`) for a selected move; blank for a gap. |
 | `rule` | Module-rule alias (`rK`) selecting the move, or empty when no rule selects it. |
 | `flags` | Flags for the target state, such as `GOAL` or `DEADEND`. |
-| `delta` | Space-separated changed features as `fK:before>after`. |
+| `delta` | Space-separated changed features as `fK:before>after`, using aliases from [`features.*`](../dictionaries/runir.ps.ext.features.md). |
 
 Generated successors are off-graph, so both source and target are represented as planning state plus control location. For a gap, `rule`, `target_module`, and `target_memory` are blank.

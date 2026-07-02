@@ -15,4 +15,4 @@ Trace or cycle edges between module-program control states.
 | `target_memory` | Target memory-location alias (`mK`). |
 | `rule` | Module-rule alias (`rK`) from [`rules.*`](../dictionaries/runir.ps.ext.rules.md). |
 | `action` | Ground-action alias (`aK`) from [`actions.*`](../dictionaries/runir.ps.ext.actions.md). |
-| `delta` | Space-separated changed features as `fK:before>after`. |
+| `delta` | Space-separated changed features as `fK:before>after`, using aliases from [`features.*`](../dictionaries/runir.ps.ext.features.md). |

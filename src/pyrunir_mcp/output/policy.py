@@ -8,7 +8,7 @@ policy/module-program witness output formats.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 from pyrunir_mcp.json_types import JsonValue
@@ -60,6 +60,7 @@ class Cycle:
 class Successor:
     src: int
     target: WitnessState
+    source: WitnessState | None = None
     source_memory: tuple[str, str] | None = None  # (module, memory) source control for ext
     action: str | None = None
     rule: str | None = None
@@ -131,8 +132,8 @@ def _rule_alias(symbol: str | None, dicts: Dictionaries) -> str:
 
 def _delta(delta: dict[str, tuple[JsonValue, JsonValue]], dicts: Dictionaries) -> str:
     return " ".join(
-        f"{dicts.feature(s)}:{_scalar(before)}>{_scalar(after)}"
-        for s, (before, after) in delta.items()
+        f"{dicts.feature(symbol)}:{_scalar(before)}>{_scalar(after)}"
+        for symbol, (before, after) in delta.items()
     )
 
 
@@ -204,9 +205,7 @@ def _states_table(
     return Table(name=name, columns=[*leading, *aliases], rows=rows)
 
 
-def _transition_row(
-    transition: WitnessTransition, dicts: Dictionaries, *, ext: bool
-) -> list[JsonValue]:
+def _transition_row(transition: WitnessTransition, dicts: Dictionaries, *, ext: bool) -> list[JsonValue]:
     if ext:
         source_module, source_memory = _memory_aliases(transition.source_memory, dicts)
         target_module, target_memory = _memory_aliases(transition.target_memory, dicts)
@@ -287,6 +286,45 @@ def _successor_row(successor: Successor, dicts: Dictionaries, *, ext: bool) -> l
     ]
 
 
+def _merge_tuple(left: tuple[str, ...], right: tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    merged: list[str] = []
+    for item in (*left, *right):
+        if item not in seen:
+            seen.add(item)
+            merged.append(item)
+    return tuple(merged)
+
+
+def _merge_state(existing: WitnessState, incoming: WitnessState) -> WitnessState:
+    return WitnessState(
+        state=existing.state,
+        features={**incoming.features, **existing.features},
+        fluent=_merge_tuple(existing.fluent, incoming.fluent),
+        derived=_merge_tuple(existing.derived, incoming.derived),
+        flags=tuple(flag.value for flag in Flag if flag.value in {*existing.flags, *incoming.flags}),
+        hstar=existing.hstar if existing.hstar != "" else incoming.hstar,
+        hlmcut=existing.hlmcut if existing.hlmcut != "" else incoming.hlmcut,
+        vertex=existing.vertex if existing.vertex is not None else incoming.vertex,
+        memory=existing.memory if existing.memory is not None else incoming.memory,
+    )
+
+
+def _successor_source_state(successor: Successor) -> WitnessState:
+    if successor.source is not None:
+        return successor.source
+    return WitnessState(successor.src, memory=successor.source_memory)
+
+
+def _successor_states(successors: list[Successor]) -> list[WitnessState]:
+    merged: dict[int, WitnessState] = {}
+    for successor in successors:
+        for state in (_successor_source_state(successor), successor.target):
+            existing = merged.get(state.state)
+            merged[state.state] = state if existing is None else _merge_state(existing, state)
+    return list(merged.values())
+
+
 def _successors_table(successors: list[Successor], dicts: Dictionaries, *, ext: bool) -> Table:
     columns = (
         [
@@ -329,6 +367,49 @@ def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | Non
     return Table(name="facts", columns=["state", "atoms"], rows=rows) if rows else None
 
 
+def _cycle_state_key(state: WitnessState, *, ext: bool) -> tuple[tuple[int, str], ...]:
+    state_key = (state.state, _state_id(state.state))
+    if not ext:
+        return (state_key,)
+    module, memory = state.memory if state.memory is not None else ("", "")
+    return ((0, module), (0, memory), state_key)
+
+
+def _rotate_list(values: list[WitnessState], offset: int) -> list[WitnessState]:
+    return values[offset:] + values[:offset]
+
+
+def _rotate_transitions(values: list[WitnessTransition], offset: int) -> list[WitnessTransition]:
+    rotated = values[offset:] + values[:offset]
+    return [replace(transition, step=index) for index, transition in enumerate(rotated)]
+
+
+def _canonical_cycle_payload(
+    states: list[WitnessState],
+    transitions: list[WitnessTransition],
+    cycle: Cycle,
+    *,
+    ext: bool,
+) -> tuple[list[WitnessState], list[WitnessTransition], Cycle]:
+    if not states:
+        return states, transitions, cycle
+    offset = min(range(len(states)), key=lambda index: _cycle_state_key(states[index], ext=ext))
+    if offset == 0:
+        return states, transitions, cycle
+    rotated_states = _rotate_list(states, offset)
+    rotated_transitions = _rotate_transitions(transitions, offset)
+    rotated_cycle = Cycle(
+        state_indices=tuple(state.state for state in rotated_states),
+        vertex_indices=tuple(
+            vertex for vertex in (state.vertex for state in rotated_states) if vertex is not None
+        )
+        if ext
+        else (),
+        transition_steps=tuple(range(len(rotated_transitions))),
+    )
+    return rotated_states, rotated_transitions, rotated_cycle
+
+
 # -- documents (each: intern features first, assemble sections, drop empty ones) --
 
 
@@ -358,6 +439,7 @@ def counterexample_document(
 ) -> Document:
     _intern_features(feature_symbols, dicts)
     if cycle is not None:
+        states, transitions, cycle = _canonical_cycle_payload(states, transitions, cycle, ext=ext)
         cycle_states = [*states, states[0]] if states else states
         sections = [
             _states_table(
@@ -422,19 +504,20 @@ def successors_document(
     include_hlmcut: bool = True,
 ) -> Document:
     _intern_features(feature_symbols, dicts)
-    targets = [successor.target for successor in successors]
-    # The `[successors]` rows carry the move + (for ext) its `mod`/`mem`; the target `[states]`
-    # sub-table is just the off-graph successor states' feature values, so it stays state-indexed.
+    states = _successor_states(successors)
+    # The `[successors]` rows carry the move + (for ext) its module/memory context. The
+    # `[states]`/`[facts]` sections describe every referenced planning state once, including
+    # the expanded source state.
     sections = [
         _successors_table(successors, dicts, ext=ext),
         _states_table(
             "states",
-            targets,
+            states,
             dicts,
             ext=False,
             include_hstar=include_hstar,
             include_hlmcut=include_hlmcut,
         ),
-        _facts_table(targets, dicts),
+        _facts_table(states, dicts),
     ]
     return _document(header, sections)

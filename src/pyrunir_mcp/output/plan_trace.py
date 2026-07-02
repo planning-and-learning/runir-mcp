@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from pyrunir_mcp.json_types import JsonValue
-from pyrunir_mcp.output.dictionaries import Dictionaries
+from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
 from pyrunir_mcp.tables import Document, Table
 
 
@@ -26,6 +26,8 @@ def _delta_dict() -> dict[str, tuple[JsonValue, JsonValue]]:
 class PlanTraceState:
     state: int
     features: dict[str, JsonValue] = field(default_factory=_json_dict)
+    fluent: tuple[str, ...] = ()
+    derived: tuple[str, ...] = ()
     flags: tuple[str, ...] = ()
     hstar: JsonValue = ""
     hlmcut: JsonValue = ""
@@ -54,8 +56,8 @@ def _flags(flags: tuple[str, ...]) -> str:
 
 def _delta(delta: dict[str, tuple[JsonValue, JsonValue]], dicts: Dictionaries) -> str:
     return " ".join(
-        f"{dicts.feature(s)}:{_scalar(before)}>{_scalar(after)}"
-        for s, (before, after) in delta.items()
+        f"{dicts.feature(symbol)}:{_scalar(before)}>{_scalar(after)}"
+        for symbol, (before, after) in delta.items()
     )
 
 
@@ -82,6 +84,24 @@ def _states_table(states: list[PlanTraceState], dicts: Dictionaries) -> Table:
         columns=["state", "flags", "hstar", "hlmcut", *aliases],
         rows=rows,
     )
+
+
+def _facts_table(states: list[PlanTraceState], dicts: Dictionaries) -> Table | None:
+    rows: list[list[JsonValue]] = []
+    seen_states: set[int] = set()
+    for state in states:
+        if state.state in seen_states:
+            continue
+        seen_states.add(state.state)
+        aliases = [
+            dicts.atom(kind, atom)
+            for kind, group in ((AtomKind.FLUENT, state.fluent), (AtomKind.DERIVED, state.derived))
+            for atom in group
+        ]
+        if aliases:
+            aliases.sort(key=lambda alias: int(alias[1:]))
+            rows.append([_state_id(state.state), ",".join(aliases)])
+    return Table(name="facts", columns=["state", "atoms"], rows=rows) if rows else None
 
 
 def _plan_table(steps: list[PlanStep], dicts: Dictionaries) -> Table:
@@ -111,7 +131,8 @@ def plan_trace_document(
     dicts: Dictionaries,
 ) -> Document:
     _intern_features(feature_symbols, dicts)
-    return Document(
-        header=header,
-        sections=[_states_table(states, dicts), _plan_table(steps, dicts)],
-    )
+    sections: list[Table] = [_states_table(states, dicts), _plan_table(steps, dicts)]
+    facts = _facts_table(states, dicts)
+    if facts is not None:
+        sections.append(facts)
+    return Document(header=header, sections=sections)

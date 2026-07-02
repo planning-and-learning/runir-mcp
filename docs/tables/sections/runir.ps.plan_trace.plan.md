@@ -10,4 +10,4 @@ Each row is one FF-selected task action from the open-state witness toward a goa
 | `source` | Planning-state id before the action, formatted as `sK`. |
 | `action` | Action alias from the run-global `actions.*` dictionary. |
 | `target` | Planning-state id after the action, formatted as `sK`. |
-| `delta` | Space-separated feature changes, e.g. `f0:2>1`; empty if no tracked feature changed. |
+| `delta` | Space-separated changed features as `fK:before>after`, using aliases from the run-global `features.*` dictionary. |

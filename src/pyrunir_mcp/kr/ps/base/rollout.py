@@ -245,15 +245,17 @@ def rollout_artifacts(
 
     if is_cycle:
         start = result.cycle_start_index or 0
+        cycle_states = trace_states[start:]
+        cycle_transitions = trace_transitions[start:]
         cycle = Cycle(
-            state_indices=tuple(int(state.get_index()) for state in result.states[start:]),
-            transition_steps=tuple(range(start, len(result.steps))),
+            state_indices=tuple(state.state for state in cycle_states),
+            transition_steps=tuple(range(len(cycle_transitions))),
         )
         counterexample = counterexample_document(
             header=header,
             feature_symbols=feature_symbols,
-            states=trace_states,
-            transitions=trace_transitions,
+            states=cycle_states,
+            transitions=cycle_transitions,
             cycle=cycle,
             dicts=dicts,
             ext=False,

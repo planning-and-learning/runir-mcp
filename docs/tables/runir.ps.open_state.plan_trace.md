@@ -2,9 +2,9 @@
 
 Used by base sketch-policy and module-program open-state failures when FF finds a plan from the witness planning state.
 
-A `plan_trace.*` artifact is planner evidence, not policy or module-program execution. It records a task-level FF plan from the open state toward a goal. The policy/module-program did not select these steps, so the plan uses planning-state ids and action aliases only: no rule, module, memory, or proof vertex columns.
+A `plan_trace.*` artifact is planner evidence, not policy or module-program execution. It records a task-level FF plan from the open state toward a goal. The policy/module-program did not select these steps, so the plan uses planning-state ids, action aliases, and feature deltas only: no rule, module, memory, or proof vertex columns.
 
-For module-program failures, the open control context remains in `witness.*` and may be repeated in document headers such as `@start_module` and `@start_memory`; the FF plan rows themselves stay task-level. Plan-trace states are also interned into the run-global `atoms.*` dictionary, including static atoms, but `plan_trace.*` does not emit a `[facts]` section.
+For module-program failures, the open control context remains in `witness.*` and may be repeated in document headers such as `@start_module` and `@start_memory`; the FF plan rows themselves stay task-level. Plan-trace states are interned into the run-global `atoms.*` dictionary, including static atoms; `[facts]` lists per-state fluent and derived atom aliases.
 
 ## Dictionary Tables
 
@@ -17,5 +17,6 @@ The artifact reuses the run-global dictionaries for the producing tool.
 
 - [`[states]`](sections/runir.ps.plan_trace.states.md)
 - [`[plan]`](sections/runir.ps.plan_trace.plan.md)
+- [`[facts]`](sections/runir.ps.plan_trace.facts.md)
 
 `hstar` is shortest remaining plan length, `inf` for proven deadends, and empty when inconclusive. `hlmcut` is the LM-cut lower bound for the same state. Plan-trace generation uses the run result's `plan_trace_budget`; the default is 1,000,000 states and 10 seconds.

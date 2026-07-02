@@ -19,6 +19,7 @@ from pyrunir_mcp.kr.ps.feature_evidence import (
     feature_key,
     heuristic_json_value,
     state_atom_evidence,
+    state_facts,
 )
 from pyrunir_mcp.kr.ps.frontier import format_ground_action
 from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions
@@ -46,9 +47,14 @@ def _state_row(
     hstar: HStarEvaluator,
     flags: tuple[str, ...] = (),
 ) -> PlanTraceState:
+    facts = state_facts(state)
+    fluent_facts = facts.get("fluent_facts", [])
+    derived_atoms = facts.get("derived_atoms", [])
     return PlanTraceState(
         state=int(state.get_index()),
         features=evaluate_features(state, list(features)),
+        fluent=tuple(str(atom) for atom in fluent_facts) if isinstance(fluent_facts, list) else (),
+        derived=tuple(str(atom) for atom in derived_atoms) if isinstance(derived_atoms, list) else (),
         flags=flags,
         hstar=heuristic_json_value(hstar.evaluate(state)),
         hlmcut=heuristic_json_value(hstar.evaluate_lmcut(state)),
