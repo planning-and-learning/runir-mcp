@@ -14,6 +14,7 @@ from pyrunir_mcp import (
     create_task_context,
     dump_result,
     execute_policy,
+    generate_tasks,
 )
 
 domain = create_domain_context("domain.pddl")
@@ -36,6 +37,11 @@ Context/candidates:
 - `write_empty_policy(domain_context, policy_file)` for canonical empty policy text
 - `create_module_program(domain_context, module_program_file)`; pass `None` for the built-in empty module program
 - `create_classifier(domain_context, classifier_file)`; pass `None` for an empty classifier
+
+`runir.task_generation`:
+
+- `describe_generator(domain_name)`
+- `generate_tasks(domain_name, output_dir, batch_name, configs, allow_invalid=False)`
 
 Validation:
 

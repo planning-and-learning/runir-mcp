@@ -10,6 +10,7 @@ Typed Python API with in-memory domains, task contexts, candidates, observations
 - [Validation History](history.md): `ValidationHistory`, `HistoryFeedback`
 - [Dumping](dumping.md): `dump_result(...)`, `dump_validation_history(...)`, `DumpFormat`
 - [Search budgets](api.md#searchbudget): `SearchBudget` for validation and open-state FF plan traces
+- [`runir.task_generation`](runir.task_generation.md): `describe_generator(...)`, `generate_tasks(...)`
 
 ```python
 from pyrunir_mcp import (
@@ -35,7 +36,9 @@ Validation returns typed result objects. Dump only when another process needs fi
 
 ## Workflow Reference
 
-Workflow-specific arguments, result shapes, and output tables:
+### runir.task_generation
+
+- [`runir.task_generation`](runir.task_generation.md): generated PDDL task batches, optional `dump_result(...)`
 
 ### Base Sketch Policy
 

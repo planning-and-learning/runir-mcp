@@ -7,9 +7,10 @@ src/pyrunir_mcp/
   context.py     # DomainContext and TaskContext
   candidates.py  # Policy, ModuleProgram, Classifier, CandidateSource
   validation.py  # create/execute/prove calls and result/observation types
-  history.py     # ValidationHistory and HistoryFeedback
-  dumping.py     # dump boundary
-  callsite.py    # public convenience exports
+  history.py            # ValidationHistory and HistoryFeedback
+  task_generation.py  # generated PDDL task batches
+  dumping.py            # dump boundary
+  callsite.py           # public convenience exports
 ```
 
 Callers own all state. `TaskContext` stores the `DomainContext` that created it. Validation calls do not mutate history; fold returned observations explicitly:
@@ -51,6 +52,7 @@ write_empty_policy(domain, "empty_policy.formatted.txt")
 - [Contexts](context.md): `create_domain_context(...)`, `create_task_context(...)`
 - [Candidates](candidates.md): policy, module-program, and classifier creation
 - [Validation History](history.md): `ValidationHistory.fold(...)`
+- [`runir.task_generation`](runir.task_generation.md): `describe_generator(...)`, `generate_tasks(...)`
 - [Dumping](dumping.md): `dump_result(...)`, `dump_validation_history(...)`, formats
 
 ## Candidates
@@ -60,6 +62,13 @@ write_empty_policy(domain, "empty_policy.formatted.txt")
 - `create_classifier(domain, classifier_file)` returns `Classifier`.
 
 Pass `None` for an empty candidate. Use `write_empty_policy(domain, path)` when the canonical empty sketch text must also be written.
+
+## runir.task_generation
+
+- `describe_generator(domain_name)` returns `(generator_path, signature)`.
+- `generate_tasks(domain_name, output_dir, batch_name, configs, allow_invalid=False)` writes generated domain/problem files and returns `TaskGenerationResult`.
+
+See [`runir.task_generation`](runir.task_generation.md) for generator lookup, result fields, invalid config handling, and output files.
 
 ## Validation
 

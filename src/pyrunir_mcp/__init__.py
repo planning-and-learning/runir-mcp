@@ -6,10 +6,12 @@ from pyrunir_mcp.callsite import (
     create_module_program,
     create_policy,
     create_task_context,
+    describe_generator,
     dump_result,
     dump_validation_history,
     execute_module_program,
     execute_policy,
+    generate_tasks,
     prove_classifier,
     prove_module_program,
     prove_policy,
@@ -20,6 +22,12 @@ from pyrunir_mcp.candidates import Candidate, CandidateSource, Classifier, Modul
 from pyrunir_mcp.context import DomainContext, TaskContext
 from pyrunir_mcp.dumping import DumpFormat, DumpResult
 from pyrunir_mcp.history import HistoryFeedback, ValidationHistory
+from pyrunir_mcp.task_generation import (
+    GeneratedTask,
+    InvalidTaskGenerationConfig,
+    TaskGenerationOptions,
+    TaskGenerationResult,
+)
 from pyrunir_mcp.validation import (
     ClassifierObservationDetails,
     ClassifierProofCounts,
@@ -56,7 +64,9 @@ __all__ = [
     "ExecuteObservationDetails",
     "ExecutePolicyResult",
     "FailureFingerprint",
+    "GeneratedTask",
     "HistoryFeedback",
+    "InvalidTaskGenerationConfig",
     "ModuleProgram",
     "ObservationDetails",
     "Policy",
@@ -65,6 +75,8 @@ __all__ = [
     "ProveModuleProgramResult",
     "ProvePolicyResult",
     "ProveTerminationResult",
+    "TaskGenerationOptions",
+    "TaskGenerationResult",
     "SearchBudget",
     "TaskContext",
     "ValidationHistory",
@@ -77,10 +89,12 @@ __all__ = [
     "create_module_program",
     "create_policy",
     "create_task_context",
+    "describe_generator",
     "dump_result",
     "dump_validation_history",
     "execute_module_program",
     "execute_policy",
+    "generate_tasks",
     "prove_classifier",
     "prove_module_program",
     "prove_policy",

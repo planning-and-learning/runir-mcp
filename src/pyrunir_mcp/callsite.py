@@ -1,17 +1,26 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from pyrunir_mcp.candidates import Classifier, ModuleProgram, Policy
 from pyrunir_mcp.context import DomainContext, TaskContext
 from pyrunir_mcp.dumping import DumpFormat, DumpResult
 from pyrunir_mcp.history import ValidationHistory
+from pyrunir_mcp.json_types import JsonValue
 from pyrunir_mcp.defaults import (
     CLASSIFIER_MISTAKE_LIMIT,
     CLASSIFIER_PROOF_BUDGET,
     EXECUTE_SEARCH_BUDGET,
     PLAN_TRACE_BUDGET,
     PROVE_SEARCH_BUDGET,
+)
+from pyrunir_mcp.task_generation import (
+    TaskGenerationOptions,
+    TaskGenerationResult,
+    describe_make_problem,
+    get_generator_path,
+    task_generation,
 )
 from pyrunir_mcp.validation import (
     ExecuteModuleProgramResult,
@@ -170,7 +179,7 @@ def prove_termination(
 
 
 def dump_result(
-    result: ValidationResult,
+    result: ValidationResult | TaskGenerationResult,
     output_dir: str | Path,
     *,
     formats: tuple[DumpFormat, ...] = (DumpFormat.JSON,),
@@ -185,3 +194,26 @@ def dump_validation_history(
     formats: tuple[DumpFormat, ...] = (DumpFormat.JSON,),
 ) -> DumpResult:
     return _dumping.dump_validation_history(history, output_dir, formats=formats)
+
+
+def describe_generator(domain_name: str) -> tuple[Path, str]:
+    return get_generator_path(domain_name), describe_make_problem(domain_name)
+
+
+def generate_tasks(
+    domain_name: str,
+    output_dir: str | Path,
+    batch_name: str,
+    configs: Sequence[Mapping[str, JsonValue]],
+    *,
+    allow_invalid: bool = False,
+) -> TaskGenerationResult:
+    return task_generation(
+        TaskGenerationOptions(
+            domain_name=domain_name,
+            output_dir=Path(output_dir),
+            batch_name=batch_name,
+            configs=configs,
+            allow_invalid=allow_invalid,
+        )
+    )
