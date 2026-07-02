@@ -6,7 +6,7 @@
 result = prove_module_program(
     task_context,
     module_program,
-    classifier=None,
+    evidence_classifier=None,
     search_budget=SearchBudget(max_num_states=100_000, max_time_seconds=5.0),
     plan_trace_budget=SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0),
     max_arity=0,

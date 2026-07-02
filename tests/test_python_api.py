@@ -9,7 +9,7 @@ from pyrunir.kr.ps.base import Sketch
 from pytyr.planning import SearchStatus
 
 from pyrunir_mcp.validation import rotate_smallest_state_id_first
-from pyrunir_mcp.dumping import refresh_execute_fingerprint_from_manifest
+from pyrunir_mcp.dumping import execute_observation_from_manifest
 from pyrunir_mcp.kr.ps.execute import with_docs_header
 from pyrunir_mcp.tables import Document, Table
 
@@ -123,7 +123,7 @@ def test_empty_classifier_dumps_false_negative_witness_artifacts(tmp_path: Path)
     assert "p0|fluent|" in atoms.read_text(encoding="utf-8")
 
 
-def test_empty_module_program_execute_dumps_open_state_artifacts(tmp_path: Path) -> None:
+def test_empty_module_program_execute_dumps_cycle_artifacts(tmp_path: Path) -> None:
     domain_file = tmp_path / "domain.pddl"
     problem_file = tmp_path / "problem.pddl"
     domain_file.write_text(
@@ -166,14 +166,18 @@ def test_empty_module_program_execute_dumps_open_state_artifacts(tmp_path: Path)
     dumped = dump_result(result, tmp_path / "ext_execute", formats=(DumpFormat.PSV, DumpFormat.JSON))
 
     output_dir = dumped.output_dir
-    witness = output_dir / "failures" / "open_state-001" / "witness.psv"
-    plan_trace = output_dir / "failures" / "open_state-001" / "plan_trace.psv"
+    witness = output_dir / "failures" / "cycle-001" / "witness.psv"
+    trace = output_dir / "failures" / "cycle-001" / "trace.psv"
+    successors = output_dir / "failures" / "cycle-001" / "successors.psv"
 
     assert result.status.value == "failure"
     assert witness.is_file()
-    assert plan_trace.is_file()
-    assert "state|module|memory|flags" in witness.read_text(encoding="utf-8")
-    assert "[facts]" in plan_trace.read_text(encoding="utf-8")
+    assert trace.is_file()
+    assert successors.is_file()
+    witness_text = witness.read_text(encoding="utf-8")
+    assert "@category cycle" in witness_text
+    assert "[states]" in witness_text
+    assert "[transitions]" in trace.read_text(encoding="utf-8")
 
 
 def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) -> None:
@@ -285,9 +289,10 @@ s8666|OPEN,WITNESS,CYCLE
         1,
     )
 
-    refresh_execute_fingerprint_from_manifest(result, manifest_path)
+    refreshed = execute_observation_from_manifest(result, manifest_path)
 
-    assert result.observation.fingerprint == FailureFingerprint(
+    assert result.observation.fingerprint is None
+    assert refreshed.fingerprint == FailureFingerprint(
         kind=ValidationKind.BASE_EXECUTE,
         status=ValidationStatus.FAILURE,
         problem_file="p03.pddl",
@@ -357,15 +362,35 @@ s339|p0
         1,
     )
 
-    refresh_execute_fingerprint_from_manifest(result, manifest_path)
+    refreshed = execute_observation_from_manifest(result, manifest_path)
 
-    assert result.observation.fingerprint == FailureFingerprint(
+    assert result.observation.fingerprint == original
+    assert refreshed.fingerprint == FailureFingerprint(
         kind=ValidationKind.BASE_EXECUTE,
         status=ValidationStatus.FAILURE,
         problem_file="p01.pddl",
         category="deadend",
         witness=("s339",),
     )
+
+
+def test_dump_result_reports_reserved_rich_output_dir(tmp_path: Path) -> None:
+    domain_file = tmp_path / "domain.pddl"
+    domain_file.write_text("""(define (domain seq)
+  (:requirements :strips)
+  (:predicates (a))
+  (:action setA :parameters () :precondition () :effect (a)))
+""", encoding="utf-8")
+    domain = create_domain_context(domain_file)
+    program = create_module_program(domain, None)
+    first = dump_result(prove_termination(domain, program), tmp_path / "termination", formats=(DumpFormat.PSV,))
+    second = dump_result(prove_termination(domain, program), tmp_path / "termination", formats=(DumpFormat.PSV,))
+
+    assert first.output_dir == (tmp_path / "termination").resolve()
+    assert second.output_dir == (tmp_path / "termination" / "run-002").resolve()
+    assert (second.output_dir / "run.json").is_file()
+    assert (second.output_dir / "result.json").is_file()
+    assert (second.output_dir / "summary.psv").is_file()
 
 
 def test_validation_history_keeps_typed_observations_until_dump(tmp_path: Path) -> None:
@@ -524,7 +549,7 @@ def test_write_empty_policy_uses_canonical_runir_text(tmp_path: Path) -> None:
     policy = public.write_empty_policy(domain, policy_path)
     reparsed = public.create_policy(domain, policy_path)
 
-    assert policy.source is CandidateSource.EMPTY
+    assert policy.source is CandidateSource.FILE
     assert policy.source_file == policy_path.resolve()
     assert policy_path.read_text(encoding="utf-8") == str(policy.value).rstrip() + "\n"
     assert str(reparsed.value) == str(policy.value)

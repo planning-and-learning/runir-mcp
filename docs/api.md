@@ -64,9 +64,9 @@ Pass `None` for an empty candidate. Use `write_empty_policy(domain, path)` when 
 ## Validation
 
 - `execute_policy(task, policy, classifier=None, ...)`
-- `prove_policy(task, policy, classifier=None, ...)`
+- `prove_policy(task, policy, evidence_classifier=None, ...)`
 - `execute_module_program(task, module_program, classifier=None, ...)`
-- `prove_module_program(task, module_program, classifier=None, ...)`
+- `prove_module_program(task, module_program, evidence_classifier=None, ...)`
 - `prove_classifier(task, classifier, ...)`
 
 Every result includes `kind`, `status`, candidate, `observation`, optional `FailureFingerprint`, and validation-specific payload such as failure, proof, or classifier counts.

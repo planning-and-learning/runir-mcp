@@ -56,3 +56,17 @@ def test_primary_carries_category_and_status(tmp_path: Path) -> None:
         _primary(_envelope(tmp_path, "ce", status=RunStatus.FAILURE))["category"]
         == "counterexample"
     )
+
+
+def test_run_json_can_be_written_in_reserved_output_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "run"
+    _envelope(tmp_path, "run")
+
+    envelope = _envelope(tmp_path, "run")
+    actual_output_dir = Path(cast(str, envelope["output_dir"]))
+    run_json = actual_output_dir / "run.json"
+    run_json.write_text("{}\n", encoding="utf-8")
+
+    assert actual_output_dir == output_dir / "run-002"
+    assert run_json.is_file()
+    assert not (output_dir / "run.json").exists()

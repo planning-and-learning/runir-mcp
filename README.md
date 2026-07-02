@@ -40,9 +40,9 @@ Context/candidates:
 Validation:
 
 - `execute_policy(task_context, policy, classifier=None, ...)`
-- `prove_policy(task_context, policy, classifier=None, ...)`
+- `prove_policy(task_context, policy, evidence_classifier=None, ...)`
 - `execute_module_program(task_context, module_program, classifier=None, ...)`
-- `prove_module_program(task_context, module_program, classifier=None, ...)`
+- `prove_module_program(task_context, module_program, evidence_classifier=None, ...)`
 - `prove_classifier(task_context, classifier, ...)`
 
 Dumping:

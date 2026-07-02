@@ -95,7 +95,6 @@ class PSVRenderer(Renderer):
         return text
 
     @override
-    @override
     def table(self, table: Table) -> str:
         columns = [self.cell(column) for column in table.columns]
         rows = [[self.cell(value) for value in row] for row in table.rows]

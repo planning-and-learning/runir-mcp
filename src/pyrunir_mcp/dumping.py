@@ -25,6 +25,7 @@ from pyrunir_mcp.kr.ps.ext.rules import (
 )
 from pyrunir_mcp.kr.ps.execute import RolloutFallbackResult, Task, run_execute
 from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key, state_atom_evidence, state_evidence
+from pyrunir_mcp.kr.ps.classifier import classifier_evidence
 from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander, make_frontier_expander
 from pyrunir_mcp.kr.uns.serialize import feature_symbols as classifier_feature_symbols
 from pyrunir_mcp.kr.ps.plan_trace import plan_open_state_trace
@@ -68,6 +69,12 @@ class DumpFormat(StrEnum):
 class DumpResult:
     output_dir: Path
     files: tuple[Path, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RichDumpResult:
+    output_dir: Path
+    primary_file: Path
 
 
 def _format_value(fmt: DumpFormat) -> Fmt:
@@ -173,14 +180,17 @@ def _result_context_json(result: ValidationResult) -> JsonObject:
     return {"id": result.context.id, "index": result.context.index}
 
 
-def _result_json(result: ValidationResult) -> JsonObject:
+def _result_json(
+    result: ValidationResult, *, observation: ValidationObservation | None = None
+) -> JsonObject:
+    observation = result.observation if observation is None else observation
     base: JsonObject = {
         "id": result.id,
         "kind": result.kind.value,
         "status": result.status.value,
         "context": _result_context_json(result),
         "candidate": _candidate_json(result.candidate),
-        "observation": _observation_json(result.observation),
+        "observation": _observation_json(observation),
     }
     if isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult, ProvePolicyResult, ProveModuleProgramResult)):
         base["search_budget"] = _budget_json(result.search_budget)
@@ -239,6 +249,21 @@ def _populate_feature_dictionary(dicts: Dictionaries, features: Sequence[Feature
     return dicts.feature_symbols()
 
 
+def _proofs_by_seed(
+    result: ExecutePolicyResult | ExecuteModuleProgramResult,
+) -> dict[int, ProofResult]:
+    proofs_by_seed = {seed: proof for seed, proof in result.successful_results}
+    proofs_by_seed.update((seed, failure.result) for seed, failure in result.failure_results)
+    if result.failure is not None and not result.failure_results:
+        proofs_by_seed.setdefault(0, result.failure.result)
+    return proofs_by_seed
+
+
+def _output_dir_from_envelope(envelope: JsonObject, fallback: Path) -> Path:
+    output_dir = envelope.get("output_dir")
+    return Path(output_dir).resolve() if isinstance(output_dir, str) else fallback
+
+
 def _execute_policy_rollout_fallback(result: ExecutePolicyResult, features: list[Feature]):
     classifier = result.classifier
     if classifier is None:
@@ -268,20 +293,20 @@ def _execute_policy_rollout_fallback(result: ExecutePolicyResult, features: list
 
 def _dump_execute_policy_artifacts(
     result: ExecutePolicyResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> Path | None:
+) -> RichDumpResult | None:
     if not formats:
         return None
     features = collect_base_features(result.candidate.value)
     dicts = Dictionaries(ext=False)
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_base_rules(result.candidate.value, dicts)
-    evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
+    evidence = classifier_evidence(
+        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        result.classifier.value if result.classifier is not None else None,
+    )
     _populate_state_atoms(dicts, result.context.base_task.search_context.state_repository.get_initial_state())
     task = result.context.base_task
-    proofs_by_seed = {seed: proof for seed, proof in result.successful_results}
-    proofs_by_seed.update((seed, failure.result) for seed, failure in result.failure_results)
-    if result.failure is not None and not result.failure_results:
-        proofs_by_seed.setdefault(0, result.failure.result)
+    proofs_by_seed = _proofs_by_seed(result)
     if not proofs_by_seed:
         return None
 
@@ -321,25 +346,25 @@ def _dump_execute_policy_artifacts(
         formats=formats,
     )
     manifest = output_path / "manifest.json"
-    return manifest if manifest.exists() else None
+    return RichDumpResult(output_dir=output_path, primary_file=manifest) if manifest.exists() else None
 
 
 def _dump_execute_module_program_artifacts(
     result: ExecuteModuleProgramResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> Path | None:
+) -> RichDumpResult | None:
     if not formats:
         return None
     features = collect_ext_features(result.candidate.value)
     dicts = Dictionaries(ext=True)
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_ext_rules(result.candidate.value, dicts)
-    evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
+    evidence = classifier_evidence(
+        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        result.classifier.value if result.classifier is not None else None,
+    )
     _populate_state_atoms(dicts, result.context.ext_task.search_context.state_repository.get_initial_state())
     task = result.context.ext_task
-    proofs_by_seed = {seed: proof for seed, proof in result.successful_results}
-    proofs_by_seed.update((seed, failure.result) for seed, failure in result.failure_results)
-    if result.failure is not None and not result.failure_results:
-        proofs_by_seed.setdefault(0, result.failure.result)
+    proofs_by_seed = _proofs_by_seed(result)
     if not proofs_by_seed:
         return None
 
@@ -374,19 +399,22 @@ def _dump_execute_module_program_artifacts(
         formats=formats,
     )
     manifest = output_path / "manifest.json"
-    return manifest if manifest.exists() else None
+    return RichDumpResult(output_dir=output_path, primary_file=manifest) if manifest.exists() else None
 
 
 def _dump_prove_policy_artifacts(
     result: ProvePolicyResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> Path | None:
+) -> RichDumpResult | None:
     if not formats:
         return None
     features = collect_base_features(result.candidate.value)
     dicts = Dictionaries(ext=False)
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_base_rules(result.candidate.value, dicts)
-    evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
+    evidence = classifier_evidence(
+        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        result.evidence_classifier.value if result.evidence_classifier is not None else None,
+    )
     _populate_state_atoms(dicts, result.context.base_task.search_context.state_repository.get_initial_state())
     envelope: JsonObject = build_proof_run(
         tool=result.kind.value,
@@ -411,21 +439,25 @@ def _dump_prove_policy_artifacts(
         include_hstar=False,
         include_hlmcut=False,
     )
-    path = output_path / "run.json"
+    output_dir = _output_dir_from_envelope(envelope, output_path)
+    path = output_dir / "run.json"
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return path
+    return RichDumpResult(output_dir=output_dir, primary_file=path)
 
 
 def _dump_prove_module_program_artifacts(
     result: ProveModuleProgramResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> Path | None:
+) -> RichDumpResult | None:
     if not formats:
         return None
     features = collect_ext_features(result.candidate.value)
     dicts = Dictionaries(ext=True)
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_ext_rules(result.candidate.value, dicts)
-    evidence = state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False)
+    evidence = classifier_evidence(
+        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        result.evidence_classifier.value if result.evidence_classifier is not None else None,
+    )
     _populate_state_atoms(dicts, result.context.ext_task.search_context.state_repository.get_initial_state())
     envelope: JsonObject = build_proof_run(
         tool=result.kind.value,
@@ -450,16 +482,17 @@ def _dump_prove_module_program_artifacts(
         include_hstar=False,
         include_hlmcut=False,
     )
-    path = output_path / "run.json"
+    output_dir = _output_dir_from_envelope(envelope, output_path)
+    path = output_dir / "run.json"
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return path
+    return RichDumpResult(output_dir=output_dir, primary_file=path)
 
 
 
 
 def _dump_prove_classifier_artifacts(
     result: ProveClassifierResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> Path | None:
+) -> RichDumpResult | None:
     if not formats or not result.mistakes:
         return None
     dicts = Dictionaries(ext=False)
@@ -515,9 +548,10 @@ def _dump_prove_classifier_artifacts(
         category=RunCategory.COUNTEREXAMPLE,
         formats=formats,
     )
-    path = output_path / "run.json"
+    output_dir = _output_dir_from_envelope(envelope, output_path)
+    path = output_dir / "run.json"
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return path
+    return RichDumpResult(output_dir=output_dir, primary_file=path)
 
 
 def _json_int(value: object, default: int) -> int:
@@ -577,7 +611,7 @@ def _termination_vertices_edges(
 
 def _dump_prove_termination_artifacts(
     result: ProveTerminationResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> Path | None:
+) -> RichDumpResult | None:
     if not formats:
         return None
     dicts = TerminationDictionaries()
@@ -634,12 +668,13 @@ def _dump_prove_termination_artifacts(
         category=RunCategory.SUCCESS if result.status.value == RunStatus.SUCCESS.value else RunCategory.COUNTEREXAMPLE,
         formats=formats,
     )
-    path = output_path / "run.json"
+    output_dir = _output_dir_from_envelope(envelope, output_path)
+    path = output_dir / "run.json"
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return path
+    return RichDumpResult(output_dir=output_dir, primary_file=path)
 
 
-def _dump_rich_artifacts(result: ValidationResult, output_path: Path, formats: tuple[Fmt, ...]) -> Path | None:
+def _dump_rich_artifacts(result: ValidationResult, output_path: Path, formats: tuple[Fmt, ...]) -> RichDumpResult | None:
     if isinstance(result, ExecutePolicyResult):
         return _dump_execute_policy_artifacts(result, output_path, formats)
     if isinstance(result, ExecuteModuleProgramResult):
@@ -737,22 +772,24 @@ def _witness_info_from_file(path: Path) -> tuple[str | None, tuple[str, ...]]:
     return None, tuple(ids)
 
 
-def refresh_execute_fingerprint_from_manifest(result: ValidationResult, manifest_path: Path | None) -> None:
+def execute_observation_from_manifest(
+    result: ValidationResult, manifest_path: Path | None
+) -> ValidationObservation:
     if not isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult)):
-        return
+        return result.observation
     if manifest_path is None or not manifest_path.exists():
-        return
+        return result.observation
     manifest = cast(JsonObject, json.loads(manifest_path.read_text(encoding="utf-8")))
     failures = manifest.get("distinct_failures")
     if not isinstance(failures, list) or not failures:
-        return
+        return result.observation
     failure = failures[0]
     if not isinstance(failure, dict):
-        return
+        return result.observation
     category = failure.get("failure_category")
     problem_file = failure.get("problem_file")
     if not isinstance(category, str):
-        return
+        return result.observation
     witness_ids: tuple[str, ...] = ()
     witness_path = failure.get("witness_path")
     if isinstance(witness_path, str):
@@ -768,11 +805,7 @@ def refresh_execute_fingerprint_from_manifest(result: ValidationResult, manifest
         category=category,
         witness=witness_ids,
     )
-    object.__setattr__(
-        result,
-        "observation",
-        replace(result.observation, fingerprint=fingerprint),
-    )
+    return replace(result.observation, fingerprint=fingerprint)
 
 
 def dump_result(
@@ -786,18 +819,21 @@ def dump_result(
     files: list[Path] = []
 
     rich_formats = _render_formats(formats)
-    rich_path = _dump_rich_artifacts(result, output_path, rich_formats)
-    if rich_path:
-        files.append(rich_path)
-    refresh_execute_fingerprint_from_manifest(result, rich_path)
+    rich_dump = _dump_rich_artifacts(result, output_path, rich_formats)
+    actual_output_dir = rich_dump.output_dir if rich_dump is not None else output_path
+    if rich_dump is not None:
+        files.append(rich_dump.primary_file)
+    observation = execute_observation_from_manifest(
+        result, rich_dump.primary_file if rich_dump is not None else None
+    )
 
     # Always keep the compact machine-readable sidecar; callers use it for state/history plumbing.
-    path = output_path / "result.json"
+    path = actual_output_dir / "result.json"
     path.write_text(
-        json.dumps(_result_json(result), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(_result_json(result, observation=observation), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     files.append(path)
-    return DumpResult(output_dir=output_path, files=tuple(files))
+    return DumpResult(output_dir=actual_output_dir, files=tuple(files))
 
 
 def dump_validation_history(

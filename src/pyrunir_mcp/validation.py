@@ -20,6 +20,7 @@ from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtDLRepositoryFac
 from pyrunir.kr.dl.uns import ConstructorRepositoryFactory as UnsDLRepositoryFactory
 from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
 from pyrunir.kr.ps.base import (
+    GroundSketchProofResults,
     GroundSketchSearchOptions,
     find_ground_solution as find_base_solution,
     prove_ground_solution as prove_base_solution,
@@ -27,6 +28,7 @@ from pyrunir.kr.ps.base import (
 from pyrunir.kr.ps.base import RepositoryFactory as BasePolicyRepositoryFactory
 from pyrunir.kr.ps.base.dl import SketchFactory, parse_sketch
 from pyrunir.kr.ps.ext import (
+    GroundModuleProgramProofResults,
     GroundModuleProgramSearchOptions,
     ModuleProgramStructuralTerminationResult,
     StructuralTerminationStatus,
@@ -51,6 +53,14 @@ from pytyr.planning.lifted import (
 from pyrunir_mcp.candidates import Candidate, CandidateSource, Classifier, ModuleProgram, Policy
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.context import DomainContext, TaskContext
+from pyrunir_mcp.defaults import (
+    CLASSIFIER_MISTAKE_LIMIT,
+    CLASSIFIER_PROOF_BUDGET,
+    EXECUTE_SEARCH_BUDGET,
+    PLAN_TRACE_BUDGET,
+    PROVE_SEARCH_BUDGET,
+    SearchBudget,
+)
 from pyrunir_mcp.kr.ps.base.core.data_loader import (
     LoadedLiftedSearchContext as BaseLoadedLiftedSearchContext,
 )
@@ -68,15 +78,18 @@ from pyrunir_mcp.kr.ps.ext.core.features import (
     ExecutionFailure as ExtExecutionFailure,
     ModuleProgramContext,
 )
-from pyrunir_mcp.kr.ps.classifier import ClassifierContext
-from pyrunir_mcp.kr.ps.feature_evidence import AtomEvidence, state_atom_evidence
+from pyrunir_mcp.kr.ps.classifier import ClassifierContext, classifier_evidence
+from pyrunir_mcp.kr.ps.feature_evidence import AtomEvidence, state_atom_evidence, state_evidence
 from pyrunir_mcp.kr.ps.status import is_success_status
+from pyrunir_mcp.kr.ps.base.core.features import collect_features as collect_base_policy_features
+from pyrunir_mcp.kr.ps.ext.rules import collect_features as collect_ext_program_features
 from pyrunir_mcp.kr.uns.serialize import feature_values as classifier_feature_values
 from pyrunir_mcp.kr.ps.proof import (
     CounterexampleKind,
     FailureWitness,
     ProofResult,
     ProofStatus,
+    StateEvidence,
     failure_items,
     is_goal_open_state_result,
     make_search_options,
@@ -173,17 +186,6 @@ class ValidationObservation:
 ExecutionFailure: TypeAlias = BaseExecutionFailure | ExtExecutionFailure
 
 
-@dataclass(frozen=True, slots=True)
-class SearchBudget:
-    max_num_states: int | None
-    max_time_seconds: float | None
-
-
-PLAN_TRACE_BUDGET = SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0)
-CLASSIFIER_MISTAKE_LIMIT = 5
-CLASSIFIER_PROOF_BUDGET = SearchBudget(max_num_states=1_000_000, max_time_seconds=None)
-
-
 def _required_budget_values(budget: SearchBudget, *, name: str) -> tuple[int, float]:
     if budget.max_num_states is None or budget.max_time_seconds is None:
         raise ValueError(f"{name} requires max_num_states and max_time_seconds")
@@ -203,7 +205,7 @@ class ExecutePolicyResult:
     successful_results: tuple[tuple[int, ProofResult], ...]
     num_rollouts: int
     failure_results: tuple[tuple[int, BaseExecutionFailure], ...] = ()
-    search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None)
+    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
 
@@ -220,7 +222,7 @@ class ExecuteModuleProgramResult:
     successful_results: tuple[tuple[int, ProofResult], ...]
     num_rollouts: int
     failure_results: tuple[tuple[int, ExtExecutionFailure], ...] = ()
-    search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None)
+    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
 
@@ -232,8 +234,9 @@ class ProvePolicyResult:
     context: TaskContext
     candidate: Policy
     observation: ValidationObservation
+    evidence_classifier: Classifier | None
     proof: ProofResult
-    search_budget: SearchBudget = SearchBudget(max_num_states=100_000, max_time_seconds=5.0)
+    search_budget: SearchBudget = PROVE_SEARCH_BUDGET
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
 
@@ -245,8 +248,9 @@ class ProveModuleProgramResult:
     context: TaskContext
     candidate: ModuleProgram
     observation: ValidationObservation
+    evidence_classifier: Classifier | None
     proof: ProofResult
-    search_budget: SearchBudget = SearchBudget(max_num_states=100_000, max_time_seconds=5.0)
+    search_budget: SearchBudget = PROVE_SEARCH_BUDGET
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
 
 
@@ -385,7 +389,7 @@ def write_empty_policy(domain_context: DomainContext, policy_file: str | Path) -
     return Policy(
         id=policy.id,
         value=policy.value,
-        source=CandidateSource.EMPTY,
+        source=CandidateSource.FILE,
         source_file=path,
     )
 
@@ -417,7 +421,7 @@ def create_module_program(
         id=f"module_program_{index:06d}",
         value=parse_module_program(
             text.lstrip(),
-            domain_context.base_policy_context.planning_domain,
+            domain_context.module_program_context.planning_domain,
             domain_context.module_program_context.policy_repository,
         ),
         source=source,
@@ -442,8 +446,8 @@ def create_classifier(
     return Classifier(
         id=f"classifier_{index:06d}",
         value=parse_classifier(
-            path.read_text(encoding="utf-8"),
-            domain_context.base_policy_context.planning_domain,
+            path.read_text(encoding="utf-8").lstrip(),
+            domain_context.classifier_context.planning_domain,
             domain_context.classifier_context.classifier_repository,
         ),
         source=CandidateSource.FILE,
@@ -566,6 +570,7 @@ def _proof_fingerprint(
     status: ValidationStatus,
     problem_file: str | None,
     proof: ProofResult,
+    evidence: StateEvidence | None = None,
 ) -> FailureFingerprint | None:
     if status is ValidationStatus.SUCCESS:
         return None
@@ -573,6 +578,7 @@ def _proof_fingerprint(
         proof,
         max_open_state_counterexamples=1,
         max_deadend_transition_counterexamples=1,
+        evidence=evidence,
     )
     if items:
         category, witness = items[0]
@@ -596,6 +602,7 @@ def _execute_fingerprint(
     kind: ValidationKind,
     status: ValidationStatus,
     failure: ExecutionFailure | None,
+    evidence: StateEvidence | None = None,
 ) -> FailureFingerprint | None:
     if failure is None or status is ValidationStatus.SUCCESS:
         return None
@@ -604,6 +611,7 @@ def _execute_fingerprint(
         status=status,
         problem_file=failure.task.problem_path.name,
         proof=failure.result,
+        evidence=evidence,
     )
 
 
@@ -647,6 +655,28 @@ def _classifier_details(
     )
 
 
+def _base_classifier_evidence(policy: Policy, classifier: Classifier | None) -> StateEvidence | None:
+    if classifier is None:
+        return None
+    features = collect_base_policy_features(policy.value)
+    return classifier_evidence(
+        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        classifier.value,
+    )
+
+
+def _ext_classifier_evidence(
+    module_program: ModuleProgram, classifier: Classifier | None
+) -> StateEvidence | None:
+    if classifier is None:
+        return None
+    features = collect_ext_program_features(module_program.value)
+    return classifier_evidence(
+        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        classifier.value,
+    )
+
+
 def _validation_observation(
     *,
     result_id: str,
@@ -678,11 +708,11 @@ def execute_policy(
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
     max_arity: int = 0,
-    search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None),
+    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
 ) -> ExecutePolicyResult:
-    first_failure = None
-    successful_results: list[tuple[int, ProofResult]] = []
+    first_failure: BaseExecutionFailure | None = None
+    successful_results: list[tuple[int, GroundSketchProofResults]] = []
     failure_results: list[tuple[int, BaseExecutionFailure]] = []
     for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
         proof = find_base_solution(
@@ -715,7 +745,10 @@ def execute_policy(
         classifier=classifier,
         details=details,
         fingerprint=_execute_fingerprint(
-            kind=ValidationKind.BASE_EXECUTE, status=status, failure=first_failure
+            kind=ValidationKind.BASE_EXECUTE,
+            status=status,
+            failure=first_failure,
+            evidence=_base_classifier_evidence(policy, classifier),
         ),
     )
     return ExecutePolicyResult(
@@ -745,11 +778,11 @@ def execute_module_program(
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
     max_arity: int = 0,
-    search_budget: SearchBudget = SearchBudget(max_num_states=None, max_time_seconds=None),
+    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
 ) -> ExecuteModuleProgramResult:
-    first_failure = None
-    successful_results: list[tuple[int, ProofResult]] = []
+    first_failure: ExtExecutionFailure | None = None
+    successful_results: list[tuple[int, GroundModuleProgramProofResults]] = []
     failure_results: list[tuple[int, ExtExecutionFailure]] = []
     for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
         proof = find_ext_solution(
@@ -782,7 +815,10 @@ def execute_module_program(
         classifier=classifier,
         details=details,
         fingerprint=_execute_fingerprint(
-            kind=ValidationKind.EXT_EXECUTE, status=status, failure=first_failure
+            kind=ValidationKind.EXT_EXECUTE,
+            status=status,
+            failure=first_failure,
+            evidence=_ext_classifier_evidence(module_program, classifier),
         ),
     )
     return ExecuteModuleProgramResult(
@@ -806,8 +842,8 @@ def prove_policy(
     context: TaskContext,
     policy: Policy,
     *,
-    classifier: Classifier | None = None,
-    search_budget: SearchBudget = SearchBudget(max_num_states=100_000, max_time_seconds=5.0),
+    evidence_classifier: Classifier | None = None,
+    search_budget: SearchBudget = PROVE_SEARCH_BUDGET,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
 ) -> ProvePolicyResult:
     max_num_states, max_time_seconds = _required_budget_values(
@@ -825,13 +861,14 @@ def prove_policy(
         kind=ValidationKind.BASE_PROVE,
         status=status,
         candidate=policy,
-        classifier=classifier,
+        classifier=evidence_classifier,
         details=_proof_details(proof),
         fingerprint=_proof_fingerprint(
             kind=ValidationKind.BASE_PROVE,
             status=status,
             problem_file=context.problem_file.name,
             proof=proof,
+            evidence=_base_classifier_evidence(policy, evidence_classifier),
         ),
     )
     return ProvePolicyResult(
@@ -841,6 +878,7 @@ def prove_policy(
         context,
         policy,
         observation,
+        evidence_classifier,
         proof,
         search_budget,
         plan_trace_budget,
@@ -851,8 +889,8 @@ def prove_module_program(
     context: TaskContext,
     module_program: ModuleProgram,
     *,
-    classifier: Classifier | None = None,
-    search_budget: SearchBudget = SearchBudget(max_num_states=100_000, max_time_seconds=5.0),
+    evidence_classifier: Classifier | None = None,
+    search_budget: SearchBudget = PROVE_SEARCH_BUDGET,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
     max_arity: int = 0,
 ) -> ProveModuleProgramResult:
@@ -871,13 +909,14 @@ def prove_module_program(
         kind=ValidationKind.EXT_PROVE,
         status=status,
         candidate=module_program,
-        classifier=classifier,
+        classifier=evidence_classifier,
         details=_proof_details(proof),
         fingerprint=_proof_fingerprint(
             kind=ValidationKind.EXT_PROVE,
             status=status,
             problem_file=context.problem_file.name,
             proof=proof,
+            evidence=_ext_classifier_evidence(module_program, evidence_classifier),
         ),
     )
     return ProveModuleProgramResult(
@@ -887,6 +926,7 @@ def prove_module_program(
         context,
         module_program,
         observation,
+        evidence_classifier,
         proof,
         search_budget,
         plan_trace_budget,
