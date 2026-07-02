@@ -13,6 +13,7 @@ from pyrunir_mcp.callsite import (
     prove_classifier,
     prove_module_program,
     prove_policy,
+    prove_termination,
     write_empty_policy,
 )
 from pyrunir_mcp.candidates import Candidate, CandidateSource, Classifier, ModuleProgram, Policy
@@ -31,6 +32,7 @@ from pyrunir_mcp.validation import (
     ProveClassifierResult,
     ProveModuleProgramResult,
     ProvePolicyResult,
+    ProveTerminationResult,
     SearchBudget,
     ValidationKind,
     ValidationObservation,
@@ -62,6 +64,7 @@ __all__ = [
     "ProveClassifierResult",
     "ProveModuleProgramResult",
     "ProvePolicyResult",
+    "ProveTerminationResult",
     "SearchBudget",
     "TaskContext",
     "ValidationHistory",
@@ -81,5 +84,6 @@ __all__ = [
     "prove_classifier",
     "prove_module_program",
     "prove_policy",
+    "prove_termination",
     "write_empty_policy",
 ]

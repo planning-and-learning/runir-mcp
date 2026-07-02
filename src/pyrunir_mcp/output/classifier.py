@@ -26,6 +26,7 @@ class ClassifierRow:
     state: int
     features: dict[str, JsonValue] = field(default_factory=_json_dict)
     fluent: tuple[str, ...] = ()
+    derived: tuple[str, ...] = ()
 
 
 def classifier_witness(
@@ -36,7 +37,11 @@ def classifier_witness(
 ) -> Document:
     """The single misclassified state as a `[state]` + `[facts]` witness document (boolean features)."""
     state = WitnessState(
-        state=row.state, features=row.features, fluent=row.fluent, flags=(Flag.WITNESS,)
+        state=row.state,
+        features=row.features,
+        fluent=row.fluent,
+        derived=row.derived,
+        flags=(Flag.WITNESS,),
     )
     return counterexample_document(
         header=header,

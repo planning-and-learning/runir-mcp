@@ -47,8 +47,8 @@ class Dictionary:
     def ordered_keys(self) -> list[Hashable]:
         return list(self._keys)
 
-    def table(self, name: str) -> Table | None:
-        if not self._rows:
+    def table(self, name: str, *, include_empty: bool = False) -> Table | None:
+        if not self._rows and not include_empty:
             return None
         return Table(
             name=name, columns=["id", *self._columns], rows=[list(row) for row in self._rows]

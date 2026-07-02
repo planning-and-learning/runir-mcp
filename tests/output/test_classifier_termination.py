@@ -24,8 +24,12 @@ from pyrunir_mcp.tables import render_document
 def test_classifier_witness_document():
     dicts = Dictionaries()
     row = ClassifierRow(
-        "false_negative-001", RunItemCategory.FALSE_NEGATIVE, 57,
-        {"b_holding_target": True, "b_at_goal": False}, fluent=("at(robot roomA)", "holding(ball1)"),
+        "false_negative-001",
+        RunItemCategory.FALSE_NEGATIVE,
+        57,
+        {"b_holding_target": True, "b_at_goal": False},
+        fluent=("at(robot roomA)", "holding(ball1)"),
+        derived=("reachable(robot roomA)",),
     )
     doc = classifier_witness(
         row, ["b_holding_target", "b_at_goal"], dicts,
@@ -33,7 +37,7 @@ def test_classifier_witness_document():
     )
     psv = render_document(doc, "psv")
     assert "[state]\nid|flags|f0|f1\ns57|WITNESS|T|F" in psv
-    assert "[facts]\nstate|atoms\ns57|p0,p1" in psv
+    assert "[facts]\nstate|atoms\ns57|p0,p1,p2" in psv
 
 
 def test_termination_cycle_document():

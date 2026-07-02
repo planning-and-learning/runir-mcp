@@ -70,7 +70,12 @@ class TerminationDictionaries:
 
     def tables(self) -> dict[str, Table]:
         named = {"variables": self.variables, "memory": self.memories, "rules": self.rules}
-        return {name: table for name, d in named.items() if (table := d.table(name)) is not None}
+        tables: dict[str, Table] = {}
+        for name, dictionary in named.items():
+            table = dictionary.table(name, include_empty=True)
+            assert table is not None
+            tables[name] = table
+        return tables
 
 
 def _ordered_variables(vertex: TerminationVertex) -> list[tuple[VariableKind, str]]:

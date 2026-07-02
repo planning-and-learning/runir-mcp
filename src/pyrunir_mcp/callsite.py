@@ -12,6 +12,7 @@ from pyrunir_mcp.validation import (
     ProveClassifierResult,
     ProveModuleProgramResult,
     ProvePolicyResult,
+    ProveTerminationResult,
     SearchBudget,
     ValidationResult,
 )
@@ -151,15 +152,22 @@ def prove_classifier(
     context: TaskContext,
     classifier: Classifier,
     *,
-    max_num_states: int = 1_000_000,
-    max_time_seconds: float = 1_000_000_000.0,
+    search_budget: SearchBudget = _validation.CLASSIFIER_PROOF_BUDGET,
+    max_mistakes_per_category: int = _validation.CLASSIFIER_MISTAKE_LIMIT,
 ) -> ProveClassifierResult:
     return _validation.prove_classifier(
         context,
         classifier,
-        max_num_states=max_num_states,
-        max_time_seconds=max_time_seconds,
+        search_budget=search_budget,
+        max_mistakes_per_category=max_mistakes_per_category,
     )
+
+
+def prove_termination(
+    domain_context: DomainContext,
+    module_program: ModuleProgram,
+) -> ProveTerminationResult:
+    return _validation.prove_termination(domain_context, module_program)
 
 
 def dump_result(

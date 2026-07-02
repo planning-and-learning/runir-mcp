@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal, cast
 
@@ -15,6 +15,10 @@ from pyrunir_mcp.kr.ps.base.core.features import (
     intern_rules as intern_base_rules,
 )
 from pyrunir_mcp.kr.ps.base.rollout import rollout_artifacts
+from pyrunir_mcp.kr.ps.ext.termination.serialize import (
+    TerminationCounterexample,
+    counterexample_to_data,
+)
 from pyrunir_mcp.kr.ps.ext.rules import (
     collect_features as collect_ext_features,
     intern_rules as intern_ext_rules,
@@ -22,11 +26,20 @@ from pyrunir_mcp.kr.ps.ext.rules import (
 from pyrunir_mcp.kr.ps.execute import RolloutFallbackResult, Task, run_execute
 from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key, state_atom_evidence, state_evidence
 from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander, make_frontier_expander
+from pyrunir_mcp.kr.uns.serialize import feature_symbols as classifier_feature_symbols
 from pyrunir_mcp.kr.ps.plan_trace import plan_open_state_trace
 from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, build_proof_run
 from pytyr.planning.ground import State as GroundState
+from pyrunir_mcp.output.classifier import ClassifierRow, classifier_witness
 from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
-from pyrunir_mcp.output.writer import Fmt
+from pyrunir_mcp.output.run import RunCategory, RunItem, RunItemCategory, RunStatus, build_run_envelope
+from pyrunir_mcp.output.termination import (
+    TerminationDictionaries,
+    TerminationEdge,
+    TerminationVertex,
+    counterexample_document as termination_counterexample_document,
+)
+from pyrunir_mcp.output.writer import Artifact, Fmt
 from pyrunir_mcp.validation import (
     ClassifierProofCounts,
     FailureFingerprint,
@@ -35,8 +48,10 @@ from pyrunir_mcp.validation import (
     ExecutePolicyResult,
     ObservationDetails,
     ProofObservationDetails,
+    ProveClassifierResult,
     ProveModuleProgramResult,
     ProvePolicyResult,
+    ProveTerminationResult,
     SearchBudget,
     ValidationObservation,
     ValidationResult,
@@ -79,6 +94,8 @@ def _budget_json(budget: SearchBudget) -> JsonObject:
     }
 
 def _observation_details_json(details: ObservationDetails) -> JsonObject:
+    from pyrunir_mcp.validation import TerminationObservationDetails
+
     if isinstance(details, ExecuteObservationDetails):
         return {
             "num_rollouts": details.num_rollouts,
@@ -97,6 +114,12 @@ def _observation_details_json(details: ObservationDetails) -> JsonObject:
                 "status": details.proof_status.name,
                 "successful": details.successful,
             }
+        }
+    if isinstance(details, TerminationObservationDetails):
+        return {
+            "program_status": details.program_status.name,
+            "terminating": details.terminating,
+            "nonterminating_modules": list(details.nonterminating_modules),
         }
     return {
         "counts": _counts_json(details.counts),
@@ -141,18 +164,29 @@ def _candidate_json(candidate: Candidate) -> JsonObject:
     }
 
 
+def _result_context_json(result: ValidationResult) -> JsonObject:
+    if isinstance(result, ProveTerminationResult):
+        return {
+            "id": result.domain_context.id,
+            "domain_file": result.domain_context.domain_file.as_posix(),
+        }
+    return {"id": result.context.id, "index": result.context.index}
+
+
 def _result_json(result: ValidationResult) -> JsonObject:
     base: JsonObject = {
         "id": result.id,
         "kind": result.kind.value,
         "status": result.status.value,
-        "context": {"id": result.context.id, "index": result.context.index},
+        "context": _result_context_json(result),
         "candidate": _candidate_json(result.candidate),
         "observation": _observation_json(result.observation),
     }
     if isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult, ProvePolicyResult, ProveModuleProgramResult)):
         base["search_budget"] = _budget_json(result.search_budget)
         base["plan_trace_budget"] = _budget_json(result.plan_trace_budget)
+    elif isinstance(result, ProveClassifierResult):
+        base["search_budget"] = _budget_json(result.search_budget)
     if isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult)):
         base["num_rollouts"] = result.num_rollouts
         base["failure"] = (
@@ -169,6 +203,12 @@ def _result_json(result: ValidationResult) -> JsonObject:
         base["proof"] = {
             "status": result.proof.status.name,
             "successful": bool(result.proof.is_successful()),
+        }
+    elif isinstance(result, ProveTerminationResult):
+        base["termination"] = {
+            "program_status": result.program_result.status.name,
+            "successful": bool(result.program_result.is_terminating()),
+            "nonterminating_modules": list(result.nonterminating_modules),
         }
     else:
         base["counts"] = _counts_json(result.counts)
@@ -415,6 +455,190 @@ def _dump_prove_module_program_artifacts(
     return path
 
 
+
+
+def _dump_prove_classifier_artifacts(
+    result: ProveClassifierResult, output_path: Path, formats: tuple[Fmt, ...]
+) -> Path | None:
+    if not formats or not result.mistakes:
+        return None
+    dicts = Dictionaries(ext=False)
+    feature_symbols = classifier_feature_symbols(result.candidate.value)
+    for symbol in feature_symbols:
+        dicts.feature(symbol)
+    for kind, atom in result.atoms:
+        dicts.atom(AtomKind(kind), atom)
+
+    artifacts: dict[str, Artifact] = {}
+    items: list[RunItem] = []
+    for mistake in result.mistakes:
+        category = RunItemCategory(mistake.category)
+        fluent = tuple(atom for kind, atom in mistake.atoms if kind == AtomKind.FLUENT.value)
+        derived = tuple(atom for kind, atom in mistake.atoms if kind == AtomKind.DERIVED.value)
+        row = ClassifierRow(
+            id=mistake.id,
+            category=category,
+            state=mistake.state,
+            features=mistake.features,
+            fluent=fluent,
+            derived=derived,
+        )
+        witness_name = f"failures/{mistake.id}/witness"
+        artifacts[witness_name] = classifier_witness(
+            row,
+            feature_symbols,
+            dicts,
+            header=[
+                ("tool", result.kind.value),
+                ("id", mistake.id),
+                ("category", mistake.category),
+                ("task", result.context.problem_file.name),
+            ],
+        )
+        items.append(
+            RunItem(
+                id=mistake.id,
+                category=category,
+                task=result.context.problem_file.name,
+                witness=witness_name,
+            )
+        )
+
+    envelope = build_run_envelope(
+        tool=result.kind.value,
+        status=RunStatus.FAILURE if result.status.value == RunStatus.FAILURE.value else RunStatus.SUCCESS,
+        output_dir=output_path,
+        metadata={**_candidate_source_metadata(result), "counts": _counts_json(result.counts)},
+        dictionary_tables=dicts.tables(),
+        artifacts=artifacts,
+        items=items,
+        category=RunCategory.COUNTEREXAMPLE,
+        formats=formats,
+    )
+    path = output_path / "run.json"
+    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def _json_int(value: object, default: int) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _json_str_dict(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    mapping = cast(Mapping[object, object], value)
+    return {str(key): str(item) for key, item in mapping.items()}
+
+
+def _termination_vertices_edges(
+    counterexample: TerminationCounterexample,
+) -> tuple[list[TerminationVertex], list[TerminationEdge]]:
+    data = counterexample_to_data(counterexample)
+    raw_vertices = data.get("vertices", [])
+    raw_edges = data.get("edges", [])
+    vertices: list[TerminationVertex] = []
+    if isinstance(raw_vertices, list):
+        for raw in raw_vertices:
+            if not isinstance(raw, dict):
+                continue
+            vertices.append(
+                TerminationVertex(
+                    _json_int(raw.get("index"), len(vertices)),
+                    str(raw.get("memory_state", "")),
+                    concepts=_json_str_dict(raw.get("concepts")),
+                    booleans=_json_str_dict(raw.get("booleans")),
+                    numericals=_json_str_dict(raw.get("numericals")),
+                )
+            )
+    edges: list[TerminationEdge] = []
+    if isinstance(raw_edges, list):
+        for raw in raw_edges:
+            if not isinstance(raw, dict):
+                continue
+            edges.append(
+                TerminationEdge(
+                    _json_int(raw.get("index"), len(edges)),
+                    _json_int(raw.get("source"), 0),
+                    _json_int(raw.get("target"), 0),
+                    str(raw.get("rule", "")),
+                    numerical_changes=_json_str_dict(raw.get("numerical_changes")),
+                )
+            )
+    return vertices, edges
+
+
+def _dump_prove_termination_artifacts(
+    result: ProveTerminationResult, output_path: Path, formats: tuple[Fmt, ...]
+) -> Path | None:
+    if not formats:
+        return None
+    dicts = TerminationDictionaries()
+    artifacts: dict[str, Artifact] = {}
+    items: list[RunItem] = []
+    modules = result.candidate.value.get_modules()
+    for index, module_result in enumerate(result.program_result.get_module_results()):
+        if bool(module_result.is_terminating()):
+            continue
+        raw_counterexample = module_result.get_counterexample()
+        if raw_counterexample is None:
+            continue
+        counterexample = cast(TerminationCounterexample, raw_counterexample)
+        module_name = (
+            str(modules[index].get_name())
+            if index < len(modules) and hasattr(modules[index], "get_name")
+            else f"module_{index}"
+        )
+        item_id = f"structural_termination-{len(items) + 1:03d}"
+        vertices, edges = _termination_vertices_edges(counterexample)
+        witness_name = f"failures/{item_id}/witness"
+        artifacts[witness_name] = termination_counterexample_document(
+            header=[
+                ("tool", result.kind.value),
+                ("id", item_id),
+                ("category", "structural_termination"),
+                ("module", module_name),
+            ],
+            vertices=vertices,
+            edges=edges,
+            dicts=dicts,
+        )
+        items.append(
+            RunItem(
+                id=item_id,
+                category=RunItemCategory.STRUCTURAL_TERMINATION,
+                task=module_name,
+                witness=witness_name,
+            )
+        )
+    envelope = build_run_envelope(
+        tool="runir.ps.ext.prove_termination",
+        status=RunStatus.SUCCESS if result.status.value == RunStatus.SUCCESS.value else RunStatus.FAILURE,
+        output_dir=output_path,
+        metadata={
+            **_candidate_source_metadata(result),
+            "program_status": result.program_result.status.name,
+            "nonterminating_modules": list(result.nonterminating_modules),
+        },
+        dictionary_tables=dicts.tables(),
+        artifacts=artifacts,
+        items=items,
+        failure_category=RunItemCategory.STRUCTURAL_TERMINATION if items else None,
+        category=RunCategory.SUCCESS if result.status.value == RunStatus.SUCCESS.value else RunCategory.COUNTEREXAMPLE,
+        formats=formats,
+    )
+    path = output_path / "run.json"
+    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
 def _dump_rich_artifacts(result: ValidationResult, output_path: Path, formats: tuple[Fmt, ...]) -> Path | None:
     if isinstance(result, ExecutePolicyResult):
         return _dump_execute_policy_artifacts(result, output_path, formats)
@@ -424,7 +648,9 @@ def _dump_rich_artifacts(result: ValidationResult, output_path: Path, formats: t
         return _dump_prove_policy_artifacts(result, output_path, formats)
     if isinstance(result, ProveModuleProgramResult):
         return _dump_prove_module_program_artifacts(result, output_path, formats)
-    return None
+    if isinstance(result, ProveClassifierResult):
+        return _dump_prove_classifier_artifacts(result, output_path, formats)
+    return _dump_prove_termination_artifacts(result, output_path, formats)
 
 def _state_id_sort_key(value: str) -> tuple[int, str]:
     suffix = value[1:] if value.startswith("s") else value

@@ -97,8 +97,13 @@ def _witness_vertex(witness: FailureWitness) -> int:
     return int(witness)
 
 
-def _label_is_goal(label: ProofVertexLabel) -> bool:
-    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | GroundStateGraphVertexLabel):
+def _label_is_goal(label: object) -> bool:
+    if isinstance(
+        label,
+        GroundAnnotatedStateGraphVertexLabel
+        | GroundStateGraphVertexLabel
+        | GroundModuleProgramProofVertexLabel,
+    ):
         return bool(getattr(label, "is_goal", False))
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
 
@@ -205,8 +210,13 @@ def _out_edge_indices(graph: ProofGraph, vertex: int) -> list[int]:
     return [int(edge) for edge in graph.get_out_edge_indices(int(vertex))]
 
 
-def _label_is_initial(label: ProofVertexLabel) -> bool:
-    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | GroundStateGraphVertexLabel):
+def _label_is_initial(label: object) -> bool:
+    if isinstance(
+        label,
+        GroundAnnotatedStateGraphVertexLabel
+        | GroundStateGraphVertexLabel
+        | GroundModuleProgramProofVertexLabel,
+    ):
         return bool(getattr(label, "is_initial", False))
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
 
@@ -277,8 +287,13 @@ def _cycle_edges(graph: ProofGraph, vertices: list[int]) -> list[int]:
     return edges
 
 
-def _label_state(label: ProofVertexLabel) -> GroundState:
-    if isinstance(label, GroundAnnotatedStateGraphVertexLabel | GroundStateGraphVertexLabel):
+def _label_state(label: object) -> GroundState:
+    if isinstance(
+        label,
+        GroundAnnotatedStateGraphVertexLabel
+        | GroundStateGraphVertexLabel
+        | GroundModuleProgramProofVertexLabel,
+    ):
         return label.state
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
 

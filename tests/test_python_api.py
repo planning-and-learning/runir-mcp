@@ -20,6 +20,7 @@ from pyrunir_mcp import (
     DumpFormat,
     ExecuteObservationDetails,
     ExecutePolicyResult,
+    SearchBudget,
     TaskContext,
     FailureFingerprint,
     Policy,
@@ -27,7 +28,13 @@ from pyrunir_mcp import (
     ValidationHistory,
     ValidationObservation,
     ValidationStatus,
+    create_domain_context,
+    create_module_program,
+    create_task_context,
+    dump_result,
+    prove_termination,
     dump_validation_history,
+    execute_module_program,
 )
 
 
@@ -60,6 +67,145 @@ def test_ext_cycle_fingerprint_rotates_by_module_memory_state_triple() -> None:
         "M0|m2|s0",
         "M0|m1|s2",
     )
+
+
+def test_empty_classifier_dumps_false_negative_witness_artifacts(tmp_path: Path) -> None:
+    domain_file = tmp_path / "domain.pddl"
+    problem_file = tmp_path / "problem.pddl"
+    domain_file.write_text(
+        "\n".join(
+            [
+                "(define (domain tiny-uns)",
+                "  (:requirements :strips :typing)",
+                "  (:predicates (p) (q))",
+                "  (:action noop :parameters () :precondition (p) :effect (p))",
+                ")",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    problem_file.write_text(
+        "\n".join(
+            [
+                "(define (problem tiny-uns-p)",
+                "  (:domain tiny-uns)",
+                "  (:init (p))",
+                "  (:goal (q))",
+                ")",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    domain = create_domain_context(domain_file)
+    task = create_task_context(domain, problem_file)
+    classifier = public.create_classifier(domain, None)
+
+    result = public.prove_classifier(
+        task,
+        classifier,
+        search_budget=SearchBudget(max_num_states=100, max_time_seconds=5.0),
+    )
+    dumped = dump_result(result, tmp_path / "uns_prove", formats=(DumpFormat.PSV, DumpFormat.JSON))
+
+    output_dir = dumped.output_dir
+    witness = output_dir / "failures" / "false_negative-001" / "witness.psv"
+    atoms = output_dir / "dicts" / "atoms.psv"
+
+    assert result.status.value == "failure"
+    assert result.counts.false_negative == 1
+    assert (output_dir / "run.json").is_file()
+    assert (output_dir / "summary.psv").is_file()
+    assert witness.is_file()
+    assert atoms.is_file()
+    assert "[state]" in witness.read_text(encoding="utf-8")
+    assert "[facts]" in witness.read_text(encoding="utf-8")
+    assert "p0|fluent|" in atoms.read_text(encoding="utf-8")
+
+
+def test_empty_module_program_execute_dumps_open_state_artifacts(tmp_path: Path) -> None:
+    domain_file = tmp_path / "domain.pddl"
+    problem_file = tmp_path / "problem.pddl"
+    domain_file.write_text(
+        "\n".join(
+            [
+                "(define (domain tiny-open)",
+                "  (:requirements :strips :typing)",
+                "  (:predicates (p) (q))",
+                "  (:action make-q :parameters () :precondition (p) :effect (q))",
+                ")",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    problem_file.write_text(
+        "\n".join(
+            [
+                "(define (problem tiny-open-p)",
+                "  (:domain tiny-open)",
+                "  (:init (p))",
+                "  (:goal (q))",
+                ")",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    domain = create_domain_context(domain_file)
+    task = create_task_context(domain, problem_file)
+    program = create_module_program(domain, None)
+
+    result = execute_module_program(
+        task,
+        program,
+        num_rollouts=1,
+        random_seed_start=0,
+        search_budget=SearchBudget(max_num_states=200, max_time_seconds=5.0),
+        plan_trace_budget=SearchBudget(max_num_states=10_000, max_time_seconds=5.0),
+    )
+    dumped = dump_result(result, tmp_path / "ext_execute", formats=(DumpFormat.PSV, DumpFormat.JSON))
+
+    output_dir = dumped.output_dir
+    witness = output_dir / "failures" / "open_state-001" / "witness.psv"
+    plan_trace = output_dir / "failures" / "open_state-001" / "plan_trace.psv"
+
+    assert result.status.value == "failure"
+    assert witness.is_file()
+    assert plan_trace.is_file()
+    assert "state|module|memory|flags" in witness.read_text(encoding="utf-8")
+    assert "[facts]" in plan_trace.read_text(encoding="utf-8")
+
+
+def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) -> None:
+    domain_file = tmp_path / "domain.pddl"
+    domain_file.write_text(
+        "\n".join(
+            [
+                "(define (domain tiny-term)",
+                "  (:requirements :strips :typing)",
+                "  (:predicates (p))",
+                "  (:action noop :parameters () :precondition (p) :effect (p))",
+                ")",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    domain = create_domain_context(domain_file)
+    program = create_module_program(domain, None)
+
+    result = prove_termination(domain, program)
+    dumped = dump_result(result, tmp_path / "ext_termination", formats=(DumpFormat.PSV, DumpFormat.JSON))
+
+    output_dir = dumped.output_dir
+    result_json = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+
+    assert result.status.value == "success"
+    assert result_json["termination"]["successful"] is True
+    assert run_json["tool"] == "runir.ps.ext.prove_termination"
+    assert (output_dir / "summary.psv").is_file()
+    assert (output_dir / "dicts" / "variables.psv").is_file()
 
 
 def test_execute_fallback_docs_are_reheaded_after_reclassification() -> None:

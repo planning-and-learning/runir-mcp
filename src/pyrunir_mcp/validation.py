@@ -28,9 +28,12 @@ from pyrunir.kr.ps.base import RepositoryFactory as BasePolicyRepositoryFactory
 from pyrunir.kr.ps.base.dl import SketchFactory, parse_sketch
 from pyrunir.kr.ps.ext import (
     GroundModuleProgramSearchOptions,
+    ModuleProgramStructuralTerminationResult,
+    StructuralTerminationStatus,
     find_ground_solution as find_ext_solution,
     parse_module_program,
     prove_ground_solution as prove_ext_solution,
+    structural_termination,
 )
 from pyrunir.kr.ps.ext import RepositoryFactory as ExtPolicyRepositoryFactory
 from pyrunir.kr.uns import RepositoryFactory as ClassifierRepositoryFactory
@@ -46,6 +49,7 @@ from pytyr.planning.lifted import (
 )
 
 from pyrunir_mcp.candidates import Candidate, CandidateSource, Classifier, ModuleProgram, Policy
+from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.context import DomainContext, TaskContext
 from pyrunir_mcp.kr.ps.base.core.data_loader import (
     LoadedLiftedSearchContext as BaseLoadedLiftedSearchContext,
@@ -65,7 +69,9 @@ from pyrunir_mcp.kr.ps.ext.core.features import (
     ModuleProgramContext,
 )
 from pyrunir_mcp.kr.ps.classifier import ClassifierContext
+from pyrunir_mcp.kr.ps.feature_evidence import AtomEvidence, state_atom_evidence
 from pyrunir_mcp.kr.ps.status import is_success_status
+from pyrunir_mcp.kr.uns.serialize import feature_values as classifier_feature_values
 from pyrunir_mcp.kr.ps.proof import (
     CounterexampleKind,
     FailureWitness,
@@ -84,6 +90,7 @@ class ValidationKind(StrEnum):
     BASE_PROVE = "base_prove"
     EXT_EXECUTE = "ext_execute"
     EXT_PROVE = "ext_prove"
+    EXT_TERMINATION = "ext_termination"
     UNS_PROVE = "uns_prove"
 
 
@@ -93,6 +100,15 @@ class ClassifierProofCounts:
     unsolvable: int
     false_positive: int
     false_negative: int
+
+
+@dataclass(frozen=True, slots=True)
+class ClassifierMistake:
+    id: str
+    category: str
+    state: int
+    features: JsonObject
+    atoms: tuple[AtomEvidence, ...]
 
 
 class ValidationStatus(StrEnum):
@@ -128,8 +144,18 @@ class ClassifierObservationDetails:
     state_graph_status: SearchStatus | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class TerminationObservationDetails:
+    program_status: StructuralTerminationStatus
+    terminating: bool
+    nonterminating_modules: tuple[str, ...] = ()
+
+
 ObservationDetails: TypeAlias = (
-    ExecuteObservationDetails | ProofObservationDetails | ClassifierObservationDetails
+    ExecuteObservationDetails
+    | ProofObservationDetails
+    | ClassifierObservationDetails
+    | TerminationObservationDetails
 )
 
 
@@ -154,6 +180,8 @@ class SearchBudget:
 
 
 PLAN_TRACE_BUDGET = SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0)
+CLASSIFIER_MISTAKE_LIMIT = 5
+CLASSIFIER_PROOF_BUDGET = SearchBudget(max_num_states=1_000_000, max_time_seconds=None)
 
 
 def _required_budget_values(budget: SearchBudget, *, name: str) -> tuple[int, float]:
@@ -231,6 +259,21 @@ class ProveClassifierResult:
     candidate: Classifier
     observation: ValidationObservation
     counts: ClassifierProofCounts
+    mistakes: tuple[ClassifierMistake, ...] = ()
+    atoms: tuple[AtomEvidence, ...] = ()
+    search_budget: SearchBudget = CLASSIFIER_PROOF_BUDGET
+
+
+@dataclass(frozen=True, slots=True)
+class ProveTerminationResult:
+    id: str
+    kind: ValidationKind
+    status: ValidationStatus
+    domain_context: DomainContext
+    candidate: ModuleProgram
+    observation: ValidationObservation
+    program_result: ModuleProgramStructuralTerminationResult
+    nonterminating_modules: tuple[str, ...] = ()
 
 
 ValidationResult: TypeAlias = (
@@ -239,6 +282,7 @@ ValidationResult: TypeAlias = (
     | ProvePolicyResult
     | ProveModuleProgramResult
     | ProveClassifierResult
+    | ProveTerminationResult
 )
 
 def create_domain_context(domain_file: str | Path) -> DomainContext:
@@ -588,6 +632,10 @@ def _classifier_fingerprint(
     )
 
 
+def _classifier_json_features(values: dict[str, bool]) -> JsonObject:
+    return {key: value for key, value in values.items()}
+
+
 def _classifier_details(
     counts: ClassifierProofCounts,
     *,
@@ -845,16 +893,101 @@ def prove_module_program(
     )
 
 
+
+def _module_names(module_program: ModuleProgram) -> tuple[str, ...]:
+    names: list[str] = []
+    for index, module in enumerate(module_program.value.get_modules()):
+        get_name = getattr(module, "get_name", None)
+        if callable(get_name):
+            names.append(str(get_name()))
+        else:
+            names.append(f"module_{index}")
+    return tuple(names)
+
+
+def _termination_observation_details(
+    program_result: ModuleProgramStructuralTerminationResult,
+    nonterminating_modules: tuple[str, ...],
+) -> TerminationObservationDetails:
+    return TerminationObservationDetails(
+        program_status=program_result.status,
+        terminating=bool(program_result.is_terminating()),
+        nonterminating_modules=nonterminating_modules,
+    )
+
+
+def _termination_fingerprint(
+    *,
+    status: ValidationStatus,
+    program_result: ModuleProgramStructuralTerminationResult,
+    nonterminating_modules: tuple[str, ...],
+) -> FailureFingerprint | None:
+    if status is ValidationStatus.SUCCESS:
+        return None
+    return FailureFingerprint(
+        kind=ValidationKind.EXT_TERMINATION,
+        status=status,
+        problem_file=None,
+        category="structural_termination",
+        witness=(program_result.status.name, *nonterminating_modules),
+    )
+
+
+def prove_termination(
+    domain_context: DomainContext,
+    module_program: ModuleProgram,
+) -> ProveTerminationResult:
+    program_result = structural_termination(module_program.value)
+    module_names = _module_names(module_program)
+    module_results = tuple(program_result.get_module_results())
+    nonterminating_modules = tuple(
+        module_names[index] if index < len(module_names) else f"module_{index}"
+        for index, module_result in enumerate(module_results)
+        if not bool(module_result.is_terminating())
+    )
+    status = (
+        ValidationStatus.SUCCESS
+        if bool(program_result.is_terminating())
+        else ValidationStatus.FAILURE
+    )
+    result_id = _next_result_id(domain_context)
+    observation = _validation_observation(
+        result_id=result_id,
+        kind=ValidationKind.EXT_TERMINATION,
+        status=status,
+        candidate=module_program,
+        classifier=None,
+        details=_termination_observation_details(program_result, nonterminating_modules),
+        fingerprint=_termination_fingerprint(
+            status=status,
+            program_result=program_result,
+            nonterminating_modules=nonterminating_modules,
+        ),
+    )
+    return ProveTerminationResult(
+        result_id,
+        ValidationKind.EXT_TERMINATION,
+        status,
+        domain_context,
+        module_program,
+        observation,
+        program_result,
+        nonterminating_modules=nonterminating_modules,
+    )
+
+
 def prove_classifier(
     context: TaskContext,
     classifier: Classifier,
     *,
-    max_num_states: int = 1_000_000,
-    max_time_seconds: float = 1_000_000_000.0,
+    search_budget: SearchBudget = CLASSIFIER_PROOF_BUDGET,
+    max_mistakes_per_category: int = CLASSIFIER_MISTAKE_LIMIT,
 ) -> ProveClassifierResult:
     generation_options = StateGraphGenerationOptions()
-    generation_options.max_num_states = max_num_states
-    generation_options.max_time = max_time_seconds
+    if search_budget.max_num_states is not None:
+        generation_options.max_num_states = search_budget.max_num_states
+    if search_budget.max_time_seconds is not None:
+        generation_options.max_time = search_budget.max_time_seconds
     graph_result = generate_ground_state_graph_result(
         context.base_task.search_context, generation_options
     )
@@ -885,6 +1018,7 @@ def prove_classifier(
             classifier,
             observation,
             counts,
+            search_budget=search_budget,
         )
 
     graph = annotate_ground_state_graph(
@@ -896,19 +1030,43 @@ def prove_classifier(
     unsolvable = 0
     false_positive = 0
     false_negative = 0
+    mistakes: list[ClassifierMistake] = []
+    atoms_by_key: dict[AtomEvidence, AtomEvidence] = {}
     for vertex in graph.get_vertex_indices():
         states += 1
         label = graph.get_vertex_property(vertex)
         actually_solvable = not bool(label.is_unsolvable)
         if not actually_solvable:
             unsolvable += 1
-        predicted_unsolvable = bool(
-            classify(classifier.value, GroundEvaluationContext(label.state, builder, denotations))
-        )
+        state_atoms = tuple(state_atom_evidence(label.state))
+        for atom in state_atoms:
+            atoms_by_key.setdefault(atom, atom)
+        eval_context = GroundEvaluationContext(label.state, builder, denotations)
+        predicted_unsolvable = bool(classify(classifier.value, eval_context))
         if predicted_unsolvable and actually_solvable:
             false_positive += 1
+            if false_positive <= max_mistakes_per_category:
+                mistakes.append(
+                    ClassifierMistake(
+                        id=f"false_positive-{false_positive:03d}",
+                        category="false_positive",
+                        state=int(label.state.get_index()),
+                        features=_classifier_json_features(classifier_feature_values(classifier.value, eval_context)),
+                        atoms=state_atoms,
+                    )
+                )
         elif not predicted_unsolvable and not actually_solvable:
             false_negative += 1
+            if false_negative <= max_mistakes_per_category:
+                mistakes.append(
+                    ClassifierMistake(
+                        id=f"false_negative-{false_negative:03d}",
+                        category="false_negative",
+                        state=int(label.state.get_index()),
+                        features=_classifier_json_features(classifier_feature_values(classifier.value, eval_context)),
+                        atoms=state_atoms,
+                    )
+                )
     counts = ClassifierProofCounts(
         states=states,
         unsolvable=unsolvable,
@@ -936,6 +1094,15 @@ def prove_classifier(
         ),
     )
     return ProveClassifierResult(
-        result_id, ValidationKind.UNS_PROVE, status, context, classifier, observation, counts
+        result_id,
+        ValidationKind.UNS_PROVE,
+        status,
+        context,
+        classifier,
+        observation,
+        counts,
+        mistakes=tuple(mistakes),
+        atoms=tuple(sorted(atoms_by_key, key=lambda atom: (atom[0], atom[1]))),
+        search_budget=search_budget,
     )
 
