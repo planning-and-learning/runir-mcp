@@ -6,5 +6,5 @@ Fluent facts for the misclassified state.
 
 | Column | Meaning |
 |---|---|
-| `state` | Planning-state id (`sK`). |
-| `atoms` | Comma-separated atom aliases (`pK`) from [`atoms.*`](../dictionaries/runir.uns.atoms.md). |
+| `state_id` | Planning-state id (`sK`). |
+| `atom_ids` | Comma-separated atom aliases (`pK`) from [`atoms.*`](../dictionaries/runir.uns.atoms.md). |

@@ -8,21 +8,19 @@ ought to decrease.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 
+from pyrunir_mcp.enums import VariableKind
 from pyrunir_mcp.json_types import JsonValue
+from pyrunir_mcp.keys import (
+    Keys,
+    TableColumns,
+)
 from pyrunir_mcp.output.dictionaries import Dictionary
 from pyrunir_mcp.tables import Document, Table
 
 
 def _str_dict() -> dict[str, str]:
     return {}
-
-
-class VariableKind(StrEnum):
-    CONCEPT = "concept"
-    BOOLEAN = "boolean"
-    NUMERICAL = "numerical"
 
 
 VARIABLE_KINDS = (VariableKind.CONCEPT, VariableKind.BOOLEAN, VariableKind.NUMERICAL)
@@ -55,9 +53,9 @@ class TerminationEdge:
 
 class TerminationDictionaries:
     def __init__(self) -> None:
-        self.variables = Dictionary("v", ["kind", "symbol"])
-        self.memories = Dictionary("m", ["memory"])
-        self.rules = Dictionary("r", ["symbol"])
+        self.variables = Dictionary("v", [Keys.KIND, Keys.SYMBOL])
+        self.memories = Dictionary("m", [Keys.MEMORY])
+        self.rules = Dictionary("r", [Keys.SYMBOL])
 
     def variable(self, kind: VariableKind, symbol: str) -> str:
         return self.variables.intern((kind, symbol), [kind.value, symbol])
@@ -69,7 +67,7 @@ class TerminationDictionaries:
         return self.rules.intern(symbol, [symbol])
 
     def tables(self) -> dict[str, Table]:
-        named = {"variables": self.variables, "memory": self.memories, "rules": self.rules}
+        named = {Keys.VARIABLES: self.variables, Keys.MEMORY: self.memories, Keys.RULES: self.rules}
         tables: dict[str, Table] = {}
         for name, dictionary in named.items():
             table = dictionary.table(name, include_empty=True)
@@ -90,12 +88,9 @@ def _cycle_table(edges: list[TerminationEdge]) -> Table:
     else:
         vertices, edge_indices = [], []
     return Table(
-        name="cycle",
-        columns=["key", "value"],
-        rows=[
-            ["cycle_vertex_indices", ",".join(map(str, vertices))],
-            ["cycle_edge_indices", ",".join(map(str, edge_indices))],
-        ],
+        name=Keys.CYCLE,
+        columns=[TableColumns.VERTEX_INDICES, TableColumns.EDGE_INDICES],
+        rows=[[",".join(map(str, vertices)), ",".join(map(str, edge_indices))]],
     )
 
 
@@ -127,7 +122,7 @@ def counterexample_document(
         header=header,
         sections=[
             _cycle_table(edges),
-            Table(name="vertices", columns=["idx", "mem", *aliases], rows=vertex_rows),
-            Table(name="edges", columns=["idx", "src", "tgt", "rule", "changes"], rows=edge_rows),
+            Table(name=Keys.VERTICES, columns=[TableColumns.VERTEX_INDEX, TableColumns.MEMORY_ID, *aliases], rows=vertex_rows),
+            Table(name=Keys.EDGES, columns=[TableColumns.EDGE_INDEX, TableColumns.SOURCE_VERTEX_INDEX, TableColumns.TARGET_VERTEX_INDEX, TableColumns.RULE_ID, TableColumns.DELTAS], rows=edge_rows),
         ],
     )

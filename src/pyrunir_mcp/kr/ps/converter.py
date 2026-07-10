@@ -4,17 +4,17 @@ from pyrunir.datasets import LiftedTaskSearchContext
 from pytyr.formalism.planning import (
     FluentFDRFact,
     FluentFunction,
-    FluentFunctionBindingBuilder,
-    FluentFunctionBuilder,
+    FluentFunctionBindingData,
+    FluentFunctionData,
     FluentGroundAtom,
-    FluentGroundAtomBuilder,
+    FluentGroundAtomData,
     FluentGroundFunctionTerm,
-    FluentGroundFunctionTermBuilder,
+    FluentGroundFunctionTermData,
     FluentPredicate,
-    FluentPredicateBindingBuilder,
-    FluentPredicateBuilder,
+    FluentPredicateBindingData,
+    FluentPredicateData,
     Object,
-    ObjectBuilder,
+    ObjectData,
 )
 from pytyr.planning.ground import State as GroundState
 from pytyr.planning.lifted import State as LiftedState
@@ -35,17 +35,17 @@ class GroundToLiftedStateConverter:
         )
 
     def _copy_object(self, obj: Object) -> Object:
-        return self._repository.get_or_create(ObjectBuilder(obj.get_name()))[0]
+        return self._repository.get_or_create(ObjectData(obj.get_name()))[0]
 
     def _copy_fluent_predicate(self, predicate: FluentPredicate) -> FluentPredicate:
-        builder = FluentPredicateBuilder(predicate.get_name(), predicate.get_arity())
+        builder = FluentPredicateData(predicate.get_name(), predicate.get_arity())
         return self._repository.get_or_create(builder)[0]
 
     def _copy_fluent_ground_atom(self, atom: FluentGroundAtom) -> FluentGroundAtom:
         predicate = self._copy_fluent_predicate(atom.get_predicate())
         objects = [self._copy_object(obj) for obj in atom.get_objects()]
-        binding = self._repository.get_or_create(FluentPredicateBindingBuilder(predicate, objects))[0]
-        return self._repository.get_or_create(FluentGroundAtomBuilder(binding))[0]
+        binding = self._repository.get_or_create(FluentPredicateBindingData(predicate, objects))[0]
+        return self._repository.get_or_create(FluentGroundAtomData(binding))[0]
 
     def _copy_fluent_fact(self, fact: FluentFDRFact) -> FluentFDRFact:
         atom = fact.get_atom()
@@ -55,14 +55,14 @@ class GroundToLiftedStateConverter:
         return self._fdr_context.get_fact(copied_atom)
 
     def _copy_fluent_function(self, function: FluentFunction) -> FluentFunction:
-        builder = FluentFunctionBuilder(function.get_name(), function.get_arity())
+        builder = FluentFunctionData(function.get_name(), function.get_arity())
         return self._repository.get_or_create(builder)[0]
 
     def _copy_fluent_ground_function_term(self, fterm: FluentGroundFunctionTerm) -> FluentGroundFunctionTerm:
         function = self._copy_fluent_function(fterm.get_function())
         objects = [self._copy_object(obj) for obj in fterm.get_objects()]
-        binding = self._repository.get_or_create(FluentFunctionBindingBuilder(function, objects))[0]
-        return self._repository.get_or_create(FluentGroundFunctionTermBuilder(binding))[0]
+        binding = self._repository.get_or_create(FluentFunctionBindingData(function, objects))[0]
+        return self._repository.get_or_create(FluentGroundFunctionTermData(binding))[0]
 
     def _copy_fluent_fterm_value(self, value: tuple[FluentGroundFunctionTerm, float]) -> tuple[FluentGroundFunctionTerm, float]:
         fterm, number = value

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 from dataclasses import dataclass
-from enum import StrEnum
+from pathlib import Path
 from typing import TypeAlias
 
 from pypddl.formalism import ParserOptions
@@ -20,38 +19,41 @@ from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtDLRepositoryFac
 from pyrunir.kr.dl.uns import ConstructorRepositoryFactory as UnsDLRepositoryFactory
 from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
 from pyrunir.kr.ps.base import (
-    GroundSketchProofResults,
     GroundSketchSearchOptions,
-    find_ground_solution as find_base_solution,
-    prove_ground_solution as prove_base_solution,
 )
 from pyrunir.kr.ps.base import RepositoryFactory as BasePolicyRepositoryFactory
+from pyrunir.kr.ps.base import (
+    prove_ground_solution as prove_base_solution,
+)
 from pyrunir.kr.ps.base.dl import SketchFactory, parse_sketch
 from pyrunir.kr.ps.ext import (
-    GroundModuleProgramProofResults,
     GroundModuleProgramSearchOptions,
-    ModuleProgramStructuralTerminationResult,
-    StructuralTerminationStatus,
-    find_ground_solution as find_ext_solution,
-    parse_module_program,
-    prove_ground_solution as prove_ext_solution,
-    structural_termination,
 )
 from pyrunir.kr.ps.ext import RepositoryFactory as ExtPolicyRepositoryFactory
+from pyrunir.kr.ps.ext import (
+    prove_ground_solution as prove_ext_solution,
+)
+from pyrunir.kr.ps.ext.dl import (
+    ModuleProgramStructuralTerminationResult,
+    StructuralTerminationStatus,
+    parse_module_program,
+    structural_termination,
+)
 from pyrunir.kr.uns import RepositoryFactory as ClassifierRepositoryFactory
 from pyrunir.kr.uns import classify
 from pyrunir.kr.uns.dl import ClassifierFactory, parse_classifier
-from pyyggdrasil.execution import ExecutionContext
 from pytyr.formalism.planning import Parser
 from pytyr.planning import SearchStatus
 from pytyr.planning.lifted import (
     GroundTaskInstantiationOptions,
     GroundTaskInstantiationStatus,
+)
+from pytyr.planning.lifted import (
     Task as LiftedTask,
 )
+from pyyggdrasil.execution import ExecutionContext
 
-from pyrunir_mcp.candidates import Candidate, CandidateSource, Classifier, ModuleProgram, Policy
-from pyrunir_mcp.json_types import JsonObject
+from pyrunir_mcp.candidates import Candidate, Classifier, ModuleProgram, Policy
 from pyrunir_mcp.context import DomainContext, TaskContext
 from pyrunir_mcp.defaults import (
     CLASSIFIER_MISTAKE_LIMIT,
@@ -61,14 +63,38 @@ from pyrunir_mcp.defaults import (
     PROVE_SEARCH_BUDGET,
     SearchBudget,
 )
+from pyrunir_mcp.enums import (
+    AtomKind,
+    CandidateSource,
+    CounterexampleKind,
+    RolloutOutcome,
+    ValidationKind,
+    ValidationStatus,
+)
+from pyrunir_mcp.json_types import JsonObject
+from pyrunir_mcp.keys import (
+    Keys,
+)
 from pyrunir_mcp.kr.ps.base.core.data_loader import (
     LoadedLiftedSearchContext as BaseLoadedLiftedSearchContext,
 )
-from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext as BaseLoadedSearchTaskContext
+from pyrunir_mcp.kr.ps.base.core.data_loader import (
+    LoadedSearchContext as BaseLoadedSearchTaskContext,
+)
 from pyrunir_mcp.kr.ps.base.core.features import (
     BasePolicyContext,
+)
+from pyrunir_mcp.kr.ps.base.core.features import (
     ExecutionFailure as BaseExecutionFailure,
 )
+from pyrunir_mcp.kr.ps.base.core.features import collect_features as collect_base_policy_features
+from pyrunir_mcp.kr.ps.base.rollout import (
+    RolloutResult,
+    greedy_policy_rollout,
+    rollout_category,
+    rollout_witness,
+)
+from pyrunir_mcp.kr.ps.classifier import ClassifierContext, classifier_evidence
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds
 from pyrunir_mcp.kr.ps.ext.core.data_loader import (
     LoadedLiftedSearchContext as ExtLoadedLiftedSearchContext,
@@ -76,35 +102,29 @@ from pyrunir_mcp.kr.ps.ext.core.data_loader import (
 from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext as ExtLoadedSearchTaskContext
 from pyrunir_mcp.kr.ps.ext.core.features import (
     ExecutionFailure as ExtExecutionFailure,
+)
+from pyrunir_mcp.kr.ps.ext.core.features import (
     ModuleProgramContext,
 )
-from pyrunir_mcp.kr.ps.classifier import ClassifierContext, classifier_evidence
-from pyrunir_mcp.kr.ps.feature_evidence import AtomEvidence, state_atom_evidence, state_evidence
-from pyrunir_mcp.kr.ps.status import is_success_status
-from pyrunir_mcp.kr.ps.base.core.features import collect_features as collect_base_policy_features
+from pyrunir_mcp.kr.ps.ext.rollout import (
+    ExtRolloutResult,
+    ext_rollout_category,
+    ext_rollout_witness,
+    greedy_module_program_rollout,
+)
 from pyrunir_mcp.kr.ps.ext.rules import collect_features as collect_ext_program_features
-from pyrunir_mcp.kr.uns.serialize import feature_values as classifier_feature_values
+from pyrunir_mcp.kr.ps.feature_evidence import AtomEvidence, state_atom_evidence, state_evidence
 from pyrunir_mcp.kr.ps.proof import (
-    CounterexampleKind,
     FailureWitness,
     ProofResult,
     ProofStatus,
     StateEvidence,
     failure_items,
-    is_goal_open_state_result,
     make_search_options,
     state_summary,
 )
+from pyrunir_mcp.kr.uns.serialize import feature_values as classifier_feature_values
 from pyrunir_mcp.planning import parse_task_file
-
-
-class ValidationKind(StrEnum):
-    BASE_EXECUTE = "base_execute"
-    BASE_PROVE = "base_prove"
-    EXT_EXECUTE = "ext_execute"
-    EXT_PROVE = "ext_prove"
-    EXT_TERMINATION = "ext_termination"
-    UNS_PROVE = "uns_prove"
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,12 +141,8 @@ class ClassifierMistake:
     category: str
     state: int
     features: JsonObject
-    atoms: tuple[AtomEvidence, ...]
-
-
-class ValidationStatus(StrEnum):
-    SUCCESS = "success"
-    FAILURE = "failure"
+    fluent: tuple[str, ...]
+    derived: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +223,7 @@ class ExecutePolicyResult:
     failure_results: tuple[tuple[int, BaseExecutionFailure], ...] = ()
     search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
+    rollout_results: tuple[tuple[int, RolloutResult], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +241,7 @@ class ExecuteModuleProgramResult:
     failure_results: tuple[tuple[int, ExtExecutionFailure], ...] = ()
     search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
+    rollout_results: tuple[tuple[int, ExtRolloutResult], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -461,21 +479,80 @@ def _next_result_id(domain_context: DomainContext) -> str:
     return f"result_{index:06d}"
 
 
-def _execute_details(
-    failure: ExecutionFailure | None, num_rollouts: int
+
+def _execute_rollout_details(
+    context: TaskContext, first_failure: RolloutResult | None, num_rollouts: int
 ) -> ExecuteObservationDetails:
-    if failure is None:
+    if first_failure is None:
         return ExecuteObservationDetails(
             failure_problem_file=None,
             failure_status=None,
             num_rollouts=num_rollouts,
         )
     return ExecuteObservationDetails(
-        failure_problem_file=failure.task.problem_path.name,
-        failure_status=failure.result.status,
+        failure_problem_file=context.base_task.problem_path.name,
+        failure_status=rollout_category(first_failure),
         num_rollouts=num_rollouts,
     )
 
+
+def _execute_rollout_fingerprint(
+    *,
+    kind: ValidationKind,
+    status: ValidationStatus,
+    context: TaskContext,
+    first_failure: RolloutResult | None,
+) -> FailureFingerprint | None:
+    if first_failure is None or status is ValidationStatus.SUCCESS:
+        return None
+    category = rollout_category(first_failure)
+    if category is None:
+        return None
+    return FailureFingerprint(
+        kind=kind,
+        status=status,
+        problem_file=context.base_task.problem_path.name,
+        category=category,
+        witness=rollout_witness(first_failure),
+    )
+
+
+
+def _execute_ext_rollout_details(
+    context: TaskContext, first_failure: ExtRolloutResult | None, num_rollouts: int
+) -> ExecuteObservationDetails:
+    if first_failure is None:
+        return ExecuteObservationDetails(
+            failure_problem_file=None,
+            failure_status=None,
+            num_rollouts=num_rollouts,
+        )
+    return ExecuteObservationDetails(
+        failure_problem_file=context.ext_task.problem_path.name,
+        failure_status=ext_rollout_category(first_failure),
+        num_rollouts=num_rollouts,
+    )
+
+
+def _execute_ext_rollout_fingerprint(
+    *,
+    kind: ValidationKind,
+    status: ValidationStatus,
+    context: TaskContext,
+    first_failure: ExtRolloutResult | None,
+) -> FailureFingerprint | None:
+    if first_failure is None or status is ValidationStatus.SUCCESS:
+        return None
+    category = ext_rollout_category(first_failure)
+    if category is None:
+        return None
+    return FailureFingerprint(
+        kind=kind,
+        status=status,
+        problem_file=context.ext_task.problem_path.name,
+        category=category,
+        witness=ext_rollout_witness(first_failure),
+    )
 
 def _proof_details(proof: ProofResult) -> ProofObservationDetails:
     return ProofObservationDetails(
@@ -489,7 +566,7 @@ def _state_id_for_vertex(proof: ProofResult, vertex: int) -> str:
     if graph is None:
         return f"s{int(vertex)}"
     try:
-        state_index = state_summary(graph, int(vertex))["state_index"]
+        state_index = state_summary(graph, int(vertex))[Keys.STATE_INDEX]
     except Exception:
         return f"s{int(vertex)}"
     if isinstance(state_index, int | str | float):
@@ -541,10 +618,10 @@ def _cycle_vertex_part(proof: ProofResult, vertex: int) -> str:
         summary = state_summary(graph, int(vertex))
     except Exception:
         return f"s{int(vertex)}"
-    state_index = summary.get("state_index")
+    state_index = summary.get(Keys.STATE_INDEX)
     state = f"s{int(state_index)}" if isinstance(state_index, int | str | float) else f"s{int(vertex)}"
-    module = summary.get("module")
-    memory = summary.get("memory_state")
+    module = summary.get(Keys.MODULE)
+    memory = summary.get(Keys.MEMORY)
     if isinstance(module, str) and isinstance(memory, str):
         return f"{module}|{memory}|{state}"
     return state
@@ -593,26 +670,9 @@ def _proof_fingerprint(
         kind=kind,
         status=status,
         problem_file=problem_file,
-        category=proof.status.name,
+        category=proof.status.name.lower(),
     )
 
-
-def _execute_fingerprint(
-    *,
-    kind: ValidationKind,
-    status: ValidationStatus,
-    failure: ExecutionFailure | None,
-    evidence: StateEvidence | None = None,
-) -> FailureFingerprint | None:
-    if failure is None or status is ValidationStatus.SUCCESS:
-        return None
-    return _proof_fingerprint(
-        kind=kind,
-        status=status,
-        problem_file=failure.task.problem_path.name,
-        proof=failure.result,
-        evidence=evidence,
-    )
 
 
 def _classifier_fingerprint(
@@ -625,7 +685,7 @@ def _classifier_fingerprint(
 ) -> FailureFingerprint | None:
     if status is ValidationStatus.SUCCESS:
         return None
-    category = state_graph_status.name if state_graph_status is not None else "misclassified_states"
+    category = state_graph_status.name.lower() if state_graph_status is not None else "misclassified_states"
     return FailureFingerprint(
         kind=kind,
         status=status,
@@ -711,32 +771,32 @@ def execute_policy(
     search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
 ) -> ExecutePolicyResult:
-    first_failure: BaseExecutionFailure | None = None
-    successful_results: list[tuple[int, GroundSketchProofResults]] = []
-    failure_results: list[tuple[int, BaseExecutionFailure]] = []
+    del max_arity
+    classifier_value = (
+        classifier.value
+        if classifier is not None
+        else ClassifierFactory.create_empty(
+            context.domain_context.classifier_context.classifier_repository
+        )
+    )
+    rollout_results: list[tuple[int, RolloutResult]] = []
+    first_failure: RolloutResult | None = None
+    max_steps = search_budget.max_num_states
     for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
-        proof = find_base_solution(
+        rollout = greedy_policy_rollout(
             context.base_task.search_context,
             policy.value,
-            configure_search_options(
-                GroundSketchSearchOptions(),
-                random_seed=seed,
-                shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
-                max_arity=max_arity,
-                max_num_states=search_budget.max_num_states,
-                max_time_seconds=search_budget.max_time_seconds,
-            ),
+            classifier_value,
+            max_steps=max_steps if max_steps is not None else 1_000_000,
+            random_seed=seed,
+            shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
         )
-        if is_success_status(proof.status) or is_goal_open_state_result(proof):
-            successful_results.append((seed, proof))
-        else:
-            failure = BaseExecutionFailure(task=context.base_task, result=proof)
-            failure_results.append((seed, failure))
-            if first_failure is None:
-                first_failure = failure
+        rollout_results.append((seed, rollout))
+        if rollout.outcome is not RolloutOutcome.GOAL and first_failure is None:
+            first_failure = rollout
     status = ValidationStatus.SUCCESS if first_failure is None else ValidationStatus.FAILURE
     result_id = _next_result_id(context.domain_context)
-    details = _execute_details(first_failure, num_rollouts)
+    details = _execute_rollout_details(context, first_failure, num_rollouts)
     observation = _validation_observation(
         result_id=result_id,
         kind=ValidationKind.BASE_EXECUTE,
@@ -744,27 +804,28 @@ def execute_policy(
         candidate=policy,
         classifier=classifier,
         details=details,
-        fingerprint=_execute_fingerprint(
+        fingerprint=_execute_rollout_fingerprint(
             kind=ValidationKind.BASE_EXECUTE,
             status=status,
-            failure=first_failure,
-            evidence=_base_classifier_evidence(policy, classifier),
+            context=context,
+            first_failure=first_failure,
         ),
     )
     return ExecutePolicyResult(
-        result_id,
-        ValidationKind.BASE_EXECUTE,
-        status,
-        context,
-        policy,
-        observation,
-        classifier,
-        first_failure,
-        tuple(successful_results),
-        num_rollouts,
-        tuple(failure_results),
-        search_budget,
-        plan_trace_budget,
+        id=result_id,
+        kind=ValidationKind.BASE_EXECUTE,
+        status=status,
+        context=context,
+        candidate=policy,
+        observation=observation,
+        classifier=classifier,
+        failure=None,
+        successful_results=(),
+        num_rollouts=num_rollouts,
+        failure_results=(),
+        search_budget=search_budget,
+        plan_trace_budget=plan_trace_budget,
+        rollout_results=tuple(rollout_results),
     )
 
 
@@ -781,32 +842,37 @@ def execute_module_program(
     search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
 ) -> ExecuteModuleProgramResult:
-    first_failure: ExtExecutionFailure | None = None
-    successful_results: list[tuple[int, GroundModuleProgramProofResults]] = []
-    failure_results: list[tuple[int, ExtExecutionFailure]] = []
+    classifier_value = (
+        classifier.value
+        if classifier is not None
+        else ClassifierFactory.create_empty(
+            context.domain_context.classifier_context.classifier_repository
+        )
+    )
+    rollout_results: list[tuple[int, ExtRolloutResult]] = []
+    first_failure: ExtRolloutResult | None = None
     for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
-        proof = find_ext_solution(
+        options = configure_search_options(
+            GroundModuleProgramSearchOptions(),
+            random_seed=seed,
+            shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+            max_arity=max_arity,
+            max_num_states=search_budget.max_num_states,
+            max_time_seconds=search_budget.max_time_seconds,
+        )
+        rollout = greedy_module_program_rollout(
             context.ext_task.search_context,
             module_program.value,
-            configure_search_options(
-                GroundModuleProgramSearchOptions(),
-                random_seed=seed,
-                shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
-                max_arity=max_arity,
-                max_num_states=search_budget.max_num_states,
-                max_time_seconds=search_budget.max_time_seconds,
-            ),
+            classifier_value,
+            options,
+            max_steps=search_budget.max_num_states or 1_000_000,
         )
-        if is_success_status(proof.status) or is_goal_open_state_result(proof):
-            successful_results.append((seed, proof))
-        else:
-            failure = ExtExecutionFailure(task=context.ext_task, result=proof)
-            failure_results.append((seed, failure))
-            if first_failure is None:
-                first_failure = failure
+        rollout_results.append((seed, rollout))
+        if ext_rollout_category(rollout) is not None and first_failure is None:
+            first_failure = rollout
     status = ValidationStatus.SUCCESS if first_failure is None else ValidationStatus.FAILURE
     result_id = _next_result_id(context.domain_context)
-    details = _execute_details(first_failure, num_rollouts)
+    details = _execute_ext_rollout_details(context, first_failure, num_rollouts)
     observation = _validation_observation(
         result_id=result_id,
         kind=ValidationKind.EXT_EXECUTE,
@@ -814,11 +880,11 @@ def execute_module_program(
         candidate=module_program,
         classifier=classifier,
         details=details,
-        fingerprint=_execute_fingerprint(
+        fingerprint=_execute_ext_rollout_fingerprint(
             kind=ValidationKind.EXT_EXECUTE,
             status=status,
-            failure=first_failure,
-            evidence=_ext_classifier_evidence(module_program, classifier),
+            context=context,
+            first_failure=first_failure,
         ),
     )
     return ExecuteModuleProgramResult(
@@ -829,12 +895,13 @@ def execute_module_program(
         module_program,
         observation,
         classifier,
-        first_failure,
-        tuple(successful_results),
+        None,
+        (),
         num_rollouts,
-        tuple(failure_results),
+        (),
         search_budget,
         plan_trace_budget,
+        tuple(rollout_results),
     )
 
 
@@ -969,7 +1036,7 @@ def _termination_fingerprint(
         status=status,
         problem_file=None,
         category="structural_termination",
-        witness=(program_result.status.name, *nonterminating_modules),
+        witness=(program_result.status.name.lower(), *nonterminating_modules),
     )
 
 
@@ -979,7 +1046,7 @@ def prove_termination(
 ) -> ProveTerminationResult:
     program_result = structural_termination(module_program.value)
     module_names = _module_names(module_program)
-    module_results = tuple(program_result.get_module_results())
+    module_results = tuple(program_result.module_results)
     nonterminating_modules = tuple(
         module_names[index] if index < len(module_names) else f"module_{index}"
         for index, module_result in enumerate(module_results)
@@ -1071,16 +1138,17 @@ def prove_classifier(
     false_positive = 0
     false_negative = 0
     mistakes: list[ClassifierMistake] = []
-    atoms_by_key: dict[AtomEvidence, AtomEvidence] = {}
+    fluent_atoms: set[str] = set()
+    derived_atoms: set[str] = set()
     for vertex in graph.get_vertex_indices():
         states += 1
         label = graph.get_vertex_property(vertex)
         actually_solvable = not bool(label.is_unsolvable)
         if not actually_solvable:
             unsolvable += 1
-        state_atoms = tuple(state_atom_evidence(label.state))
-        for atom in state_atoms:
-            atoms_by_key.setdefault(atom, atom)
+        state_atoms = state_atom_evidence(label.state)
+        fluent_atoms.update(state_atoms[AtomKind.FLUENT])
+        derived_atoms.update(state_atoms[AtomKind.DERIVED])
         eval_context = GroundEvaluationContext(label.state, builder, denotations)
         predicted_unsolvable = bool(classify(classifier.value, eval_context))
         if predicted_unsolvable and actually_solvable:
@@ -1092,7 +1160,8 @@ def prove_classifier(
                         category="false_positive",
                         state=int(label.state.get_index()),
                         features=_classifier_json_features(classifier_feature_values(classifier.value, eval_context)),
-                        atoms=state_atoms,
+                        fluent=state_atoms[AtomKind.FLUENT],
+                        derived=state_atoms[AtomKind.DERIVED],
                     )
                 )
         elif not predicted_unsolvable and not actually_solvable:
@@ -1104,7 +1173,8 @@ def prove_classifier(
                         category="false_negative",
                         state=int(label.state.get_index()),
                         features=_classifier_json_features(classifier_feature_values(classifier.value, eval_context)),
-                        atoms=state_atoms,
+                        fluent=state_atoms[AtomKind.FLUENT],
+                        derived=state_atoms[AtomKind.DERIVED],
                     )
                 )
     counts = ClassifierProofCounts(
@@ -1142,7 +1212,10 @@ def prove_classifier(
         observation,
         counts,
         mistakes=tuple(mistakes),
-        atoms=tuple(sorted(atoms_by_key, key=lambda atom: (atom[0], atom[1]))),
+        atoms=(
+            *((AtomKind.FLUENT, atom) for atom in sorted(fluent_atoms)),
+            *((AtomKind.DERIVED, atom) for atom in sorted(derived_atoms)),
+        ),
         search_budget=search_budget,
     )
 

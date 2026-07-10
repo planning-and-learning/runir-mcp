@@ -6,7 +6,7 @@ Per-state fluent and derived facts.
 
 | Column | Meaning |
 |---|---|
-| `state` | Planning-state id (`sK`). |
-| `atoms` | Comma-separated atom aliases (`pK`) from [`atoms.*`](../dictionaries/runir.ps.base.atoms.md). |
+| `state_id` | Planning-state id (`sK`). |
+| `atom_ids` | Comma-separated atom aliases (`pK`) from [`atoms.*`](../dictionaries/runir.ps.base.atoms.md). |
 
 Static atoms are interned in `atoms.*` and are not repeated in `[facts]`.

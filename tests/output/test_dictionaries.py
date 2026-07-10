@@ -1,4 +1,5 @@
-from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries, Dictionary
+from pyrunir_mcp.enums import AtomKind
+from pyrunir_mcp.output.dictionaries import Dictionaries, Dictionary
 
 
 def test_intern_assigns_stable_ordered_aliases():
@@ -34,10 +35,10 @@ def test_dictionaries_ext_rules_carry_src_tgt():
     m1 = dicts.memory(deliver, "q_done")
     assert dicts.rule("advance", m0, m1) == "r0"
     tables = dicts.tables()
-    assert tables["rules"].columns == ["id", "symbol", "source", "target"]
+    assert tables["rules"].columns == ["id", "symbol", "source_memory_id", "target_memory_id"]
     assert tables["rules"].rows == [["r0", "advance", "m0", "m1"]]
     assert tables["modules"].rows == [["M0", "deliver"]]
-    assert tables["memory"].columns == ["id", "module", "memory"]
+    assert tables["memory"].columns == ["id", "module_id", "memory"]
     assert tables["memory"].rows == [["m0", "M0", "q_init"], ["m1", "M0", "q_done"]]
 
 

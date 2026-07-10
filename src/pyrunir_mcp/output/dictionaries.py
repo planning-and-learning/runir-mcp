@@ -7,18 +7,18 @@ the shared PSV/Markdown/JSON output conventions.
 
 from __future__ import annotations
 
-from enum import StrEnum
 from collections.abc import Sequence
 from typing import Hashable
 
+from pytyr.planning.ground import Task as GroundTask
+
+from pyrunir_mcp.enums import AtomKind
 from pyrunir_mcp.json_types import JsonValue
+from pyrunir_mcp.keys import (
+    Keys,
+    TableColumns,
+)
 from pyrunir_mcp.tables import Table
-
-
-class AtomKind(StrEnum):
-    FLUENT = "fluent"
-    DERIVED = "derived"
-    STATIC = "static"
 
 
 class Dictionary:
@@ -26,7 +26,7 @@ class Dictionary:
 
     def __init__(self, prefix: str, columns: list[str]) -> None:
         self._prefix = prefix
-        self._columns = columns  # excluding the leading "id"
+        self._columns = columns  # excluding the leading Keys.ID
         self._alias_by_key: dict[Hashable, str] = {}
         self._keys: list[Hashable] = []
         self._rows: list[list[JsonValue]] = []
@@ -51,25 +51,28 @@ class Dictionary:
         if not self._rows and not include_empty:
             return None
         return Table(
-            name=name, columns=["id", *self._columns], rows=[list(row) for row in self._rows]
+            name=name, columns=[Keys.ID, *self._columns], rows=[list(row) for row in self._rows]
         )
 
 
 class Dictionaries:
     """The dictionaries shared by the policy and classifier families.
 
-    `ext=True` gives module-program `rules` (`symbol|source|target`) and populates `modules`/`memory`; base
+    `ext=True` gives module-program `rules` (`symbol|source_memory|target_memory`) and populates `modules`/`memory`; base
     policy and classifier runs simply leave the unused dictionaries empty (omitted on render).
     """
 
-    def __init__(self, *, ext: bool = False) -> None:
+    def __init__(self, *, task: GroundTask | None = None, ext: bool = False) -> None:
         self._ext = ext
-        self.features = Dictionary("f", ["symbol"])
-        self.rules = Dictionary("r", ["symbol", "source", "target"] if ext else ["symbol"])
-        self.actions = Dictionary("a", ["action"])
-        self.atoms = Dictionary("p", ["kind", "atom"])
-        self.modules = Dictionary("M", ["module"])
-        self.memories = Dictionary("m", ["module", "memory"])
+        self.features = Dictionary("f", [Keys.SYMBOL])
+        self.rules = Dictionary("r", [Keys.SYMBOL, TableColumns.SOURCE_MEMORY_ID, TableColumns.TARGET_MEMORY_ID] if ext else [Keys.SYMBOL])
+        self.actions = Dictionary("a", [Keys.ACTION])
+        self.atoms = Dictionary("p", [Keys.KIND, Keys.ATOM])
+        self.modules = Dictionary("M", [Keys.MODULE])
+        self.memories = Dictionary("m", [TableColumns.MODULE_ID, Keys.MEMORY])
+        if task is not None:
+            for atom in sorted(map(str, task.get_task().get_static_atoms())):
+                self.atom(AtomKind.STATIC, atom)
 
     def feature(self, symbol: str) -> str:
         return self.features.intern(symbol, [symbol])
@@ -105,12 +108,12 @@ class Dictionaries:
 
     def tables(self) -> dict[str, Table]:
         named = {
-            "features": self.features,
-            "rules": self.rules,
-            "actions": self.actions,
-            "atoms": self.atoms,
-            "modules": self.modules,
-            "memory": self.memories,
+            Keys.FEATURES: self.features,
+            Keys.RULES: self.rules,
+            Keys.ACTIONS: self.actions,
+            Keys.ATOMS: self.atoms,
+            Keys.MODULES: self.modules,
+            Keys.MEMORY: self.memories,
         }
         return {
             name: table

@@ -18,9 +18,10 @@ from pyrunir_mcp.callsite import (
     prove_termination,
     write_empty_policy,
 )
-from pyrunir_mcp.candidates import Candidate, CandidateSource, Classifier, ModuleProgram, Policy
+from pyrunir_mcp.candidates import Candidate, Classifier, ModuleProgram, Policy
 from pyrunir_mcp.context import DomainContext, TaskContext
-from pyrunir_mcp.dumping import DumpFormat, DumpResult
+from pyrunir_mcp.dumping import DumpResult
+from pyrunir_mcp.enums import CandidateSource, DumpFormat
 from pyrunir_mcp.history import HistoryFeedback, ValidationHistory
 from pyrunir_mcp.task_generation import (
     GeneratedTask,

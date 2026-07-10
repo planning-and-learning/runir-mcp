@@ -3,11 +3,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import pyrunir_mcp.dumping as _dumping
+import pyrunir_mcp.validation as _validation
 from pyrunir_mcp.candidates import Classifier, ModuleProgram, Policy
 from pyrunir_mcp.context import DomainContext, TaskContext
-from pyrunir_mcp.dumping import DumpFormat, DumpResult
-from pyrunir_mcp.history import ValidationHistory
-from pyrunir_mcp.json_types import JsonValue
 from pyrunir_mcp.defaults import (
     CLASSIFIER_MISTAKE_LIMIT,
     CLASSIFIER_PROOF_BUDGET,
@@ -15,6 +14,10 @@ from pyrunir_mcp.defaults import (
     PLAN_TRACE_BUDGET,
     PROVE_SEARCH_BUDGET,
 )
+from pyrunir_mcp.dumping import DumpResult
+from pyrunir_mcp.enums import DumpFormat
+from pyrunir_mcp.history import ValidationHistory
+from pyrunir_mcp.json_types import JsonValue
 from pyrunir_mcp.task_generation import (
     TaskGenerationOptions,
     TaskGenerationResult,
@@ -32,8 +35,6 @@ from pyrunir_mcp.validation import (
     SearchBudget,
     ValidationResult,
 )
-import pyrunir_mcp.dumping as _dumping
-import pyrunir_mcp.validation as _validation
 
 
 def create_domain_context(domain_file: str | Path) -> DomainContext:

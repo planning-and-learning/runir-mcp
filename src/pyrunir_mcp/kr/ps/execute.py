@@ -18,13 +18,16 @@ from typing import Protocol, TypeAlias, overload
 
 from pyrunir.datasets import GroundTaskSearchContext
 from pyrunir.kr.ps.base import GroundSketchSearchOptions
-from pytyr.planning.ground import State as GroundState
 from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions
+from pytyr.planning.ground import State as GroundState
 
+from pyrunir_mcp.enums import CounterexampleKind, RunCategory, RunItemCategory, RunStatus, SuccessStatus
 from pyrunir_mcp.json_types import JsonObject
+from pyrunir_mcp.keys import (
+    Keys,
+)
 from pyrunir_mcp.kr.ps.frontier import FrontierExpander
 from pyrunir_mcp.kr.ps.proof import (
-    CounterexampleKind,
     ProofResult,
     StateEvidence,
     failure_items,
@@ -33,10 +36,10 @@ from pyrunir_mcp.kr.ps.proof import (
     witness_artifacts,
     witness_ground_state,
 )
-from pyrunir_mcp.kr.ps.status import AnyStatus, SuccessStatus, is_success_status
+from pyrunir_mcp.kr.ps.status import AnyStatus, is_success_status
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.output.run import FailureCategory, RunCategory, RunItemCategory, status_category
-from pyrunir_mcp.output.writer import Artifact, resolve_formats, write_run
+from pyrunir_mcp.output.run import status_category
+from pyrunir_mcp.output.writer import Artifact, write_run
 from pyrunir_mcp.tables import Document, Fmt, Table
 
 RolloutFallbackResult = (
@@ -59,6 +62,7 @@ class RolloutFallback(Protocol):
 
 
 SearchOptions: TypeAlias = GroundSketchSearchOptions | GroundModuleProgramSearchOptions
+FailureCategory: TypeAlias = RunCategory | RunItemCategory
 
 
 class Task(Protocol):
@@ -134,7 +138,7 @@ def _result_failure(
         return items[0]
     if is_success_status(result.status):
         return None, None
-    return status_category(str(result.status.name)), None  # e.g. resource_limit (no graph witness)
+    return status_category(result.status.name), None  # e.g. out_of_states (no graph witness)
 
 
 @dataclass(frozen=True)
@@ -180,50 +184,6 @@ def with_docs_header(
     )
 
 
-def _write_success_meta(output_dir: Path, success: _SuccessTrace, source: str, primary: str) -> str:
-    meta = {
-        "id": success.id,
-        "category": success.category.value,
-        "status": success.status.value,
-        "seed": success.seed,
-        "problem": success.problem,
-        "source": source,
-        "files": {"trace": f"trace.{primary}"},
-    }
-    path = output_dir / "successes" / success.id / "meta.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return path.resolve().as_posix()
-
-
-def _write_failure_meta(output_dir: Path, rep: _Representative, source: str, primary: str) -> str:
-    """Write `failures/<id>/meta.json` (the failure's row fields + the artifact filenames present in
-    its directory) and return its absolute path. Always JSON, regardless of the render formats."""
-    files = {
-        label: f"{label}.{primary}"
-        for label, name in (
-            ("witness", rep.witness),
-            ("trace", rep.trace),
-            ("successors", rep.successors),
-            ("plan_trace", rep.plan_trace),
-        )
-        if name is not None
-    }
-    meta = {
-        "id": rep.id,
-        "category": rep.category.value,
-        "status": rep.status.name,
-        "seed": rep.seed,
-        "problem": rep.problem,
-        "source": source,
-        "files": files,
-    }
-    path = output_dir / "failures" / rep.id / "meta.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return path.resolve().as_posix()
-
-
 def run_execute(
     *,
     tool: str,
@@ -264,20 +224,20 @@ def run_execute(
                 _result_failure(result, evidence) if not effective_success else (None, None)
             )
             if kind is None:
-                failure_category = None
+                item_category = None
             elif isinstance(kind, CounterexampleKind):
-                failure_category = RunItemCategory(kind.value)
+                item_category = RunItemCategory(kind.value)
             else:
-                failure_category = kind
-            category_value = failure_category.value if failure_category is not None else None
+                item_category = kind
+            category_value = item_category.value if item_category is not None else None
             task_rows.append(
                 {
-                    "problem_file": task.problem_path.name,
-                    "status": SuccessStatus.SUCCESS.value
+                    Keys.TASK_FILE: task.problem_path.name,
+                    Keys.STATUS: SuccessStatus.SUCCESS.value
                     if effective_success
-                    else str(result.status.name),
-                    "failure_category": category_value,
-                    "seed": seed,
+                    else result.status.name.lower(),
+                    Keys.CATEGORY: category_value,
+                    Keys.SEED: seed,
                 }
             )
             if effective_success:
@@ -286,16 +246,15 @@ def run_execute(
                 seed_failed, seed_category = True, category_value
                 if first_failure is None:
                     first_failure = (task, result)
-                if failure_category is not None and category_value is not None:
+                if item_category is not None and category_value is not None:
                     representatives.setdefault(
                         (task.problem_path.name, category_value, seed), (seed, task, result, witness)
                     )
         rollouts.append(
             {
-                "seed": seed,
-                "status": "FAILURE" if seed_failed else SuccessStatus.SUCCESS.value,
-                "failure_category": seed_category,
-                "executed_tasks": len(tasks),
+                Keys.SEED: seed,
+                Keys.STATUS: RunStatus.FAILURE.value if seed_failed else RunStatus.SUCCESS.value,
+                Keys.CATEGORY: seed_category,
             }
         )
 
@@ -311,15 +270,15 @@ def run_execute(
             else RunCategory(category_value)
         )
         failure_id = f"{category.value}-{index:03d}"
-        names: dict[str, str | None] = {"witness": None, "trace": None, "successors": None, "plan_trace": None}
+        names: dict[str, str | None] = {Keys.WITNESS: None, Keys.TRACE: None, Keys.SUCCESSORS: None, Keys.PLAN_TRACE: None}
         if witness is not None:
-            header = [
-                ("tool", tool),
-                ("id", failure_id),
-                ("category", category.value),
-                ("status", result.status.name),
-                ("problem", problem),
-                ("seed", str(seed)),
+            header: list[tuple[str, str]] = [
+                (Keys.TOOL, tool),
+                (Keys.ID, failure_id),
+                (Keys.CATEGORY, category.value),
+                (Keys.STATUS, result.status.name.lower()),
+                (Keys.TASK_FILE, problem),
+                (Keys.SEED, str(seed)),
             ]
             # Base greedy `find_solution` reports a single init vertex on a downstream failure
             # (the committed prefix is discarded upstream). When that happens, roll the policy forward
@@ -354,10 +313,10 @@ def run_execute(
                             )
                             failure_id = f"{category.value}-{index:03d}"
                             header = [
-                                (key, value if key != "id" else failure_id) for key, value in header
+                                (key, value if key != Keys.ID else failure_id) for key, value in header
                             ]
                             header = [
-                                (key, value if key != "category" else category.value)
+                                (key, value if key != Keys.CATEGORY else category.value)
                                 for key, value in header
                             ]
                             docs = with_docs_header(docs, header)
@@ -387,18 +346,22 @@ def run_execute(
             if kind == CounterexampleKind.OPEN_STATE and open_state_plan is not None:
                 plan_trace = open_state_plan(task, witness_ground_state(result.graph, witness))
                 if plan_trace is not None:
-                    plan_trace = Document(header=[*header, ("source", "ff")], sections=plan_trace.sections)
-            names["witness"] = f"failures/{failure_id}/witness"
-            artifacts[names["witness"]] = witness_doc
+                    plan_trace = Document(header=[*header, (Keys.ORIGIN, "ff")], sections=plan_trace.sections)
+            witness_name = f"failures/{failure_id}/witness"
+            names[Keys.WITNESS] = witness_name
+            artifacts[witness_name] = witness_doc
             if trace is not None:
-                names["trace"] = f"failures/{failure_id}/trace"
-                artifacts[names["trace"]] = trace
+                trace_name = f"failures/{failure_id}/trace"
+                names[Keys.TRACE] = trace_name
+                artifacts[trace_name] = trace
             if successors is not None:
-                names["successors"] = f"failures/{failure_id}/successors"
-                artifacts[names["successors"]] = successors
+                successors_name = f"failures/{failure_id}/successors"
+                names[Keys.SUCCESSORS] = successors_name
+                artifacts[successors_name] = successors
             if plan_trace is not None:
-                names["plan_trace"] = f"failures/{failure_id}/plan_trace"
-                artifacts[names["plan_trace"]] = plan_trace
+                plan_trace_name = f"failures/{failure_id}/plan_trace"
+                names[Keys.PLAN_TRACE] = plan_trace_name
+                artifacts[plan_trace_name] = plan_trace
         reps.append(
             _Representative(
                 failure_id,
@@ -406,10 +369,10 @@ def run_execute(
                 result.status,
                 seed,
                 problem,
-                names["witness"],
-                names["trace"],
-                names["successors"],
-                names["plan_trace"],
+                names[Keys.WITNESS],
+                names[Keys.TRACE],
+                names[Keys.SUCCESSORS],
+                names[Keys.PLAN_TRACE],
             )
         )
 
@@ -418,13 +381,13 @@ def run_execute(
         success_id = f"success-{index:03d}"
         problem = task.problem_path.name
         trace_name = f"successes/{success_id}/trace"
-        header = [
-            ("tool", tool),
-            ("id", success_id),
-            ("category", RunItemCategory.SUCCESS.value),
-            ("status", SuccessStatus.SUCCESS.value),
-            ("problem", problem),
-            ("seed", str(seed)),
+        header: list[tuple[str, str]] = [
+            (Keys.TOOL, tool),
+            (Keys.ID, success_id),
+            (Keys.CATEGORY, RunItemCategory.SUCCESS.value),
+            (Keys.STATUS, SuccessStatus.SUCCESS.value),
+            (Keys.TASK_FILE, problem),
+            (Keys.SEED, str(seed)),
         ]
         trace = successful_trace_artifact(
             result.graph,
@@ -450,25 +413,25 @@ def run_execute(
             )
         )
 
-    artifacts["failures"] = Table(
+    artifacts[Keys.FAILURES] = Table(
         name="failures",
         columns=[
-            "id",
-            "category",
-            "status",
-            "seed",
-            "problem",
-            "source",
-            "trace",
-            "witness",
-            "successors",
-            "plan_trace",
+            Keys.ID,
+            Keys.CATEGORY,
+            Keys.STATUS,
+            Keys.SEED,
+            Keys.TASK_FILE,
+            Keys.ORIGIN,
+            Keys.TRACE,
+            Keys.WITNESS,
+            Keys.SUCCESSORS,
+            Keys.PLAN_TRACE,
         ],
         rows=[
             [
                 r.id,
                 r.category.value,
-                r.status.name,
+                r.status.name.lower(),
                 r.seed,
                 r.problem,
                 "find_solution",
@@ -480,9 +443,9 @@ def run_execute(
             for r in reps
         ],
     )
-    artifacts["successes"] = Table(
+    artifacts[Keys.SUCCESSES] = Table(
         name="successes",
-        columns=["id", "category", "status", "seed", "problem", "source", "trace"],
+        columns=[Keys.ID, Keys.CATEGORY, Keys.STATUS, Keys.SEED, Keys.TASK_FILE, Keys.ORIGIN, Keys.TRACE],
         rows=[
             [
                 s.id,
@@ -496,10 +459,10 @@ def run_execute(
             for s in successes
         ],
     )
-    artifacts["summary"] = Table(
-        name="summary",
-        columns=["id", "category", "status", "seed", "problem"],
-        rows=[[r.id, r.category.value, str(r.status.name), r.seed, r.problem] for r in reps],
+    artifacts[Keys.SUMMARY] = Table(
+        name=Keys.SUMMARY,
+        columns=[Keys.ID, Keys.CATEGORY, Keys.STATUS, Keys.SEED, Keys.TASK_FILE],
+        rows=[[r.id, r.category.value, r.status.name.lower(), r.seed, r.problem] for r in reps],
     )
 
     paths = write_run(
@@ -507,42 +470,33 @@ def run_execute(
         {**{f"dicts/{name}": table for name, table in dicts.tables().items()}, **artifacts},
         formats,
     )
-    primary = resolve_formats(formats)[0]
-    meta_paths = {r.id: _write_failure_meta(output_dir, r, "find_solution", primary) for r in reps}
-    success_meta_paths = {
-        s.id: _write_success_meta(output_dir, s, "find_solution", primary) for s in successes
-    }
 
     manifest = {
-        "tool": tool,
+        Keys.TOOL: tool,
         **manifest_metadata,
-        "status": SuccessStatus.SUCCESS.value if first_failure is None else "FAILURE",
-        "rollouts": rollouts,
-        "tasks": task_rows,
-        "distinct_failures": [
+        Keys.STATUS: RunStatus.SUCCESS.value if first_failure is None else RunStatus.FAILURE.value,
+        Keys.ROLLOUTS: rollouts,
+        Keys.TASKS: task_rows,
+        Keys.FAILURES: [
             {
-                "id": r.id,
-                "failure_category": r.category.value,
-                "problem_file": r.problem,
-                "seed": r.seed,
-                "witness_path": paths.get(r.witness) if r.witness is not None else None,
-                "trace_path": paths.get(r.trace) if r.trace is not None else None,
-                "successors_path": paths.get(r.successors) if r.successors is not None else None,
-                "plan_trace_path": paths.get(r.plan_trace) if r.plan_trace is not None else None,
-                "meta_path": meta_paths[r.id],
-                "trace_available": r.trace is not None,
+                Keys.ID: r.id,
+                Keys.CATEGORY: r.category.value,
+                Keys.TASK_FILE: r.problem,
+                Keys.SEED: r.seed,
+                Keys.WITNESS_PATH: paths.get(r.witness) if r.witness is not None else None,
+                Keys.TRACE_PATH: paths.get(r.trace) if r.trace is not None else None,
+                Keys.SUCCESSORS_PATH: paths.get(r.successors) if r.successors is not None else None,
+                Keys.PLAN_TRACE_PATH: paths.get(r.plan_trace) if r.plan_trace is not None else None,
             }
             for r in reps
         ],
-        "successful_traces": [
+        Keys.SUCCESSES: [
             {
-                "id": s.id,
-                "category": s.category.value,
-                "problem_file": s.problem,
-                "seed": s.seed,
-                "trace_path": paths.get(s.trace),
-                "meta_path": success_meta_paths[s.id],
-                "trace_available": True,
+                Keys.ID: s.id,
+                Keys.CATEGORY: s.category.value,
+                Keys.TASK_FILE: s.problem,
+                Keys.SEED: s.seed,
+                Keys.TRACE_PATH: paths.get(s.trace),
             }
             for s in successes
         ],

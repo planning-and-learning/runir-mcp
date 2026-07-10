@@ -4,15 +4,10 @@ import json
 from pathlib import Path
 from typing import cast
 
-import pyrunir_mcp as public
 from pyrunir.kr.ps.base import Sketch
 from pytyr.planning import SearchStatus
 
-from pyrunir_mcp.validation import rotate_smallest_state_id_first
-from pyrunir_mcp.dumping import execute_observation_from_manifest
-from pyrunir_mcp.kr.ps.execute import with_docs_header
-from pyrunir_mcp.tables import Document, Table
-
+import pyrunir_mcp as public
 from pyrunir_mcp import (
     CandidateSource,
     ClassifierObservationDetails,
@@ -20,23 +15,26 @@ from pyrunir_mcp import (
     DumpFormat,
     ExecuteObservationDetails,
     ExecutePolicyResult,
-    SearchBudget,
-    TaskContext,
     FailureFingerprint,
     Policy,
-    ValidationKind,
+    SearchBudget,
+    TaskContext,
     ValidationHistory,
+    ValidationKind,
     ValidationObservation,
     ValidationStatus,
     create_domain_context,
     create_module_program,
     create_task_context,
     dump_result,
-    prove_termination,
     dump_validation_history,
     execute_module_program,
+    prove_termination,
 )
-
+from pyrunir_mcp.dumping import execute_observation_from_manifest
+from pyrunir_mcp.kr.ps.execute import with_docs_header
+from pyrunir_mcp.tables import Document, Table
+from pyrunir_mcp.validation import rotate_smallest_state_id_first
 
 
 def test_public_exports_use_typed_names() -> None:
@@ -76,9 +74,10 @@ def test_empty_classifier_dumps_false_negative_witness_artifacts(tmp_path: Path)
         "\n".join(
             [
                 "(define (domain tiny-uns)",
-                "  (:requirements :strips :typing)",
-                "  (:predicates (p) (q))",
-                "  (:action noop :parameters () :precondition (p) :effect (p))",
+                "  (:requirements :strips :typing :negative-preconditions)",
+                "  (:predicates (p) (q) (dead))",
+                "  (:action solve :parameters () :precondition (p) :effect (q))",
+                "  (:action trap :parameters () :precondition (p) :effect (and (dead) (not (p))))",
                 ")",
             ]
         ),
@@ -118,19 +117,21 @@ def test_empty_classifier_dumps_false_negative_witness_artifacts(tmp_path: Path)
     assert (output_dir / "summary.psv").is_file()
     assert witness.is_file()
     assert atoms.is_file()
-    assert "[state]" in witness.read_text(encoding="utf-8")
+    assert "[states]" in witness.read_text(encoding="utf-8")
     assert "[facts]" in witness.read_text(encoding="utf-8")
-    assert "p0|fluent|" in atoms.read_text(encoding="utf-8")
+    assert "p0|fluent_atoms|" in atoms.read_text(encoding="utf-8")
 
 
-def test_empty_module_program_execute_dumps_cycle_artifacts(tmp_path: Path) -> None:
+def test_empty_module_program_execute_dumps_open_state_artifacts(tmp_path: Path) -> None:
     domain_file = tmp_path / "domain.pddl"
     problem_file = tmp_path / "problem.pddl"
+    classifier_file = tmp_path / "classifier.txt"
     domain_file.write_text(
         "\n".join(
             [
                 "(define (domain tiny-open)",
                 "  (:requirements :strips :typing)",
+                "  (:constants marker)",
                 "  (:predicates (p) (q))",
                 "  (:action make-q :parameters () :precondition (p) :effect (q))",
                 ")",
@@ -166,18 +167,50 @@ def test_empty_module_program_execute_dumps_cycle_artifacts(tmp_path: Path) -> N
     dumped = dump_result(result, tmp_path / "ext_execute", formats=(DumpFormat.PSV, DumpFormat.JSON))
 
     output_dir = dumped.output_dir
-    witness = output_dir / "failures" / "cycle-001" / "witness.psv"
-    trace = output_dir / "failures" / "cycle-001" / "trace.psv"
-    successors = output_dir / "failures" / "cycle-001" / "successors.psv"
+    witness = output_dir / "failures" / "open_state-001" / "witness.psv"
+    trace = output_dir / "failures" / "open_state-001" / "trace.psv"
+    successors = output_dir / "failures" / "open_state-001" / "successors.psv"
 
     assert result.status.value == "failure"
     assert witness.is_file()
     assert trace.is_file()
     assert successors.is_file()
     witness_text = witness.read_text(encoding="utf-8")
-    assert "@category cycle" in witness_text
+    assert "@category open_state" in witness_text
     assert "[states]" in witness_text
     assert "[transitions]" in trace.read_text(encoding="utf-8")
+
+    classifier_file.write_text(
+        """(:classifier
+    (:symbol c0)
+    (:features
+        (:boolean
+            (:symbol any_object)
+            (:expression (b_nonempty (c_top)))
+        )
+    )
+    (:expression (or (and any_object)))
+)
+""",
+        encoding="utf-8",
+    )
+    classifier = public.create_classifier(domain, classifier_file)
+    classified = execute_module_program(task, program, classifier=classifier)
+    classified_dump = dump_result(
+        classified,
+        tmp_path / "ext_execute_classified",
+        formats=(DumpFormat.PSV,),
+    )
+    classified_witness = (
+        classified_dump.output_dir / "failures" / "deadend-001" / "witness.psv"
+    )
+
+    assert classified.rollout_results[0][1].outcome.value == "unsolvable"
+    assert classified_witness.is_file()
+    assert "witness,deadend" in classified_witness.read_text(encoding="utf-8")
+    assert not (
+        classified_dump.output_dir / "failures" / "deadend-001" / "successors.psv"
+    ).exists()
 
 
 def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) -> None:
@@ -202,11 +235,10 @@ def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) ->
     dumped = dump_result(result, tmp_path / "ext_termination", formats=(DumpFormat.PSV, DumpFormat.JSON))
 
     output_dir = dumped.output_dir
-    result_json = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert (output_dir / "result.json").is_file()
     run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
 
     assert result.status.value == "success"
-    assert result_json["termination"]["successful"] is True
     assert run_json["tool"] == "runir.ps.ext.prove_termination"
     assert (output_dir / "summary.psv").is_file()
     assert (output_dir / "dicts" / "variables.psv").is_file()
@@ -215,7 +247,7 @@ def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) ->
 def test_execute_fallback_docs_are_reheaded_after_reclassification() -> None:
     old_header = [("id", "open_state-001"), ("category", "open_state")]
     new_header = [("id", "deadend-001"), ("category", "deadend")]
-    table = Table("state", ["id", "flags"], [["s87", "WITNESS,DEADEND"]])
+    table = Table("state", ["id", "flags"], [["s87", "witness,deadend"]])
     witness = Document(old_header, [table])
     trace = Document(old_header, [table])
 
@@ -235,20 +267,15 @@ def test_execute_fingerprint_refresh_promotes_cycle_witness(tmp_path: Path) -> N
     witness_path.write_text(
         """@tool base_execute
 @id open_state-001
-@category open_state
-
-[cycle]
-key|value
-cycle_state_indices|s8666,s8698,s8793,s8697,s8666
+@category cycle
 
 [states]
-id|flags
-s0|INIT
-s8666|OPEN,WITNESS,CYCLE
+state_id|flags
+s8666|open,witness,cycle
 s8698|
 s8793|
 s8697|
-s8666|OPEN,WITNESS,CYCLE
+s8666|open,witness,cycle
 """,
         encoding="utf-8",
     )
@@ -256,10 +283,10 @@ s8666|OPEN,WITNESS,CYCLE
     manifest_path.write_text(
         json.dumps(
             {
-                "distinct_failures": [
+                "failures": [
                     {
-                        "failure_category": "open_state",
-                        "problem_file": "p03.pddl",
+                        "category": "cycle",
+                        "task_file": "p03.pddl",
                         "witness_path": witness_path.as_posix(),
                     }
                 ]
@@ -308,12 +335,12 @@ def test_execute_fingerprint_refresh_uses_manifest_witness(tmp_path: Path) -> No
 @id deadend-001
 @category deadend
 
-[state]
-id|flags|f0
-s339|WITNESS,DEADEND|2
+[states]
+state_id|flags|f0
+s339|witness,deadend|2
 
 [facts]
-state|atoms
+state_id|atom_ids
 s339|p0
 """,
         encoding="utf-8",
@@ -322,10 +349,10 @@ s339|p0
     manifest_path.write_text(
         json.dumps(
             {
-                "distinct_failures": [
+                "failures": [
                     {
-                        "failure_category": "deadend",
-                        "problem_file": "p01.pddl",
+                        "category": "deadend",
+                        "task_file": "p01.pddl",
                         "witness_path": witness_path.as_posix(),
                     }
                 ]
@@ -425,10 +452,10 @@ def test_validation_history_keeps_typed_observations_until_dump(tmp_path: Path) 
             "status": "failure",
             "candidate_id": "policy_000001",
             "classifier_id": None,
-            "fingerprint": None,
+            "witness": None,
             "details": {
-                "num_rollouts": 3,
-                "failure": {"problem_file": "p01.pddl", "status": "FAILED"},
+                "rollout_count": 3,
+                "failure": {"task_file": "p01.pddl", "status": "failed"},
             },
         }
     ]
@@ -514,15 +541,15 @@ def test_classifier_observation_details_dump_with_enum_status(tmp_path: Path) ->
     dumped = dump_validation_history(history, tmp_path / "history")
     payload = json.loads(dumped.files[0].read_text(encoding="utf-8"))
 
-    assert payload["observations"][0]["fingerprint"] is None
+    assert payload["observations"][0]["witness"] is None
     assert payload["observations"][0]["details"] == {
         "counts": {
-            "states": 10,
-            "unsolvable": 4,
-            "false_positive": 1,
-            "false_negative": 2,
+            "state_count": 10,
+            "unsolvable_state_count": 4,
+            "false_positive_count": 1,
+            "false_negative_count": 2,
         },
-        "state_graph_status": "OUT_OF_TIME",
+        "state_graph_status": "out_of_time",
     }
 
 

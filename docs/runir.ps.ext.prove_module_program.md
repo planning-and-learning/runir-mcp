@@ -38,8 +38,8 @@ Dictionaries and per-failure files use the [module-program table schema](tables/
 ```text
 output_dir/
   .pyrunir-mcp-output
-  run.json                               # run envelope: metadata, counts, artifact paths (JSON only)
-  summary.{psv,md,json}                  # run index/counts table
+  run.json                               # run envelope: metadata and artifact paths (JSON only)
+  summary.{psv,md,json}                  # run index table
   dicts/
     features.{psv,md,json}               # run-global dictionary: f0,f1,… -> feature symbol
     rules.{psv,md,json}                  # run-global dictionary: r0,r1,… -> module rule (+ src/tgt memory)
@@ -49,7 +49,6 @@ output_dir/
     memory.{psv,md,json}                 # run-global dictionary: m0,m1,… -> (module, memory-state)
   failures/
     <id>/                                # <id> already encodes the category (e.g. open_state-001, cycle-001)
-      meta.json                          # per-failure metadata (see docs/index.md)
       witness.{psv,md,json}              # witness control state or cycle
       trace.{psv,md,json}                # path to the witness, present when a path exists
       successors.{psv,md,json}           # 1-step successors of the witness

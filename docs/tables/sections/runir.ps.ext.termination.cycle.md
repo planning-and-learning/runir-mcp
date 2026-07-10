@@ -6,5 +6,5 @@ Cycle descriptor for structural termination witnesses.
 
 | Column | Meaning |
 |---|---|
-| `key` | Descriptor key, such as `cycle_vertex_indices` or `cycle_edge_indices`. |
-| `value` | Descriptor value. Vertices and edges are referenced by integer indices. |
+| `vertex_indices` | Closed sequence of structural-termination vertex indices. |
+| `edge_indices` | Sequence of structural-termination edge indices. |

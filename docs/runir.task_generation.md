@@ -97,7 +97,7 @@ Generation writes:
     configs.json
 ```
 
-`configs.json` records generated and invalid config metadata. Calling `dump_result(...)` can also write:
+`configs.json` records `generated_tasks` and `invalid_tasks` config metadata. Calling `dump_result(...)` can also write:
 
 ```text
 <output_dir>/result.json

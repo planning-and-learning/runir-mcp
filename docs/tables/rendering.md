@@ -33,14 +33,14 @@ Witness, trace, and successor artifacts are sectioned documents:
 @category cycle
 
 [states]
-id|flags
-s0|INIT
+state_id|flags
+s0|init
 ```
 
 In JSON, a sectioned document is one object with headers and sections separated:
 
 ```json
-{"header": {"tool": "execute_policy"}, "sections": {"states": [{"id": "s0", "flags": "INIT"}]}}
+{"header": {"tool": "execute_policy"}, "sections": {"states": [{"id": "s0", "flags": "init"}]}}
 ```
 
 ## Interned Aliases

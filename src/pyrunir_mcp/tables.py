@@ -20,7 +20,11 @@ from typing import Literal, override
 
 from jinja2 import DictLoader, Environment
 
-from pyrunir_mcp.json_types import JsonValue
+from pyrunir_mcp.enums import DumpFormat
+from pyrunir_mcp.json_types import JsonValue, normalize_json_value
+from pyrunir_mcp.keys import (
+    Keys,
+)
 
 Fmt = Literal["psv", "md", "json"]
 
@@ -50,12 +54,15 @@ class Document:
     sections: list[Table]
 
 
-_TEMPLATES = {
-    "psv_table.j2": (
+_PSV_TEMPLATE = "psv_table.j2"
+_MD_TEMPLATE = "md_table.j2"
+
+_TEMPLATES: dict[str, str] = {
+    _PSV_TEMPLATE: (
         "{{ columns | join('|') }}\n"
         "{% for row in rows %}{{ row | join('|') }}\n{% endfor %}"
     ),
-    "md_table.j2": (
+    _MD_TEMPLATE: (
         "| {{ columns | join(' | ') }} |\n"
         "| {{ rules | join(' | ') }} |\n"
         "{% for row in rows %}| {{ row | join(' | ') }} |\n{% endfor %}"
@@ -66,15 +73,16 @@ _ENV = Environment(loader=DictLoader(_TEMPLATES), trim_blocks=True, lstrip_block
 
 
 def _scalar(value: JsonValue) -> str:
-    if value is None:
+    normalized = normalize_json_value(value)
+    if normalized is None:
         return ""
-    if isinstance(value, bool):
-        return "T" if value else "F"
-    return str(value)
+    if isinstance(normalized, bool):
+        return "T" if normalized else "F"
+    return str(normalized)
 
 
 def _json_records(table: Table) -> list[dict[str, JsonValue]]:
-    return [dict(zip(table.columns, row)) for row in table.rows]
+    return [dict(zip(table.columns, [normalize_json_value(value) for value in row])) for row in table.rows]
 
 
 class Renderer(ABC):
@@ -98,7 +106,7 @@ class PSVRenderer(Renderer):
     def table(self, table: Table) -> str:
         columns = [self.cell(column) for column in table.columns]
         rows = [[self.cell(value) for value in row] for row in table.rows]
-        rendered = _ENV.get_template("psv_table.j2").render(columns=columns, rows=rows)
+        rendered = _ENV.get_template(_PSV_TEMPLATE).render(columns=columns, rows=rows)
         return rendered.rstrip("\n")
 
     @override
@@ -129,7 +137,7 @@ class MarkdownRenderer(Renderer):
             max(len(column), 3, *(len(row[index]) for row in cells))
             for index, column in enumerate(columns)
         ]
-        rendered = _ENV.get_template("md_table.j2").render(
+        rendered = _ENV.get_template(_MD_TEMPLATE).render(
             columns=[c.ljust(w) for c, w in zip(columns, widths)],
             rules=["-" * w for w in widths],
             rows=[[v.ljust(w) for v, w in zip(row, widths)] for row in cells],
@@ -151,16 +159,16 @@ class JSONRenderer(Renderer):
     @override
     def document(self, doc: Document) -> str:
         result = {
-            "header": {key: value for key, value in doc.header},
-            "sections": {t.name: _json_records(t) for t in doc.sections},
+            Keys.HEADER: {key: value for key, value in doc.header},
+            Keys.SECTIONS: {t.name: _json_records(t) for t in doc.sections},
         }
         return json.dumps(result, indent=2, sort_keys=True)
 
 
 _RENDERERS: dict[str, Renderer] = {
-    "psv": PSVRenderer(),
-    "md": MarkdownRenderer(),
-    "json": JSONRenderer(),
+    DumpFormat.PSV: PSVRenderer(),
+    DumpFormat.MD: MarkdownRenderer(),
+    DumpFormat.JSON: JSONRenderer(),
 }
 
 

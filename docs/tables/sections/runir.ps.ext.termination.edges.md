@@ -6,8 +6,8 @@ Edges in the structural termination cycle.
 
 | Column | Meaning |
 |---|---|
-| `idx` | Edge index within the witness. |
-| `src` | Source vertex index. |
-| `tgt` | Target vertex index. |
-| `rule` | Module-rule alias (`rK`) from [`rules.*`](../dictionaries/runir.ps.ext.termination.rules.md). |
-| `changes` | Space-separated numerical movements as `vK:<change>`, changed numericals only. |
+| `edge_index` | Edge index within the witness. |
+| `source_vertex_index` | Source vertex index. |
+| `target_vertex_index` | Target vertex index. |
+| `rule_id` | Module-rule alias (`rK`) from [`rules.*`](../dictionaries/runir.ps.ext.termination.rules.md). |
+| `deltas` | Space-separated numerical movements as `vK:<change>`, changed numericals only. |

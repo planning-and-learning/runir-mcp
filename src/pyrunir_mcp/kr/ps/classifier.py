@@ -6,12 +6,16 @@ from typing import Callable
 
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
 from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
-from pyrunir.kr.uns import Classifier, Repository as ClassifierRepository, classify
+from pyrunir.kr.uns import Classifier, classify
+from pyrunir.kr.uns import Repository as ClassifierRepository
 from pyrunir.kr.uns.dl import ClassifierFactory, parse_classifier
 from pytyr.formalism.planning import PlanningDomain
 from pytyr.planning.ground import State
 
 from pyrunir_mcp.json_types import JsonObject
+from pyrunir_mcp.keys import (
+    Keys,
+)
 
 StateEvidence = Callable[[State], JsonObject]
 
@@ -32,18 +36,26 @@ def build_classifier(context: ClassifierContext, classifier_file: Path | None) -
     )
 
 
+def unsolvability_test(classifier: Classifier) -> Callable[[State], bool]:
+    """Build a classifier predicate with its own denotation cache."""
+    builder = Builder()
+    denotations = DenotationRepositoryFactory().create()
+
+    def is_unsolvable(state: State) -> bool:
+        return bool(classify(classifier, GroundEvaluationContext(state, builder, denotations)))
+
+    return is_unsolvable
+
+
 def classifier_evidence(evidence: StateEvidence, classifier: Classifier | None) -> StateEvidence:
     if classifier is None:
         return evidence
 
-    builder = Builder()
-    denotations = DenotationRepositoryFactory().create()
+    is_unsolvable = unsolvability_test(classifier)
 
     def with_classifier(state: State) -> JsonObject:
         out = evidence(state)
-        out["is_unsolvable"] = bool(
-            classify(classifier, GroundEvaluationContext(state, builder, denotations))
-        )
+        out[Keys.IS_UNSOLVABLE] = is_unsolvable(state)
         return out
 
     return with_classifier

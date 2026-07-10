@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pyrunir.kr.ps.ext import ModuleProgram, parse_module_program
+from pyrunir.kr.ps.ext import ModuleProgram
+from pyrunir.kr.ps.ext.dl import parse_module_program
 
 from pyrunir_mcp.kr.ps.ext.core.features import ModuleProgramContext
 

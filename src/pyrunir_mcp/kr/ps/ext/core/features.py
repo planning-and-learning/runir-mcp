@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from pyrunir.kr.dl.ext import ConstructorRepository as ExtDLConstructorRepository
 from pyrunir.kr.ps.ext import GroundModuleProgramProofResults as PolicyProofResults
 from pyrunir.kr.ps.ext import Repository as PolicyRepository

@@ -6,7 +6,7 @@ Used by: [`../runir.ps.ext.counterexamples.md`](../runir.ps.ext.counterexamples.
 |---|---|
 | `id` | Rule alias, rendered as `rK`. |
 | `symbol` | Module rule symbol. |
-| `source` | Source memory-location alias (`mK`). |
-| `target` | Target memory-location alias (`mK`). |
+| `source_memory_id` | Source memory-location alias (`mK`). |
+| `target_memory_id` | Target memory-location alias (`mK`). |
 
-Module-program rules carry the memory transition they perform. Rule aliases appear in `[transitions]` and `[successors]` `rule` columns.
+Module-program rules carry the memory transition they perform. Rule aliases appear in `[transitions]` and `[successors]` `rule_id` columns.

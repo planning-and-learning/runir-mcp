@@ -5,12 +5,12 @@ import pytest
 
 from pyrunir_mcp.tables import (
     Document,
+    Fmt,
     JSONRenderer,
     MarkdownRenderer,
     PSVRenderer,
     Renderer,
     Table,
-    Fmt,
     render,
     render_document,
     renderer_for,
@@ -85,6 +85,14 @@ def test_markdown_escapes_pipe_in_column_name():
 def test_markdown_escapes_pipe():
     table = Table(name="t", columns=["a"], rows=[["cycle|x"]])
     assert render(table, "md").endswith("| cycle\\|x |")
+
+
+def test_uint32_max_sentinel_renders_as_inf():
+    table = Table(name="states", columns=["id", "f0"], rows=[["s45", 2**32 - 1]])
+
+    assert render(table, "psv") == "id|f0\ns45|inf"
+    assert "| s45 | inf |" in render(table, "md")
+    assert json.loads(render(table, "json")) == [{"id": "s45", "f0": "inf"}]
 
 
 def test_render_document_psv_matches_spec_layout():

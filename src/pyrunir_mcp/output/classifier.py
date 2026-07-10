@@ -1,17 +1,17 @@
 """Build the per-mistake unsolvability-classifier witness.
 
 Each mistake is one atomic witness state, written as its own `failures/<id>/witness` document (a
-`[state]` + `[facts]` document for classifier witness output.
+`[states]` + `[facts]` document for classifier witness output.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from pyrunir_mcp.enums import Flag, RunItemCategory
 from pyrunir_mcp.json_types import JsonValue
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.output.policy import Flag, WitnessState, counterexample_document
-from pyrunir_mcp.output.run import RunItemCategory
+from pyrunir_mcp.output.policy import WitnessState, counterexample_document
 from pyrunir_mcp.tables import Document
 
 
@@ -35,7 +35,7 @@ def classifier_witness(
     dicts: Dictionaries,
     header: list[tuple[str, str]],
 ) -> Document:
-    """The single misclassified state as a `[state]` + `[facts]` witness document (boolean features)."""
+    """The single misclassified state as a `[states]` + `[facts]` witness document (boolean features)."""
     state = WitnessState(
         state=row.state,
         features=row.features,
@@ -48,7 +48,7 @@ def classifier_witness(
         feature_symbols=feature_symbols,
         states=[state],
         transitions=[],
-        cycle=None,
+        cycle=False,
         dicts=dicts,
         ext=False,
         include_hstar=False,

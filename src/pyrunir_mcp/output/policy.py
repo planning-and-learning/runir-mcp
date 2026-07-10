@@ -9,10 +9,14 @@ policy/module-program witness output formats.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from enum import StrEnum
 
-from pyrunir_mcp.json_types import JsonValue
-from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
+from pyrunir_mcp.enums import AtomKind, Flag
+from pyrunir_mcp.json_types import JsonValue, normalize_json_value
+from pyrunir_mcp.keys import (
+    Keys,
+    TableColumns,
+)
+from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.tables import Document, Table
 
 
@@ -23,7 +27,6 @@ def _json_dict() -> dict[str, JsonValue]:
 def _delta_dict() -> dict[str, tuple[JsonValue, JsonValue]]:
     return {}
 
-
 @dataclass(frozen=True)
 class WitnessState:
     state: int
@@ -33,9 +36,7 @@ class WitnessState:
     flags: tuple[str, ...] = ()
     hstar: JsonValue = ""
     hlmcut: JsonValue = ""
-    vertex: int | None = None
     memory: tuple[str, str] | None = None  # (module, memory) for ext
-
 
 @dataclass(frozen=True)
 class WitnessTransition:
@@ -50,13 +51,6 @@ class WitnessTransition:
 
 
 @dataclass(frozen=True)
-class Cycle:
-    state_indices: tuple[int, ...] = ()
-    vertex_indices: tuple[int, ...] = ()
-    transition_steps: tuple[int, ...] = ()
-
-
-@dataclass(frozen=True)
 class Successor:
     src: int
     target: WitnessState
@@ -65,21 +59,6 @@ class Successor:
     action: str | None = None
     rule: str | None = None
     delta: dict[str, tuple[JsonValue, JsonValue]] = field(default_factory=_delta_dict)
-
-
-class Flag(StrEnum):
-    """State markers for the `flags` column in policy/module-program witness output.
-
-    An empty `flags` cell means nothing notable (an unremarkable, alive state) or that the
-    status was not evaluated. `DEADEND`/`GOAL` are the status exceptions worth flagging.
-    """
-
-    INIT = "INIT"
-    GOAL = "GOAL"
-    OPEN = "OPEN"
-    WITNESS = "WITNESS"
-    CYCLE = "CYCLE"
-    DEADEND = "DEADEND"
 
 
 def resolve_flags(
@@ -110,7 +89,8 @@ def resolve_flags(
 
 
 def _scalar(value: JsonValue) -> str:
-    return "T" if value is True else "F" if value is False else str(value)
+    normalized = normalize_json_value(value)
+    return "T" if normalized is True else "F" if normalized is False else str(normalized)
 
 
 def _flags(flags: tuple[str, ...]) -> str:
@@ -186,11 +166,11 @@ def _states_table(
 ) -> Table:
     features = dicts.feature_symbols()
     aliases = [f"f{index}" for index in range(len(features))]
-    leading = ["state", "module", "memory", "flags"] if ext else ["id", "flags"]
+    leading: list[str] = [TableColumns.STATE_ID, TableColumns.MODULE_ID, TableColumns.MEMORY_ID, TableColumns.FLAGS] if ext else [TableColumns.STATE_ID, TableColumns.FLAGS]
     if include_hstar:
-        leading.append("hstar")
+        leading.append(Keys.HSTAR)
     if include_hlmcut:
-        leading.append("hlmcut")
+        leading.append(Keys.HLMCUT)
     rows = [
         _state_row(
             state,
@@ -236,22 +216,22 @@ def _transitions_table(
 ) -> Table:
     rows = [_transition_row(transition, dicts, ext=ext) for transition in transitions]
     return Table(
-        name="transitions",
+        name=Keys.TRANSITIONS,
         columns=(
             [
-                "step",
-                "source_state",
-                "source_module",
-                "source_memory",
-                "target_state",
-                "target_module",
-                "target_memory",
-                "rule",
-                "action",
-                "delta",
+                TableColumns.STEP,
+                TableColumns.SOURCE_STATE_ID,
+                TableColumns.SOURCE_MODULE_ID,
+                TableColumns.SOURCE_MEMORY_ID,
+                TableColumns.TARGET_STATE_ID,
+                TableColumns.TARGET_MODULE_ID,
+                TableColumns.TARGET_MEMORY_ID,
+                TableColumns.RULE_ID,
+                TableColumns.ACTION_ID,
+                TableColumns.DELTAS,
             ]
             if ext
-            else ["step", "source", "target", "rule", "action", "delta"]
+            else [TableColumns.STEP, TableColumns.SOURCE_STATE_ID, TableColumns.TARGET_STATE_ID, TableColumns.RULE_ID, TableColumns.ACTION_ID, TableColumns.DELTAS]
         ),
         rows=rows,
     )
@@ -305,7 +285,6 @@ def _merge_state(existing: WitnessState, incoming: WitnessState) -> WitnessState
         flags=tuple(flag.value for flag in Flag if flag.value in {*existing.flags, *incoming.flags}),
         hstar=existing.hstar if existing.hstar != "" else incoming.hstar,
         hlmcut=existing.hlmcut if existing.hlmcut != "" else incoming.hlmcut,
-        vertex=existing.vertex if existing.vertex is not None else incoming.vertex,
         memory=existing.memory if existing.memory is not None else incoming.memory,
     )
 
@@ -326,24 +305,24 @@ def _successor_states(successors: list[Successor]) -> list[WitnessState]:
 
 
 def _successors_table(successors: list[Successor], dicts: Dictionaries, *, ext: bool) -> Table:
-    columns = (
+    columns: list[str] = (
         [
-            "source_state",
-            "source_module",
-            "source_memory",
-            "action",
-            "target_state",
-            "target_module",
-            "target_memory",
-            "rule",
-            "flags",
-            "delta",
+            TableColumns.SOURCE_STATE_ID,
+            TableColumns.SOURCE_MODULE_ID,
+            TableColumns.SOURCE_MEMORY_ID,
+            TableColumns.ACTION_ID,
+            TableColumns.TARGET_STATE_ID,
+            TableColumns.TARGET_MODULE_ID,
+            TableColumns.TARGET_MEMORY_ID,
+            TableColumns.RULE_ID,
+            TableColumns.FLAGS,
+            TableColumns.DELTAS,
         ]
         if ext
-        else ["source", "action", "target", "rule", "flags", "delta"]
+        else [TableColumns.SOURCE_STATE_ID, TableColumns.ACTION_ID, TableColumns.TARGET_STATE_ID, TableColumns.RULE_ID, TableColumns.FLAGS, TableColumns.DELTAS]
     )
     rows = [_successor_row(successor, dicts, ext=ext) for successor in successors]
-    return Table(name="successors", columns=columns, rows=rows)
+    return Table(name=Keys.SUCCESSORS, columns=columns, rows=rows)
 
 
 def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | None:
@@ -364,7 +343,7 @@ def _facts_table(states: list[WitnessState], dicts: Dictionaries) -> Table | Non
         if aliases:
             aliases.sort(key=lambda alias: int(alias[1:]))
             rows.append([_state_id(state.state), ",".join(aliases)])
-    return Table(name="facts", columns=["state", "atoms"], rows=rows) if rows else None
+    return Table(name=Keys.FACTS, columns=[TableColumns.STATE_ID, TableColumns.ATOM_IDS], rows=rows) if rows else None
 
 
 def _cycle_state_key(state: WitnessState, *, ext: bool) -> tuple[tuple[int, str], ...]:
@@ -387,28 +366,15 @@ def _rotate_transitions(values: list[WitnessTransition], offset: int) -> list[Wi
 def _canonical_cycle_payload(
     states: list[WitnessState],
     transitions: list[WitnessTransition],
-    cycle: Cycle,
     *,
     ext: bool,
-) -> tuple[list[WitnessState], list[WitnessTransition], Cycle]:
+) -> tuple[list[WitnessState], list[WitnessTransition]]:
     if not states:
-        return states, transitions, cycle
+        return states, transitions
     offset = min(range(len(states)), key=lambda index: _cycle_state_key(states[index], ext=ext))
     if offset == 0:
-        return states, transitions, cycle
-    rotated_states = _rotate_list(states, offset)
-    rotated_transitions = _rotate_transitions(transitions, offset)
-    rotated_cycle = Cycle(
-        state_indices=tuple(state.state for state in rotated_states),
-        vertex_indices=tuple(
-            vertex for vertex in (state.vertex for state in rotated_states) if vertex is not None
-        )
-        if ext
-        else (),
-        transition_steps=tuple(range(len(rotated_transitions))),
-    )
-    return rotated_states, rotated_transitions, rotated_cycle
-
+        return states, transitions
+    return _rotate_list(states, offset), _rotate_transitions(transitions, offset)
 
 # -- documents (each: intern features first, assemble sections, drop empty ones) --
 
@@ -431,19 +397,19 @@ def counterexample_document(
     feature_symbols: list[str],
     states: list[WitnessState],
     transitions: list[WitnessTransition],
-    cycle: Cycle | None,
+    cycle: bool,
     dicts: Dictionaries,
     ext: bool,
     include_hstar: bool = True,
     include_hlmcut: bool = True,
 ) -> Document:
     _intern_features(feature_symbols, dicts)
-    if cycle is not None:
-        states, transitions, cycle = _canonical_cycle_payload(states, transitions, cycle, ext=ext)
+    if cycle:
+        states, transitions = _canonical_cycle_payload(states, transitions, ext=ext)
         cycle_states = [*states, states[0]] if states else states
         sections = [
             _states_table(
-                "states",
+                Keys.STATES,
                 cycle_states,
                 dicts,
                 ext=ext,
@@ -455,7 +421,7 @@ def counterexample_document(
     else:
         sections = [
             _states_table(
-                "state",
+                Keys.STATES,
                 states,
                 dicts,
                 ext=ext,
@@ -480,7 +446,7 @@ def trace_document(
     _intern_features(feature_symbols, dicts)
     sections = [
         _states_table(
-            "states",
+            Keys.STATES,
             states,
             dicts,
             ext=ext,
@@ -511,7 +477,7 @@ def successors_document(
     sections = [
         _successors_table(successors, dicts, ext=ext),
         _states_table(
-            "states",
+            Keys.STATES,
             states,
             dicts,
             ext=False,

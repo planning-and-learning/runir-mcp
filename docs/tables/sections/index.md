@@ -2,7 +2,6 @@
 
 ## Base Sketch Policy
 
-- [`[state]`](runir.ps.base.state.md)
 - [`[states]`](runir.ps.base.states.md)
 - [`[transitions]`](runir.ps.base.transitions.md)
 - [`[facts]`](runir.ps.base.facts.md)
@@ -11,7 +10,6 @@
 
 ## Module Program
 
-- [`[state]`](runir.ps.ext.state.md)
 - [`[states]`](runir.ps.ext.states.md)
 - [`[transitions]`](runir.ps.ext.transitions.md)
 - [`[facts]`](runir.ps.ext.facts.md)
@@ -31,5 +29,5 @@
 
 ## Unsolvability Classifier
 
-- [`[state]`](runir.uns.state.md)
+- [`[states]`](runir.uns.states.md)
 - [`[facts]`](runir.uns.facts.md)

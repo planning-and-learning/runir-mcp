@@ -1,7 +1,14 @@
-import pytest
 from pathlib import Path
 
-from pyrunir_mcp.output.writer import DEFAULT_FORMATS, FORMAT_ENV, Artifact, resolve_formats, write_run
+import pytest
+
+from pyrunir_mcp.output.writer import (
+    DEFAULT_FORMATS,
+    FORMAT_ENV,
+    Artifact,
+    resolve_formats,
+    write_run,
+)
 from pyrunir_mcp.tables import Document, Table
 
 

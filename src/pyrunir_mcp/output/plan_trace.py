@@ -9,8 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pyrunir_mcp.json_types import JsonValue
-from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
+from pyrunir_mcp.enums import AtomKind
+from pyrunir_mcp.json_types import JsonValue, normalize_json_value
+from pyrunir_mcp.keys import (
+    Keys,
+    TableColumns,
+)
+from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.tables import Document, Table
 
 
@@ -47,7 +52,8 @@ def _state_id(index: int) -> str:
 
 
 def _scalar(value: JsonValue) -> str:
-    return "T" if value is True else "F" if value is False else str(value)
+    normalized = normalize_json_value(value)
+    return "T" if normalized is True else "F" if normalized is False else str(normalized)
 
 
 def _flags(flags: tuple[str, ...]) -> str:
@@ -80,8 +86,8 @@ def _states_table(states: list[PlanTraceState], dicts: Dictionaries) -> Table:
         for state in states
     ]
     return Table(
-        name="states",
-        columns=["state", "flags", "hstar", "hlmcut", *aliases],
+        name=Keys.STATES,
+        columns=[TableColumns.STATE_ID, TableColumns.FLAGS, Keys.HSTAR, Keys.HLMCUT, *aliases],
         rows=rows,
     )
 
@@ -101,7 +107,7 @@ def _facts_table(states: list[PlanTraceState], dicts: Dictionaries) -> Table | N
         if aliases:
             aliases.sort(key=lambda alias: int(alias[1:]))
             rows.append([_state_id(state.state), ",".join(aliases)])
-    return Table(name="facts", columns=["state", "atoms"], rows=rows) if rows else None
+    return Table(name=Keys.FACTS, columns=[TableColumns.STATE_ID, TableColumns.ATOM_IDS], rows=rows) if rows else None
 
 
 def _plan_table(steps: list[PlanStep], dicts: Dictionaries) -> Table:
@@ -116,8 +122,8 @@ def _plan_table(steps: list[PlanStep], dicts: Dictionaries) -> Table:
         for step in steps
     ]
     return Table(
-        name="plan",
-        columns=["step", "source", "action", "target", "delta"],
+        name=Keys.PLAN,
+        columns=[TableColumns.STEP, TableColumns.SOURCE_STATE_ID, TableColumns.ACTION_ID, TableColumns.TARGET_STATE_ID, TableColumns.DELTAS],
         rows=rows,
     )
 

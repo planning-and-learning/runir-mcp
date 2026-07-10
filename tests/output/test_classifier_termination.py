@@ -1,16 +1,5 @@
-from typing import cast
-
-import pytest
-
-from pyrunir_mcp.kr.ps.ext.termination.serialize import (
-    SymbolicFeature,
-    SymbolicRule,
-    feature_symbol,
-    rule_symbol,
-    string_keyed_dict,
-)
+from pyrunir_mcp.enums import RunItemCategory
 from pyrunir_mcp.output.classifier import ClassifierRow, classifier_witness
-from pyrunir_mcp.output.run import RunItemCategory
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.termination import (
     TerminationDictionaries,
@@ -36,8 +25,8 @@ def test_classifier_witness_document():
         header=[("tool", "prove_classifier"), ("id", "false_negative-001"), ("category", "false_negative")],
     )
     psv = render_document(doc, "psv")
-    assert "[state]\nid|flags|f0|f1\ns57|WITNESS|T|F" in psv
-    assert "[facts]\nstate|atoms\ns57|p0,p1,p2" in psv
+    assert "[states]\nstate_id|flags|f0|f1\ns57|witness|T|F" in psv
+    assert "[facts]\nstate_id|atom_ids\ns57|p0,p1,p2" in psv
 
 
 def test_termination_cycle_document():
@@ -52,42 +41,8 @@ def test_termination_cycle_document():
     ]
     doc = counterexample_document(header=[("tool", "prove_termination")], vertices=vertices, edges=edges, dicts=dicts)
     psv = render_document(doc, "psv")
-    assert "[cycle]\nkey|value\ncycle_vertex_indices|0,1,0\ncycle_edge_indices|0,1" in psv
-    assert "[vertices]\nidx|mem|v0|v1|v2\n0|m0|{b1,b2}|T|3\n1|m0|{b1}|T|2" in psv
-    assert "[edges]\nidx|src|tgt|rule|changes\n0|0|1|r0|v2:dec\n1|1|0|r1|v2:inc" in psv
+    assert "[cycle]\nvertex_indices|edge_indices\n0,1,0|0,1" in psv
+    assert "[vertices]\nvertex_index|memory_id|v0|v1|v2\n0|m0|{b1,b2}|T|3\n1|m0|{b1}|T|2" in psv
+    assert "[edges]\nedge_index|source_vertex_index|target_vertex_index|rule_id|deltas\n0|0|1|r0|v2:dec\n1|1|0|r1|v2:inc" in psv
     # variables interned concept, boolean, numerical in that grouping order
     assert dicts.tables()["variables"].rows == [["v0", "concept", "c_undelivered"], ["v1", "boolean", "b_holding"], ["v2", "numerical", "n_count"]]
-
-
-class _Symbolic:
-    def __init__(self, symbol: str):
-        self._symbol = symbol
-
-    def get_symbol(self) -> str:
-        return self._symbol
-
-
-class _FeatureLike:
-    def __init__(self, symbol: str):
-        self._variant = _Symbolic(symbol)
-
-    def get_variant(self) -> _Symbolic:
-        return self._variant
-
-
-def test_termination_serializer_uses_feature_symbol_objects():
-    assert string_keyed_dict({cast(SymbolicFeature, _FeatureLike("pending")): True}) == {"pending": "True"}
-
-
-def test_termination_serializer_uses_rule_symbol_objects():
-    assert rule_symbol(cast(SymbolicRule, _Symbolic("put_down_pending"))) == "put_down_pending"
-
-
-def test_termination_serializer_requires_rule_symbol_accessor():
-    with pytest.raises(AttributeError):
-        rule_symbol(cast(SymbolicRule, "(:rule (:symbol put_down_pending))"))
-
-
-def test_termination_serializer_requires_feature_variant_symbol_accessor():
-    with pytest.raises(AttributeError):
-        feature_symbol(cast(SymbolicFeature, _Symbolic("pending")))

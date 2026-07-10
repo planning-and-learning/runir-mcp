@@ -7,17 +7,12 @@ names. Comparing by name keeps a single source of truth across prove + execute.
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import TypeAlias
 
 from pyrunir.kr.ps.base import SketchProofStatus
 from pyrunir.kr.ps.ext import ModuleProgramProofStatus
 
-
-class SuccessStatus(StrEnum):
-    SOLVED = "SOLVED"
-    SUCCESS = "SUCCESS"
-
+from pyrunir_mcp.enums import SuccessStatus
 
 AnyStatus: TypeAlias = SuccessStatus | SketchProofStatus | ModuleProgramProofStatus
 
@@ -26,4 +21,4 @@ _SUCCESS_NAMES = frozenset(SuccessStatus)
 
 def is_success_status(status: object) -> bool:
     name = getattr(status, "name", "")
-    return str(name) in _SUCCESS_NAMES
+    return str(name).lower() in _SUCCESS_NAMES

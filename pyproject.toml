@@ -13,7 +13,8 @@ authors = [
 ]
 dependencies = [
     "jinja2>=3",
-    "pyrunir>=0.0.17,<0.1",
+    "pyrunir>=0.0.18,<0.1",
+    "pytyr>=0.0.27,<0.1",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +24,10 @@ dev = [
     "pyright>=1.1.411",
 ]
 
+
+[tool.uv.sources]
+pyrunir = { path = "../runir", editable = true }
+pytyr = { path = "../tyr", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyrunir_mcp"]

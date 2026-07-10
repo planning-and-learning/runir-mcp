@@ -7,7 +7,7 @@ Each row is one FF-selected task action from the open-state witness toward a goa
 | Column | Meaning |
 |---|---|
 | `step` | Zero-based FF plan step. |
-| `source` | Planning-state id before the action, formatted as `sK`. |
-| `action` | Action alias from the run-global `actions.*` dictionary. |
-| `target` | Planning-state id after the action, formatted as `sK`. |
-| `delta` | Space-separated changed features as `fK:before>after`, using aliases from the run-global `features.*` dictionary. |
+| `source_state_id` | Planning-state id before the action, formatted as `sK`. |
+| `action_id` | Action alias from the run-global `actions.*` dictionary. |
+| `target_state_id` | Planning-state id after the action, formatted as `sK`. |
+| `deltas` | Space-separated changed features as `fK:before>after`, using aliases from the run-global `features.*` dictionary. |

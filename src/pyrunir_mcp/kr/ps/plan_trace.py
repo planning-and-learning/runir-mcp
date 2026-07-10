@@ -5,25 +5,25 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import timedelta
 
-from pyrunir.datasets import GroundTaskSearchContext, LiftedTaskSearchContext
-from pytyr.planning import ActionCostMode, SearchStatus
-from pytyr.planning.ground import Node as GroundNode, State as GroundState
-from pytyr.planning.lifted import FFRPGHeuristic, Node as LiftedNode
-from pytyr.planning.lifted.astar_eager import Options, find_solution
+from pyrunir.datasets import GroundTaskSearchContext
+from pytyr.planning import CostMode, SearchStatus
+from pytyr.planning.ground import FFRPGHeuristic
+from pytyr.planning.ground import Node as GroundNode
+from pytyr.planning.ground import State as GroundState
+from pytyr.planning.ground.astar_eager import Options, find_solution
 
+from pyrunir_mcp.enums import AtomKind, Flag
 from pyrunir_mcp.json_types import JsonValue
-from pyrunir_mcp.kr.ps.converter import GroundToLiftedStateConverter
 from pyrunir_mcp.kr.ps.feature_evidence import (
     Feature,
     evaluate_features,
     feature_key,
     heuristic_json_value,
     state_atom_evidence,
-    state_facts,
 )
 from pyrunir_mcp.kr.ps.frontier import format_ground_action
 from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions
-from pyrunir_mcp.output.dictionaries import AtomKind, Dictionaries
+from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.output.plan_trace import PlanStep, PlanTraceState, plan_trace_document
 from pyrunir_mcp.tables import Document
 
@@ -35,11 +35,6 @@ def _feature_symbols(features: Sequence[Feature], dicts: Dictionaries) -> list[s
     return symbols
 
 
-def _intern_state_atoms(state: GroundState, dicts: Dictionaries) -> None:
-    for kind, atom in state_atom_evidence(state):
-        dicts.atom(AtomKind(kind), atom)
-
-
 def _state_row(
     state: GroundState,
     *,
@@ -47,14 +42,12 @@ def _state_row(
     hstar: HStarEvaluator,
     flags: tuple[str, ...] = (),
 ) -> PlanTraceState:
-    facts = state_facts(state)
-    fluent_facts = facts.get("fluent_facts", [])
-    derived_atoms = facts.get("derived_atoms", [])
+    atoms = state_atom_evidence(state)
     return PlanTraceState(
         state=int(state.get_index()),
         features=evaluate_features(state, list(features)),
-        fluent=tuple(str(atom) for atom in fluent_facts) if isinstance(fluent_facts, list) else (),
-        derived=tuple(str(atom) for atom in derived_atoms) if isinstance(derived_atoms, list) else (),
+        fluent=atoms[AtomKind.FLUENT],
+        derived=atoms[AtomKind.DERIVED],
         flags=flags,
         hstar=heuristic_json_value(hstar.evaluate(state)),
         hlmcut=heuristic_json_value(hstar.evaluate_lmcut(state)),
@@ -67,36 +60,9 @@ def _delta(
     return {key: (before[key], after[key]) for key in before if key in after and before[key] != after[key]}
 
 
-def _replay_ground_plan(
-    ground_context: GroundTaskSearchContext,
-    start: GroundState,
-    actions: list[str],
-) -> list[GroundState] | None:
-    states = [start]
-    current = start
-    for action in actions:
-        successors = ground_context.successor_generator.get_labeled_successor_nodes(
-            GroundNode(current, 0.0)
-        )
-        match = next(
-            (
-                labeled.node.get_state()
-                for labeled in successors
-                if format_ground_action(labeled.label) == action
-            ),
-            None,
-        )
-        if match is None:
-            return None
-        states.append(match)
-        current = match
-    return states
-
-
 def plan_open_state_trace(
     *,
     ground_context: GroundTaskSearchContext,
-    lifted_context: LiftedTaskSearchContext,
     state: GroundState,
     features: Sequence[Feature],
     dicts: Dictionaries,
@@ -107,42 +73,39 @@ def plan_open_state_trace(
     feature_symbols = _feature_symbols(features, dicts)
     effective_max_num_states = max_num_states if max_num_states is not None else 1_000_000
     effective_max_time_seconds = max_time_seconds if max_time_seconds is not None else 10.0
-    lifted_state = GroundToLiftedStateConverter(lifted_context).convert(state)
-    heuristic = FFRPGHeuristic(lifted_context.task, lifted_context.execution_context)
+    heuristic = FFRPGHeuristic(ground_context.task, ground_context.execution_context)
     options = Options()
-    options.start_node = LiftedNode(lifted_state, 0.0)
+    options.start_node = GroundNode(state, 0.0)
     options.max_num_states = effective_max_num_states
     options.max_time = timedelta(seconds=effective_max_time_seconds)
-    options.action_cost_mode = ActionCostMode.UNIT
+    options.action_cost_mode = CostMode.UNIT
     result = find_solution(
-        lifted_context.task,
-        lifted_context.successor_generator,
+        ground_context.task,
+        ground_context.successor_generator,
         heuristic,
         options,
     )
     if result.status != SearchStatus.SOLVED or result.plan is None:
         return None
 
-    actions = [format_ground_action(labeled.label) for labeled in result.plan.get_labeled_succ_nodes()]
-    ground_states = _replay_ground_plan(ground_context, state, actions)
-    if ground_states is None:
-        return None
+    labeled_nodes = result.plan.get_labeled_succ_nodes()
+    actions = [format_ground_action(labeled.label) for labeled in labeled_nodes]
+    ground_states = [state, *(labeled.node.get_state() for labeled in labeled_nodes)]
 
     hstar = HStarEvaluator(
-        lifted_context,
+        ground_context,
         HStarOptions(max_num_states=effective_max_num_states, max_time_seconds=effective_max_time_seconds),
     )
     state_rows: list[PlanTraceState] = []
     last_index = len(ground_states) - 1
     for index, ground_state in enumerate(ground_states):
-        _intern_state_atoms(ground_state, dicts)
         flags: tuple[str, ...]
         if index == 0 and index == last_index:
-            flags = ("OPEN", "GOAL")
+            flags = (Flag.OPEN, Flag.GOAL)
         elif index == 0:
-            flags = ("OPEN",)
+            flags = (Flag.OPEN,)
         elif index == last_index:
-            flags = ("GOAL",)
+            flags = (Flag.GOAL,)
         else:
             flags = ()
         state_rows.append(_state_row(ground_state, features=features, hstar=hstar, flags=flags))

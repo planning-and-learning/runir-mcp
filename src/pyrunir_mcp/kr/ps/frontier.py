@@ -7,10 +7,9 @@ we expand each state on the trace with the pytyr successor generator and mark co
 with the policy:
 
 - base: `Sketch.is_compatible_with(GroundEvaluationContext(source, target))`;
-- ext:  `pyrunir.kr.ps.ext.SuccessorExpander`, whose `matching_rule(...)` replays the
-  module-program executor's per-rule applicability (memory match + conditions + effects, DoRule
-  action match) at the vertex's memory state + registers, and whose `apply(...)` returns the
-  resulting proof node so each taken move can report the module + memory it lands in.
+- ext:  `pyrunir.kr.ps.ext.SuccessorExpander`, whose context-based methods replay the
+  module-program executor's per-rule applicability at the vertex's memory state + registers and
+  return the resulting proof node so each taken move can report the module + memory it lands in.
 
 A successor that advances toward the goal with an empty `rule` is the gap. Successors are
 off-graph planning moves (no proof vertex), so they are emitted state-indexed; ext additionally
@@ -20,25 +19,26 @@ carries source and target module/memory context per taken move (see `proof.witne
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, TypeAlias, cast
+from typing import TypeAlias
 
 from pyrunir.datasets import GroundTaskSearchContext
 from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
 from pyrunir.kr.ps.base import GroundSketchProofGraph, Sketch
 from pyrunir.kr.ps.base.dl import GroundEvaluationContext
 from pyrunir.kr.ps.ext import (
-    ExternalMemoryState,
     GroundModuleProgramProofGraph,
-    InternalMemoryState,
-    MemoryState,
     ModuleProgram,
+    Registers,
     SuccessorExpander,
 )
 from pytyr.formalism.planning import GroundAction
 from pytyr.planning.ground import ConjunctiveGoalStrategy, Node, State
 
-from pyrunir_mcp.kr.ps.feature_evidence import FeatureEvidence
 from pyrunir_mcp.json_types import JsonObject
+from pyrunir_mcp.keys import (
+    Keys,
+)
+from pyrunir_mcp.kr.ps.feature_evidence import FeatureEvidence
 from pyrunir_mcp.output.policy import Successor
 from pyrunir_mcp.output.proof_witness import successor as build_successor
 
@@ -78,14 +78,14 @@ def successor(
     memory: str | None = None,
     source_memory: tuple[str, str] | None = None,
 ) -> Successor:
-    source = {"state_index": int(source_state.get_index()), **evidence(source_state)}
+    source = {Keys.STATE_INDEX: int(source_state.get_index()), **evidence(source_state)}
     if source_memory is not None:
-        source["module"], source["memory_state"] = source_memory
-    target = {"state_index": int(target_state.get_index()), "is_goal": is_goal(target_state), **evidence(target_state)}
+        source[Keys.MODULE], source[Keys.MEMORY] = source_memory
+    target = {Keys.STATE_INDEX: int(target_state.get_index()), Keys.IS_GOAL: is_goal(target_state), **evidence(target_state)}
     if module is not None:
-        target["module"] = module
-        target["memory_state"] = memory
-    edge: JsonObject = {"action": format_ground_action(action), "module_rule": rule}
+        target[Keys.MODULE] = module
+        target[Keys.MEMORY] = memory
+    edge: JsonObject = {Keys.ACTION: format_ground_action(action), Keys.RULE: rule}
     return build_successor(source, edge, target)
 
 
@@ -126,20 +126,6 @@ def make_frontier_expander(
     return expand
 
 
-class _NamedMemory(Protocol):
-    def get_name(self) -> object: ...
-
-
-def _memory_name(memory_state: MemoryState) -> str:
-    # Pybind memory-state stubs do not expose get_name(), but the runtime object does.
-    return str(cast(_NamedMemory, memory_state).get_name())
-
-
-def _wrapped_memory_name(memory_state: InternalMemoryState | ExternalMemoryState) -> str:
-    # Internal/external wrappers expose the runtime memory object through value.
-    return str(cast(_NamedMemory, memory_state.value).get_name())
-
-
 def make_ext_frontier_expander(
     search_context: GroundTaskSearchContext,
     program: ModuleProgram,
@@ -151,11 +137,9 @@ def make_ext_frontier_expander(
     same engine the executor/prover uses, built once with the program's modules so Call rules can
     resolve their callee."""
     generator = search_context.successor_generator
-    builder = Builder()
-    denotations = DenotationRepositoryFactory().create()
     is_goal = goal_test(search_context)
     initial_state = search_context.state_repository.get_initial_state()
-    expander = SuccessorExpander(search_context, initial_state, list(program.get_modules()), builder, denotations)
+    expander = SuccessorExpander(search_context, initial_state, program)
 
     def expand(graph: ProofGraph, vertices: list[int]) -> list[Successor]:
         if not isinstance(graph, GroundModuleProgramProofGraph):
@@ -164,30 +148,25 @@ def make_ext_frontier_expander(
         for vertex in vertices:
             label = graph.get_vertex_property(int(vertex))
             source_state = label.state
-            memory = label.memory_state
-            memory = memory.value if hasattr(memory, "value") else memory
-            # pyrunir sometimes exposes memory as a pybind value wrapper; normalize to the wrapped type.
-            memory = cast(MemoryState, memory)
-            concept_registers = label.concept_registers
-            role_registers = label.role_registers
+            memory = label.memory_state.value
+            registers = Registers()
+            registers.concept_registers = label.concept_registers
+            registers.role_registers = label.role_registers
             module = label.module
+            context = expander.context_at(module, memory, registers, source_state)
             for labeled in generator.get_labeled_successor_nodes(Node(source_state, 0.0)):
                 target_state = labeled.node.get_state()
-                rule_variant = expander.matching_rule(
-                    module, memory, concept_registers, role_registers, source_state, labeled.label, target_state
-                )
+                rule_variant = expander.matching_rule(context, labeled.label, target_state)
                 rule: str | None = None
                 res_module: str | None = None
                 res_memory: str | None = None
                 if rule_variant is not None:
                     rule = str(rule_variant.get_symbol()).strip()
-                    applied = expander.apply(
-                        module, memory, concept_registers, role_registers, source_state, rule_variant, labeled.label, target_state
-                    )
+                    applied = expander.apply(context, rule_variant, labeled.label, target_state)
                     if applied is not None:
                         _edge, node = applied
-                        res_module = str(node.module.get_name())
-                        res_memory = _wrapped_memory_name(node.memory_state)
+                        res_module = node.module.get_name()
+                        res_memory = node.memory_state.value.get_name()
                 successors.append(
                     successor(
                         source_state,
@@ -198,7 +177,7 @@ def make_ext_frontier_expander(
                         is_goal,
                         module=res_module,
                         memory=res_memory,
-                        source_memory=(str(module.get_name()), _memory_name(memory)),
+                        source_memory=(module.get_name(), memory.get_name()),
                     )
                 )
         return successors

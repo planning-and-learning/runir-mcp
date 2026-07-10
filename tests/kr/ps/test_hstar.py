@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pyyggdrasil.execution import ExecutionContext
 from pytyr.planning.ground import Node as GroundNode
 from pytyr.planning.lifted import Node
+from pyyggdrasil.execution import ExecutionContext
 
-from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions, HeuristicSentinel
+from pyrunir_mcp.enums import HeuristicSentinel
+from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarOptions
 from pyrunir_mcp.planning import build_ground_search_context, load_lifted_search_context
 
 DOMAIN = """(define (domain seq)

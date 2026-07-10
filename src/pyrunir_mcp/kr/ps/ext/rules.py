@@ -9,7 +9,16 @@ from __future__ import annotations
 
 from typing import TypeAlias, cast
 
-from pyrunir.kr.ps.ext import CallRule, ConceptLoadRule, DoRule, Module, ModuleProgram, RoleLoadRule, RuleVariant, SketchRule
+from pyrunir.kr.ps.ext import (
+    CallRule,
+    ConceptLoadRule,
+    DoRule,
+    Module,
+    ModuleProgram,
+    RoleLoadRule,
+    RuleVariant,
+    SketchRule,
+)
 
 from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key
 from pyrunir_mcp.output.dictionaries import Dictionaries

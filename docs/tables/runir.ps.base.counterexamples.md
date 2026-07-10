@@ -13,7 +13,6 @@ Run-global dictionary files live under `dicts/`. Every witness, trace, and succe
 
 ## Section Tables
 
-- [`[state]`](sections/runir.ps.base.state.md)
 - [`[states]`](sections/runir.ps.base.states.md)
 - [`[transitions]`](sections/runir.ps.base.transitions.md)
 - [`[facts]`](sections/runir.ps.base.facts.md)

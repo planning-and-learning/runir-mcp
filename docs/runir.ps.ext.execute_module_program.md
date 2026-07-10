@@ -42,8 +42,8 @@ Same structure as `runir.ps.base.execute_policy`, with module/memory control sta
 ```text
 output_dir/
   .pyrunir-mcp-output
-  manifest.json                          # run metadata: config, command, rollout budgets, hstar budgets (JSON only)
-  summary.{psv,md,json}                  # run index/counts table
+  manifest.json                          # run index and artifact paths (JSON only)
+  summary.{psv,md,json}                  # run index table
   failures.{psv,md,json}                 # one row per representative failure (index)
   successes.{psv,md,json}                # one row per successful rollout trace (index)
   dicts/
@@ -55,14 +55,12 @@ output_dir/
     memory.{psv,md,json}                 # run-global dictionary: m0,m1,… -> (module, memory-state)
   failures/
     <id>/                                # <id> already encodes the category (e.g. open_state-001, cycle-001)
-      meta.json                          # per-failure metadata (see docs/index.md)
       witness.{psv,md,json}              # witness control state or cycle
       trace.{psv,md,json}                # path to the witness, present when a path exists
       successors.{psv,md,json}           # 1-step successors of the witness (open_state, cycle, deadend)
       plan_trace.{psv,md,json}           # FF plan trace from an open-state witness, when available
   successes/
     <id>/                                # one directory per successful rollout
-      meta.json                          # per-success metadata (see docs/index.md)
       trace.{psv,md,json}                # complete successful rollout trace; no witness/successors
 ```
 
@@ -70,7 +68,7 @@ output_dir/
 
 The shared [module-program table schema](tables/runir.ps.ext.counterexamples.md) defines dictionaries and per-failure files. Rendering rules are in [Table Rendering](tables/rendering.md). Execute-specific details:
 
-- `source` is `find_solution`; `seed` is the rollout seed.
+- `origin` is `find_solution`; `seed` is the rollout seed.
 - Successors are emitted in full (never truncated) for `open_state`, `cycle`, and `deadend` witnesses.
 - `plan_trace.*` uses the [open-state FF plan trace schema](tables/runir.ps.open_state.plan_trace.md) and is present for `open_state` failures when FF finds a plan from the witness state.
 - `result.json` records both `search_budget` and `plan_trace_budget`; plan traces use the latter, not the execute budget.
@@ -78,4 +76,4 @@ The shared [module-program table schema](tables/runir.ps.ext.counterexamples.md)
 `failures`, `successes`, and `summary` indexes match `execute_policy`; their columns are defined in [Index Tables](tables/index-tables.md). `manifest.json` is JSON-only metadata.
 
 
-Successful rollout entries are trace-only: `meta.json` and `trace.*`, no `witness` or `successors`; all successful seeds are listed.
+Successful rollout entries contain only `trace.*`, no `witness` or `successors`; all successful seeds are listed.

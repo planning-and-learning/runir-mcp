@@ -6,5 +6,5 @@ Per-state fluent and derived atoms for planning states visited by the FF plan fr
 
 | Column | Meaning |
 |---|---|
-| `state` | Planning-state id, formatted as `sK`. |
-| `atoms` | Comma-separated `pK` aliases for fluent and derived atoms that hold in this state. Aliases come from the run-global `atoms.*` dictionary. |
+| `state_id` | Planning-state id, formatted as `sK`. |
+| `atom_ids` | Comma-separated `pK` aliases for fluent and derived atoms that hold in this state. Aliases come from the run-global `atoms.*` dictionary. |

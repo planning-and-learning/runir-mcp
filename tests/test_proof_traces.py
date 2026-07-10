@@ -5,13 +5,12 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-
-from pyrunir_mcp.kr.ps import proof
-from pyrunir_mcp.json_types import JsonObject
 from pytyr.formalism.planning import GroundAction
 
-from pyrunir_mcp.kr.ps.proof import CounterexampleKind, ProofResult, StateEvidence, failure_items
+from pyrunir_mcp.enums import CounterexampleKind
+from pyrunir_mcp.kr.ps import proof
 from pyrunir_mcp.kr.ps.frontier import format_ground_action
+from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, failure_items
 from pyrunir_mcp.output.dictionaries import Dictionaries
 from pyrunir_mcp.planning import LoadedSearchContext
 from pyrunir_mcp.tables import Table
@@ -91,12 +90,8 @@ def test_build_proof_run_treats_goal_open_state_as_success(monkeypatch: pytest.M
         ext=False,
     )
 
-    primary = cast(JsonObject, envelope["primary"])
-
     assert envelope["status"] == "success"
-    assert primary["successful"] is True
-    assert primary["counterexample_count"] == 0
-    assert envelope["items"] == []
+    assert envelope["counterexamples"] == []
 
 
 def test_failure_items_promotes_classifier_deadend_open_states(monkeypatch: pytest.MonkeyPatch) -> None:

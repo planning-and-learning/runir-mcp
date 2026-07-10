@@ -7,7 +7,8 @@ from typing import cast
 
 import pytest
 
-from pyrunir_mcp import DumpFormat, dump_result
+from pyrunir_mcp import dump_result
+from pyrunir_mcp.enums import DumpFormat
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.task_generation import (
     GeneratedTask,
@@ -73,10 +74,10 @@ def test_task_generation_dump_result_writes_summary_artifacts(tmp_path: Path) ->
     assert (output_dir / "summary.md").is_file()
 
     summary = cast(JsonObject, json.loads((output_dir / "result.json").read_text(encoding="utf-8")))
-    generated = _json_objects(summary["generated"])
-    invalid = _json_objects(summary["invalid"])
-    assert summary["counts"] == {"generated": 1, "invalid": 1}
-    assert generated[0]["path"] == pddl.as_posix()
+    generated = _json_objects(summary["generated_tasks"])
+    invalid = _json_objects(summary["invalid_tasks"])
+    assert "task_file" not in generated[0]
+    assert generated[0]["task_path"] == pddl.as_posix()
     assert "absolute_path" not in generated[0]
     assert invalid[0]["reason"] == "bad"
 
@@ -263,15 +264,15 @@ def test_task_generation_uses_slugged_batch_names(
     )
     summary = task_generation_json(result)
 
-    generated = _json_objects(summary["generated"])
+    generated = _json_objects(summary["generated_tasks"])
     configs = cast(
         JsonObject,
         json.loads((output_dir / "bad_name" / "configs.json").read_text(encoding="utf-8")),
     )
-    config_generated = _json_objects(configs["generated"])
+    config_generated = _json_objects(configs["generated_tasks"])
 
     assert result.problem_dir == output_dir / "bad_name"
     assert result.generated[0].path == output_dir / "bad_name" / "bad_name-001.pddl"
-    assert generated[0]["path"] == (output_dir / "bad_name" / "bad_name-001.pddl").as_posix()
-    assert config_generated[0]["path"] == (output_dir / "bad_name" / "bad_name-001.pddl").as_posix()
+    assert generated[0]["task_path"] == (output_dir / "bad_name" / "bad_name-001.pddl").as_posix()
+    assert config_generated[0]["task_path"] == (output_dir / "bad_name" / "bad_name-001.pddl").as_posix()
     assert not (tmp_path / "bad").exists()

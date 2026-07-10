@@ -44,6 +44,5 @@ output_dir/
     atoms.{psv,md,json}                  # p0,p1,... -> atom text/kind
   failures/
     false_negative-001/
-      witness.{psv,md,json}              # [state] + [facts]
-      meta.json
+      witness.{psv,md,json}              # [states] + [facts]
 ```

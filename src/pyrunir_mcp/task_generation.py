@@ -13,7 +13,9 @@ from types import FunctionType, ModuleType
 
 from pyrunir_mcp.artifacts import fresh_output_dir
 from pyrunir_mcp.json_types import JsonObject, JsonValue
-
+from pyrunir_mcp.keys import (
+    Keys,
+)
 
 _BATCH_NAME_RE = re.compile(r"[^A-Za-z0-9_-]+")
 WORKFLOW_NAME = "runir.task_generation"
@@ -128,36 +130,32 @@ def describe_make_problem(domain_name: str) -> str:
 def task_generation_json(result: TaskGenerationResult) -> JsonObject:
     generated: list[JsonValue] = [
         {
-            "kind": "generated_task",
-            "index": item.index,
-            "name": item.path.name,
-            "path": item.path.resolve().as_posix(),
-            "config": item.config,
+            Keys.INDEX: item.index,
+            Keys.TASK_PATH: item.path.resolve().as_posix(),
+            Keys.CONFIG: item.config,
         }
         for item in result.generated
     ]
     invalid: list[JsonValue] = [
         {
-            "kind": item.error_category,
-            "index": item.index,
-            "config": item.config,
-            "reason": item.reason,
-            "error_type": item.error_type,
-            "error_category": item.error_category,
+            Keys.INDEX: item.index,
+            Keys.CONFIG: item.config,
+            Keys.REASON: item.reason,
+            Keys.ERROR_TYPE: item.error_type,
+            Keys.ERROR_CATEGORY: item.error_category,
         }
         for item in result.invalid
     ]
     return {
-        "schema_version": 1,
-        "tool": WORKFLOW_NAME,
-        "status": result.status,
-        "domain_path": result.domain_path.as_posix(),
-        "problem_dir": result.problem_dir.as_posix(),
-        "generator_path": result.generator_path.as_posix(),
-        "signature": result.signature,
-        "counts": {"generated": len(generated), "invalid": len(invalid)},
-        "generated": generated,
-        "invalid": invalid,
+        Keys.SCHEMA_VERSION: 1,
+        Keys.TOOL: WORKFLOW_NAME,
+        Keys.STATUS: result.status,
+        Keys.DOMAIN_PATH: result.domain_path.as_posix(),
+        Keys.TASK_DIR: result.problem_dir.as_posix(),
+        Keys.GENERATOR_PATH: result.generator_path.as_posix(),
+        Keys.SIGNATURE: result.signature,
+        Keys.GENERATED_TASKS: generated,
+        Keys.INVALID_TASKS: invalid,
     }
 
 
@@ -251,24 +249,24 @@ def task_generation(options: TaskGenerationOptions) -> TaskGenerationResult:
 
     metadata_path = problem_dir / "configs.json"
     metadata = {
-        "domain_name": options.domain_name,
-        "generator_path": str(generator_path),
-        "signature": signature,
-        "generated": [
+        Keys.DOMAIN_NAME: options.domain_name,
+        Keys.GENERATOR_PATH: str(generator_path),
+        Keys.SIGNATURE: signature,
+        Keys.GENERATED_TASKS: [
             {
-                "index": problem.index,
-                "path": problem.path.resolve().as_posix(),
-                "config": problem.config,
+                Keys.INDEX: problem.index,
+                Keys.TASK_PATH: problem.path.resolve().as_posix(),
+                Keys.CONFIG: problem.config,
             }
             for problem in generated
         ],
-        "invalid": [
+        Keys.INVALID_TASKS: [
             {
-                "index": item.index,
-                "config": item.config,
-                "reason": item.reason,
-                "error_type": item.error_type,
-                "error_category": item.error_category,
+                Keys.INDEX: item.index,
+                Keys.CONFIG: item.config,
+                Keys.REASON: item.reason,
+                Keys.ERROR_TYPE: item.error_type,
+                Keys.ERROR_CATEGORY: item.error_category,
             }
             for item in invalid
         ],

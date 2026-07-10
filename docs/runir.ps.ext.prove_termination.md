@@ -13,14 +13,13 @@ The artifact layout below defines the structural-termination output format.
 ```text
 output_dir/
   .pyrunir-mcp-output
-  run.json                               # run envelope: metadata, counts, artifact paths (JSON only)
-  summary.{psv,md,json}                  # run index/counts table
+  run.json                               # run envelope: metadata and artifact paths (JSON only)
+  summary.{psv,md,json}                  # run index table
   dicts/
     variables.{psv,md,json}              # dictionary: v0,v1,… -> (kind, variable symbol)
     memory.{psv,md,json}                 # dictionary: m0,m1,… -> memory state
     rules.{psv,md,json}                  # dictionary: r0,r1,… -> module rule
   failures/
     <id>/                                # <id> = structural_termination-001, …
-      meta.json                          # per-failure metadata (see docs/index.md)
       witness.{psv,md,json}              # non-termination cycle
 ```

@@ -1,24 +1,43 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, TypeAlias, cast, runtime_checkable
+from typing import TypeAlias
 
+from pyrunir.kr.dl.base.semantics import (
+    BooleanDenotation,
+    Builder,
+    ConceptDenotation,
+    DenotationRepositoryFactory,
+    NumericalDenotation,
+    RoleDenotation,
+)
+from pyrunir.kr.dl.base.semantics import (
+    GroundEvaluationContext as BaseGroundEvaluationContext,
+)
+from pyrunir.kr.dl.ext.semantics import GroundEvaluationContext as ExtGroundEvaluationContext
 from pyrunir.kr.ps.base.dl import (
     BooleanFeature as BaseBooleanFeature,
+)
+from pyrunir.kr.ps.base.dl import (
     NumericalFeature as BaseNumericalFeature,
 )
-from pyrunir.kr.ps.ext import (
+from pyrunir.kr.ps.ext.dl import (
     BooleanFeature as ExtBooleanFeature,
+)
+from pyrunir.kr.ps.ext.dl import (
     ConceptFeature as ExtConceptFeature,
+)
+from pyrunir.kr.ps.ext.dl import (
     NumericalFeature as ExtNumericalFeature,
 )
 from pytyr.planning.ground import State as GroundState
 
-from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
-from pyrunir.kr.dl.base.semantics import GroundEvaluationContext as BaseGroundEvaluationContext
-from pyrunir.kr.dl.ext.semantics import GroundEvaluationContext as ExtGroundEvaluationContext
-from pyrunir_mcp.json_types import JsonObject, JsonValue
-from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HeuristicSentinel, HStarValue, LMCutValue
+from pyrunir_mcp.enums import AtomKind, HeuristicSentinel
+from pyrunir_mcp.json_types import JsonObject, JsonValue, normalize_json_value
+from pyrunir_mcp.keys import (
+    Keys,
+)
+from pyrunir_mcp.kr.ps.hstar import HStarEvaluator, HStarValue, LMCutValue
 
 Feature: TypeAlias = (
     BaseBooleanFeature
@@ -29,54 +48,26 @@ Feature: TypeAlias = (
 )
 FeatureEvidence: TypeAlias = Callable[[GroundState], JsonObject]
 AtomEvidence: TypeAlias = tuple[str, str]
-_ATOM_KIND_ORDER = {"static": 0, "fluent": 1, "derived": 2}
 
 
-@runtime_checkable
-class NamedObject(Protocol):
-    def get_name(self) -> str: ...
-
-
-@runtime_checkable
-class ObjectCollection(Protocol):
-    def get_objects(self) -> list[NamedObject]: ...
-
-
-@runtime_checkable
-class DenotationValue(Protocol):
-    def get(self) -> SemanticValue: ...
-
-
-SemanticValue: TypeAlias = object
-
-
-class BaseEvaluableFeature(Protocol):
-    def evaluate(self, context: BaseGroundEvaluationContext) -> object: ...
-
-
-class ExtEvaluableExpression(Protocol):
-    def evaluate(self, context: ExtGroundEvaluationContext) -> object: ...
-
-
-class ExtExpressionVariant(Protocol):
-    def get_expression(self) -> ExtEvaluableExpression: ...
-
-
-class ExtExpressionFeature(Protocol):
-    def get_variant(self) -> ExtExpressionVariant: ...
-
-
-def _object_name(value: object) -> str:
-    return str(value.get_name()) if isinstance(value, NamedObject) else str(value)
+SemanticValue: TypeAlias = (
+    bool
+    | int
+    | float
+    | str
+    | None
+    | BooleanDenotation
+    | NumericalDenotation
+    | ConceptDenotation
+    | RoleDenotation
+)
 
 
 def json_value(value: SemanticValue) -> JsonValue:
     if isinstance(value, bool | int | float | str) or value is None:
-        return value
-    if isinstance(value, ObjectCollection):
-        return [_object_name(obj) for obj in value.get_objects()]
-    if isinstance(value, DenotationValue) and type(value).__name__.endswith("Denotation"):
-        return json_value(value.get())
+        return normalize_json_value(value)
+    if isinstance(value, BooleanDenotation | NumericalDenotation):
+        return normalize_json_value(value.get())
     return str(value)
 
 
@@ -89,14 +80,11 @@ def feature_key(feature: Feature) -> str:
 def _evaluate_feature_value(feature: Feature, state: GroundState) -> JsonValue:
     builder = Builder()
     denotations = DenotationRepositoryFactory().create()
-    if hasattr(feature, "evaluate"):
+    if isinstance(feature, BaseBooleanFeature | BaseNumericalFeature):
         context = BaseGroundEvaluationContext(state, builder, denotations)
-        # Base feature stubs omit evaluate on some union members even though hasattr checked it.
-        return json_value(cast(BaseEvaluableFeature, feature).evaluate(context))
+        return json_value(feature.evaluate(context))
     context = ExtGroundEvaluationContext(state, builder, denotations)
-    # Ext features evaluate through their variant expression; the pybind stubs do not expose this structurally.
-    value = cast(ExtExpressionFeature, feature).get_variant().get_expression().evaluate(context)
-    return json_value(value)
+    return json_value(feature.get_variant().get_expression().evaluate(context))
 
 
 def evaluate_features(state: GroundState, features: list[Feature]) -> JsonObject:
@@ -105,24 +93,14 @@ def evaluate_features(state: GroundState, features: list[Feature]) -> JsonObject
         try:
             values[feature_key(feature)] = _evaluate_feature_value(feature, state)
         except RuntimeError as exc:
-            values[feature_key(feature)] = {"error": str(exc)}
+            values[feature_key(feature)] = {Keys.ERROR: str(exc)}
     return values
 
 
-def state_atom_evidence(state: GroundState) -> list[AtomEvidence]:
-    atoms = [
-        *(("fluent", str(fact.get_atom())) for fact in state.fluent_facts()),
-        *(("derived", str(atom)) for atom in state.derived_atoms()),
-        *(("static", str(atom)) for atom in state.static_atoms()),
-    ]
-    return sorted(atoms, key=lambda atom: (_ATOM_KIND_ORDER[atom[0]], atom[1]))
-
-
-def state_facts(state: GroundState) -> JsonObject:
-    atoms = state_atom_evidence(state)
+def state_atom_evidence(state: GroundState) -> dict[AtomKind, tuple[str, ...]]:
     return {
-        "fluent_facts": [atom for kind, atom in atoms if kind == "fluent"],
-        "derived_atoms": [atom for kind, atom in atoms if kind == "derived"],
+        AtomKind.FLUENT: tuple(sorted(str(fact.get_atom()) for fact in state.fluent_facts())),
+        AtomKind.DERIVED: tuple(sorted(str(atom) for atom in state.derived_atoms())),
     }
 
 
@@ -141,14 +119,16 @@ def state_evidence(
     include_hlmcut: bool = True,
 ) -> FeatureEvidence:
     def evidence(state: GroundState) -> JsonObject:
-        data: JsonObject = {"feature_values": evaluate_features(state, features)}
+        data: JsonObject = {Keys.FEATURE_VALUES: evaluate_features(state, features)}
         if hstar is not None:
             if include_hstar:
-                data["hstar"] = heuristic_json_value(hstar.evaluate(state))
+                data[Keys.HSTAR] = heuristic_json_value(hstar.evaluate(state))
             if include_hlmcut:
-                data["hlmcut"] = heuristic_json_value(hstar.evaluate_lmcut(state))
+                data[Keys.HLMCUT] = heuristic_json_value(hstar.evaluate_lmcut(state))
         if include_facts:
-            data.update(state_facts(state))
+            atoms = state_atom_evidence(state)
+            data[Keys.FLUENT_ATOMS] = [atom for atom in atoms[AtomKind.FLUENT]]
+            data[Keys.DERIVED_ATOMS] = [atom for atom in atoms[AtomKind.DERIVED]]
         return data
 
     return evidence

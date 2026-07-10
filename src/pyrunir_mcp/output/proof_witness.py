@@ -7,8 +7,11 @@ live proof graph; the graph traversal that produces the dicts lives in `proof.py
 
 from __future__ import annotations
 
+from pyrunir_mcp.enums import HeuristicSentinel
 from pyrunir_mcp.json_types import JsonObject, JsonValue
-from pyrunir_mcp.kr.ps.hstar import HeuristicSentinel
+from pyrunir_mcp.keys import (
+    Keys,
+)
 from pyrunir_mcp.output.policy import Successor, WitnessState, WitnessTransition, resolve_flags
 
 
@@ -31,9 +34,9 @@ def _str_tuple(value: JsonValue) -> tuple[str, ...]:
 
 
 def _memory(state: JsonObject) -> tuple[str, str] | None:
-    if "memory_state" not in state:
+    if Keys.MEMORY not in state:
         return None
-    return (str(state.get("module", "")), str(state["memory_state"]))
+    return (str(state.get(Keys.MODULE, "")), str(state[Keys.MEMORY]))
 
 
 def _delta(before: JsonObject, after: JsonObject) -> dict[str, tuple[JsonValue, JsonValue]]:
@@ -48,7 +51,7 @@ def _is_deadend_value(value: JsonValue) -> bool:
 
 
 def _is_deadend(state: JsonObject) -> bool:
-    return bool(state.get("is_unsolvable")) or _is_deadend_value(state.get("hstar")) or _is_deadend_value(state.get("hlmcut"))
+    return bool(state.get(Keys.IS_UNSOLVABLE)) or _is_deadend_value(state.get(Keys.HSTAR)) or _is_deadend_value(state.get(Keys.HLMCUT))
 
 
 def witness_state(
@@ -59,22 +62,21 @@ def witness_state(
     cycle: bool = False,
 ) -> WitnessState:
     flags = resolve_flags(
-        initial=bool(state.get("is_initial")),
-        goal=bool(state.get("is_goal")),
+        initial=bool(state.get(Keys.IS_INITIAL)),
+        goal=bool(state.get(Keys.IS_GOAL)),
         deadend=_is_deadend(state),
         open_state=open_state,
         witness=witness,
         cycle=cycle,
     )
     return WitnessState(
-        state=_int(state["state_index"]),
-        hstar=state.get("hstar", ""),
-        hlmcut=state.get("hlmcut", ""),
-        features=_json_object(state.get("feature_values", {})),
-        fluent=_str_tuple(state.get("fluent_facts", [])),
-        derived=_str_tuple(state.get("derived_atoms", [])),
+        state=_int(state[Keys.STATE_INDEX]),
+        hstar=state.get(Keys.HSTAR, ""),
+        hlmcut=state.get(Keys.HLMCUT, ""),
+        features=_json_object(state.get(Keys.FEATURE_VALUES, {})),
+        fluent=_str_tuple(state.get(Keys.FLUENT_ATOMS, [])),
+        derived=_str_tuple(state.get(Keys.DERIVED_ATOMS, [])),
         flags=flags,
-        vertex=_int(state["vertex_index"]) if "vertex_index" in state else None,
         memory=_memory(state),
     )
 
@@ -89,13 +91,13 @@ def witness_transition(
 ) -> WitnessTransition:
     return WitnessTransition(
         step=step,
-        source=_int(source["state_index"]),
-        target=_int(target["state_index"]),
+        source=_int(source[Keys.STATE_INDEX]),
+        target=_int(target[Keys.STATE_INDEX]),
         source_memory=_memory(source) if ext else None,
         target_memory=_memory(target) if ext else None,
-        action=_str_opt(edge.get("action")),
-        rule=_str_opt(edge.get("module_rule")),
-        delta=_delta(_json_object(source.get("feature_values", {})), _json_object(target.get("feature_values", {}))),
+        action=_str_opt(edge.get(Keys.ACTION)),
+        rule=_str_opt(edge.get(Keys.RULE)),
+        delta=_delta(_json_object(source.get(Keys.FEATURE_VALUES, {})), _json_object(target.get(Keys.FEATURE_VALUES, {}))),
     )
 
 
@@ -105,11 +107,11 @@ def successor(
     target: JsonObject,
 ) -> Successor:
     return Successor(
-        src=_int(source["state_index"]),
+        src=_int(source[Keys.STATE_INDEX]),
         source=witness_state(source),
         source_memory=_memory(source),
         target=witness_state(target),
-        action=_str_opt(edge.get("action")),
-        rule=_str_opt(edge.get("module_rule")),
-        delta=_delta(_json_object(source.get("feature_values", {})), _json_object(target.get("feature_values", {}))),
+        action=_str_opt(edge.get(Keys.ACTION)),
+        rule=_str_opt(edge.get(Keys.RULE)),
+        delta=_delta(_json_object(source.get(Keys.FEATURE_VALUES, {})), _json_object(target.get(Keys.FEATURE_VALUES, {}))),
     )

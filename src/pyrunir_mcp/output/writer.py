@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from pyrunir_mcp.enums import DumpFormat
 from pyrunir_mcp.tables import Document, Fmt, Table, render, render_document
 
 DEFAULT_FORMATS: tuple[Fmt, ...] = ("psv", "md", "json")
@@ -23,11 +24,11 @@ def resolve_formats(formats: tuple[Fmt, ...] | None = None) -> tuple[Fmt, ...]:
     choice = os.environ.get(FORMAT_ENV, "all").strip().lower()
     if choice in ("", "all"):
         return DEFAULT_FORMATS
-    if choice == "psv":
+    if choice == DumpFormat.PSV:
         return ("psv",)
-    if choice == "md":
+    if choice == DumpFormat.MD:
         return ("md",)
-    if choice == "json":
+    if choice == DumpFormat.JSON:
         return ("json",)
     raise ValueError(f"{FORMAT_ENV} must be one of: psv, md, json, all (got {choice!r}).")
 

@@ -1,13 +1,7 @@
 from __future__ import annotations
 
-from pyrunir.kr.uns import Classifier
-from pytyr.planning.ground import State
-
 from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
-
-
-def fluent_facts(state: State) -> list[str]:
-    return [str(fact.get_atom()) for fact in state.fluent_facts()]
+from pyrunir.kr.uns import Classifier
 
 
 def feature_symbols(classifier: Classifier) -> list[str]:

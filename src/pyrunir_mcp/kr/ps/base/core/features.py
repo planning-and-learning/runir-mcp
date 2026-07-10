@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from pyrunir.kr.dl.base.semantics import ConstructorRepository as DLConstructorRepository
 from pyrunir.kr.ps.base import GroundSketchProofResults as PolicyProofResults
 from pyrunir.kr.ps.base import Repository as PolicyRepository

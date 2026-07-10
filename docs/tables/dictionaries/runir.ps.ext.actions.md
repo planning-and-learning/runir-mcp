@@ -7,4 +7,4 @@ Used by: [`../runir.ps.ext.counterexamples.md`](../runir.ps.ext.counterexamples.
 | `id` | Action alias, rendered as `aK`. |
 | `action` | Ground planning action text. |
 
-Action aliases appear in `[transitions]` and `[successors]` `action` columns.
+Action aliases appear in `[transitions]` and `[successors]` `action_id` columns.

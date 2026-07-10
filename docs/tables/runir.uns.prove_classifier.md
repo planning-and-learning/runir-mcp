@@ -19,7 +19,7 @@ See [classifier `failures.*`](indexes/runir.uns.failures.md) for the classifier 
 
 ## Section Tables
 
-- [`[state]`](sections/runir.uns.state.md)
+- [`[states]`](sections/runir.uns.states.md)
 - [`[facts]`](sections/runir.uns.facts.md)
 
 The verdict is carried by the `@category` header and the failure id prefix.

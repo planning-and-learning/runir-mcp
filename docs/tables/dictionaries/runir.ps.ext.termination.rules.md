@@ -7,4 +7,4 @@ Used by: [`../runir.ps.ext.prove_termination.md`](../runir.ps.ext.prove_terminat
 | `id` | Rule alias, rendered as `rK`. |
 | `symbol` | Module rule symbol. |
 
-Rule aliases appear in `[edges]`. Unlike module-program counterexample rules, termination rules do not carry source/target memory columns; the edge itself carries `src` and `tgt` vertex indices.
+Rule aliases appear in `[edges]`. Unlike module-program counterexample rules, termination rules do not carry source/target memory columns; the edge itself carries `source_vertex_index` and `target_vertex_index` vertex indices.

@@ -75,13 +75,13 @@ def test_run_execute_keeps_seed_level_failures_and_successes(
     )
 
     assert (tmp_path / "failures.psv").read_text(encoding="utf-8") == (
-        "id|category|status|seed|problem|source|trace|witness|successors|plan_trace\n"
-        "resource_limit-001|resource_limit|OUT_OF_STATES|0|p01.pddl|find_solution||||\n"
-        "resource_limit-002|resource_limit|OUT_OF_STATES|1|p01.pddl|find_solution||||\n"
-        "resource_limit-003|resource_limit|OUT_OF_STATES|2|p01.pddl|find_solution||||\n"
+        "id|category|status|seed|task_file|origin|trace|witness|successors|plan_trace\n"
+        "out_of_states-001|out_of_states|out_of_states|0|p01.pddl|find_solution||||\n"
+        "out_of_states-002|out_of_states|out_of_states|1|p01.pddl|find_solution||||\n"
+        "out_of_states-003|out_of_states|out_of_states|2|p01.pddl|find_solution||||\n"
     )
     assert (tmp_path / "successes.psv").read_text(encoding="utf-8") == (
-        "id|category|status|seed|problem|source|trace\n"
-        "success-001|success|SUCCESS|3|p01.pddl|find_solution|successes/success-001/trace.psv\n"
-        "success-002|success|SUCCESS|4|p01.pddl|find_solution|successes/success-002/trace.psv\n"
+        "id|category|status|seed|task_file|origin|trace\n"
+        "success-001|success|success|3|p01.pddl|find_solution|successes/success-001/trace.psv\n"
+        "success-002|success|success|4|p01.pddl|find_solution|successes/success-002/trace.psv\n"
     )

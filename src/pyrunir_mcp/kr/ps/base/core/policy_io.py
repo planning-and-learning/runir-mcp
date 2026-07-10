@@ -4,7 +4,8 @@ import sys
 from pathlib import Path
 
 from pyrunir.kr.ps.base import Sketch as Policy
-from pyrunir.kr.ps.base.dl import SketchFactory as PolicyFactory, parse_sketch as parse_policy
+from pyrunir.kr.ps.base.dl import SketchFactory as PolicyFactory
+from pyrunir.kr.ps.base.dl import parse_sketch as parse_policy
 
 from pyrunir_mcp.kr.ps.base.core.features import BasePolicyContext
 

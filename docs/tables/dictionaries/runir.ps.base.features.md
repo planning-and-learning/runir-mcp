@@ -7,4 +7,4 @@ Used by: [`../runir.ps.base.counterexamples.md`](../runir.ps.base.counterexample
 | `id` | Feature alias, rendered as `fK`. |
 | `symbol` | Base sketch-policy feature symbol. |
 
-Rows are ordered. This order defines the `f0`, `f1`, ... feature columns in base `[state]` and `[states]` tables and the feature aliases used in `delta` cells.
+Rows are ordered. This order defines the `f0`, `f1`, ... feature columns in base `[states]` tables and the feature aliases used in `deltas` cells.
