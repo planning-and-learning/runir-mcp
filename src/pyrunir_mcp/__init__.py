@@ -51,7 +51,7 @@ from pyrunir_mcp.validation import (
     ValidationStatus,
 )
 
-__version__ = "0.0.22"
+__version__ = "0.0.21"
 
 __all__ = [
     "__version__",
