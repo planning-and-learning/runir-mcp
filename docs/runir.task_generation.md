@@ -4,16 +4,10 @@
 
 ## Generator Lookup
 
-Generators are loaded from:
+Generators and their domains are loaded from `pypddl-datasets==0.0.5` package resources:
 
 ```text
-$PYRUNIR_MCP_BENCHMARK_ROOT/generators/classical/<domain_name>/generator.py
-```
-
-If `PYRUNIR_MCP_BENCHMARK_ROOT` is unset, the default root is:
-
-```text
-./data/planning-benchmarks
+pypddl_datasets/generators/classical/<domain_name>/generator.py
 ```
 
 Each generator directory must contain:
@@ -24,9 +18,10 @@ Each generator directory must contain:
 ## `describe_generator`
 
 ```python
-from pyrunir_mcp import describe_generator
+from pyrunir_mcp import describe_generator, get_generator_domain_path
 
 generator_path, signature = describe_generator("gripper")
+domain_path = get_generator_domain_path("gripper")
 ```
 
 Returns the resolved generator source path and the Python signature of `make_problem(...)`. This does not create output files.
@@ -41,8 +36,8 @@ result = generate_tasks(
     "artifacts/gripper-samples",
     "train",
     configs=[
-        {"rooms": 2, "balls": 1},
-        {"rooms": 3, "balls": 2},
+        {"num_balls": 1},
+        {"num_balls": 2},
     ],
 )
 

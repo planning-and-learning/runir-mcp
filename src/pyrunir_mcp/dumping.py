@@ -328,7 +328,7 @@ def _rollout_failure_docs(
     header: list[tuple[str, str]],
 ) -> tuple[Document, Document | None, Document | None, str | None]:
     docs = rollout_artifacts(
-        result.context.base_task.search_context,
+        result.context.base_task.task_context,
         result.candidate.value,
         features,
         result.classifier.value if result.classifier is not None else None,
@@ -350,12 +350,20 @@ def _dump_execute_policy_artifacts(
 ) -> RichDumpResult | None:
     if not formats or not result.rollout_results:
         return None
+    task_context = result.context.base_task.task_context
     features = collect_base_features(result.candidate.value)
-    dicts = Dictionaries(task=result.context.base_task.search_context.task, ext=False)
+    dicts = Dictionaries(task=result.context.base_task.task_context.search_context.task, ext=False)
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_base_rules(result.candidate.value, dicts)
     evidence = classifier_evidence(
-        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        task_context,
+        state_evidence(
+            task_context,
+            features,
+            include_facts=True,
+            include_hstar=False,
+            include_hlmcut=False,
+        ),
         result.classifier.value if result.classifier is not None else None,
     )
 
@@ -382,7 +390,7 @@ def _dump_execute_policy_artifacts(
                 (Keys.SEED, str(seed)),
             ]
             artifacts[trace_name] = rollout_trace_document(
-                result.context.base_task.search_context,
+                result.context.base_task.task_context,
                 rollout,
                 features,
                 evidence,
@@ -467,7 +475,7 @@ def _dump_execute_policy_artifacts(
         if category == RunItemCategory.OPEN_STATE.value:
             terminal = rollout.states[-1]
             plan_trace = plan_open_state_trace(
-                ground_context=result.context.base_task.search_context,
+                task_context=result.context.base_task.task_context,
                 state=terminal,
                 features=features,
                 dicts=dicts,
@@ -624,7 +632,7 @@ def _ext_rollout_failure_docs(
     if not isinstance(options, GroundModuleProgramSearchOptions):
         raise TypeError("expected GroundModuleProgramSearchOptions")
     docs = ext_rollout_artifacts(
-        result.context.ext_task.search_context,
+        result.context.ext_task.task_context,
         result.candidate.value,
         options,
         features,
@@ -649,12 +657,20 @@ def _dump_execute_module_program_artifacts(
         return None
     from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions
 
+    task_context = result.context.ext_task.task_context
     features = collect_ext_features(result.candidate.value)
-    dicts = Dictionaries(task=result.context.ext_task.search_context.task, ext=True)
+    dicts = Dictionaries(task=result.context.ext_task.task_context.search_context.task, ext=True)
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_ext_rules(result.candidate.value, dicts)
     evidence = classifier_evidence(
-        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        task_context,
+        state_evidence(
+            task_context,
+            features,
+            include_facts=True,
+            include_hstar=False,
+            include_hlmcut=False,
+        ),
         result.classifier.value if result.classifier is not None else None,
     )
 
@@ -682,7 +698,7 @@ def _dump_execute_module_program_artifacts(
                 (Keys.SEED, str(seed)),
             ]
             artifacts[trace_name] = ext_rollout_trace_document(
-                result.context.ext_task.search_context,
+                result.context.ext_task.task_context,
                 rollout,
                 features,
                 evidence,
@@ -744,7 +760,7 @@ def _dump_execute_module_program_artifacts(
         if category == RunItemCategory.OPEN_STATE.value:
             terminal = rollout.contexts[-1].state
             plan_trace = plan_open_state_trace(
-                ground_context=result.context.ext_task.search_context,
+                task_context=result.context.ext_task.task_context,
                 state=terminal,
                 features=features,
                 dicts=dicts,
@@ -837,12 +853,20 @@ def _dump_prove_policy_artifacts(
 ) -> RichDumpResult | None:
     if not formats:
         return None
+    task_context = result.context.base_task.task_context
     features = collect_base_features(result.candidate.value)
-    dicts = Dictionaries(task=result.context.base_task.search_context.task, ext=False)
+    dicts = Dictionaries(task=result.context.base_task.task_context.search_context.task, ext=False)
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_base_rules(result.candidate.value, dicts)
     evidence = classifier_evidence(
-        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        task_context,
+        state_evidence(
+            task_context,
+            features,
+            include_facts=True,
+            include_hstar=False,
+            include_hlmcut=False,
+        ),
         result.evidence_classifier.value if result.evidence_classifier is not None else None,
     )
     envelope: JsonObject = build_proof_run(
@@ -856,10 +880,10 @@ def _dump_prove_policy_artifacts(
         ext=False,
         evidence=evidence,
         expander=make_frontier_expander(
-            result.context.base_task.search_context, result.candidate.value, evidence
+            result.context.base_task.task_context, result.candidate.value, evidence
         ),
         open_state_plan=lambda state: plan_open_state_trace(
-            ground_context=result.context.base_task.search_context,
+            task_context=result.context.base_task.task_context,
             state=state,
             features=features,
             dicts=dicts,
@@ -880,12 +904,20 @@ def _dump_prove_module_program_artifacts(
 ) -> RichDumpResult | None:
     if not formats:
         return None
+    task_context = result.context.ext_task.task_context
     features = collect_ext_features(result.candidate.value)
-    dicts = Dictionaries(task=result.context.ext_task.search_context.task, ext=True)
+    dicts = Dictionaries(task=result.context.ext_task.task_context.search_context.task, ext=True)
     feature_symbols = _populate_feature_dictionary(dicts, features)
     intern_ext_rules(result.candidate.value, dicts)
     evidence = classifier_evidence(
-        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        task_context,
+        state_evidence(
+            task_context,
+            features,
+            include_facts=True,
+            include_hstar=False,
+            include_hlmcut=False,
+        ),
         result.evidence_classifier.value if result.evidence_classifier is not None else None,
     )
     envelope: JsonObject = build_proof_run(
@@ -899,10 +931,10 @@ def _dump_prove_module_program_artifacts(
         ext=True,
         evidence=evidence,
         expander=make_ext_frontier_expander(
-            result.context.ext_task.search_context, result.candidate.value, evidence
+            result.context.ext_task.task_context, result.candidate.value, evidence
         ),
         open_state_plan=lambda state: plan_open_state_trace(
-            ground_context=result.context.ext_task.search_context,
+            task_context=result.context.ext_task.task_context,
             state=state,
             features=features,
             dicts=dicts,
@@ -923,7 +955,7 @@ def _dump_prove_classifier_artifacts(
 ) -> RichDumpResult | None:
     if not formats or not result.mistakes:
         return None
-    dicts = Dictionaries(task=result.context.base_task.search_context.task, ext=False)
+    dicts = Dictionaries(task=result.context.base_task.task_context.search_context.task, ext=False)
     feature_symbols = classifier_feature_symbols(result.candidate.value)
     for symbol in feature_symbols:
         dicts.feature(symbol)

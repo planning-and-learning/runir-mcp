@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pyrunir.kr import GroundTaskContext
 from pyyggdrasil.execution import ExecutionContext
 
 from pyrunir_mcp.kr.ps.plan_trace import plan_open_state_trace
@@ -37,11 +38,12 @@ def test_plan_open_state_trace_uses_ff_plan_and_shared_action_dictionary(tmp_pat
     domain, problem = _write_task(tmp_path)
     execution_context = ExecutionContext(1)
     ground = build_ground_search_context(domain, problem, execution_context)
+    task_context = GroundTaskContext(ground)
     dicts = Dictionaries(task=ground.task)
     dicts.action("preexisting")
 
     doc = plan_open_state_trace(
-        ground_context=ground,
+        task_context=task_context,
         state=ground.state_repository.get_initial_state(),
         features=[],
         dicts=dicts,

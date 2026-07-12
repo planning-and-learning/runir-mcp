@@ -18,7 +18,7 @@ def execute_policy_on_tasks(
     search_options = options or PolicySearchOptions()
 
     for task in execute_tasks:
-        result = find_ground_solution(task.search_context, policy, search_options)
+        result = find_ground_solution(task.task_context, policy, search_options)
         if not is_success_status(result.status) and not is_goal_open_state_result(result):
             return ExecutionFailure(task=task, result=result)
 

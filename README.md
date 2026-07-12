@@ -41,6 +41,7 @@ Context/candidates:
 `runir.task_generation`:
 
 - `describe_generator(domain_name)`
+- `get_generator_path(domain_name)` / `get_generator_domain_path(domain_name)`
 - `generate_tasks(domain_name, output_dir, batch_name, configs, allow_invalid=False)`
 
 Validation:

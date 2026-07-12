@@ -17,6 +17,8 @@ from pyrunir_mcp.task_generation import (
     TaskGenerationResult,
     batch_slug,
     fresh_problem_dir,
+    get_generator_domain_path,
+    get_generator_path,
     task_generation,
     task_generation_json,
 )
@@ -40,6 +42,37 @@ def test_public_api_exports_task_generation_names() -> None:
     assert public.TaskGenerationResult is TaskGenerationResult
     assert callable(public.describe_generator)
     assert callable(public.generate_tasks)
+    assert public.get_generator_domain_path is get_generator_domain_path
+    assert public.get_generator_path is get_generator_path
+
+
+def test_packaged_generator_is_cwd_independent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    generator_path = get_generator_path("gripper")
+    domain_path = get_generator_domain_path("gripper")
+    result = task_generation(
+        TaskGenerationOptions(
+            domain_name="gripper",
+            output_dir=tmp_path / "generated",
+            batch_name="test",
+            configs=[{"num_balls": 2}],
+        )
+    )
+
+    assert generator_path.is_file()
+    assert domain_path.is_file()
+    assert result.generator_path == generator_path
+    assert result.domain_path.read_text(encoding="utf-8") == domain_path.read_text(encoding="utf-8")
+    assert len(result.generated) == 1
+    assert "gripper-2" in result.generated[0].path.read_text(encoding="utf-8")
+
+
+def test_generator_path_rejects_traversal() -> None:
+    with pytest.raises(ValueError, match="Invalid generator domain name"):
+        get_generator_path("../gripper")
 
 
 def test_task_generation_dump_result_writes_summary_artifacts(tmp_path: Path) -> None:

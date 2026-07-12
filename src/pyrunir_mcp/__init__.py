@@ -28,6 +28,8 @@ from pyrunir_mcp.task_generation import (
     InvalidTaskGenerationConfig,
     TaskGenerationOptions,
     TaskGenerationResult,
+    get_generator_domain_path,
+    get_generator_path,
 )
 from pyrunir_mcp.validation import (
     ClassifierObservationDetails,
@@ -49,7 +51,7 @@ from pyrunir_mcp.validation import (
     ValidationStatus,
 )
 
-__version__ = "0.0.20"
+__version__ = "0.0.21"
 
 __all__ = [
     "__version__",
@@ -96,6 +98,8 @@ __all__ = [
     "execute_module_program",
     "execute_policy",
     "generate_tasks",
+    "get_generator_domain_path",
+    "get_generator_path",
     "prove_classifier",
     "prove_module_program",
     "prove_policy",

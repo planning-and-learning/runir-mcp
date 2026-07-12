@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from pyrunir.datasets import GroundTaskSearchContext
+from pyrunir.kr import GroundTaskContext
 from pyrunir.kr.ps.ext import (
     GroundModuleProgramSearchOptions,
     ModuleProgram,
@@ -88,26 +88,26 @@ def _terminal_outcome(status: str) -> RolloutOutcome:
     return RolloutOutcome.OPEN_STATE
 
 
-def _make_expander(search_context: GroundTaskSearchContext, program: ModuleProgram) -> SuccessorExpander:
-    initial = search_context.state_repository.get_initial_state()
+def _make_expander(task_context: GroundTaskContext, program: ModuleProgram) -> SuccessorExpander:
+    initial = task_context.search_context.state_repository.get_initial_state()
     return SuccessorExpander(
-        search_context,
+        task_context,
         initial,
         program,
     )
 
 
 def greedy_module_program_rollout(
-    search_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     program: ModuleProgram,
     classifier: Classifier,
     options: GroundModuleProgramSearchOptions,
     *,
     max_steps: int = _MAX_ROLLOUT_STEPS,
 ) -> ExtRolloutResult:
-    expander = _make_expander(search_context, program)
-    is_goal = goal_test(search_context)
-    is_unsolvable = unsolvability_test(classifier)
+    expander = _make_expander(task_context, program)
+    is_goal = goal_test(task_context)
+    is_unsolvable = unsolvability_test(task_context, classifier)
     current = expander.initial_context()
     contexts: list[Context] = [current]
     steps: list[ExtRolloutStep] = []
@@ -193,7 +193,7 @@ def _summary(
 
 
 def rollout_trace_document(
-    search_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     result: ExtRolloutResult,
     features: list[Feature],
     evidence: FeatureEvidence,
@@ -204,7 +204,7 @@ def rollout_trace_document(
     include_hstar: bool = True,
     include_hlmcut: bool = True,
 ) -> Document:
-    is_goal = goal_test(search_context)
+    is_goal = goal_test(task_context)
     last = len(result.contexts) - 1
     summaries = [
         _summary(
@@ -248,7 +248,7 @@ def rollout_trace_document(
 
 
 def rollout_artifacts(
-    search_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     program: ModuleProgram,
     options: GroundModuleProgramSearchOptions,
     features: list[Feature],
@@ -265,11 +265,11 @@ def rollout_artifacts(
     if result is None:
         if classifier is None:
             raise ValueError("classifier is required when rollout result is not supplied")
-        result = greedy_module_program_rollout(search_context, program, classifier, options)
+        result = greedy_module_program_rollout(task_context, program, classifier, options)
     if result.outcome is RolloutOutcome.GOAL:
         return None
 
-    is_goal = goal_test(search_context)
+    is_goal = goal_test(task_context)
     last = len(result.contexts) - 1
     summaries = [
         _summary(
@@ -282,7 +282,7 @@ def rollout_artifacts(
         for index, context in enumerate(result.contexts)
     ]
     trace = rollout_trace_document(
-        search_context,
+        task_context,
         result,
         features,
         evidence,
@@ -340,10 +340,10 @@ def rollout_artifacts(
         )
 
     terminal = result.contexts[-1]
-    expander = _make_expander(search_context, program)
+    expander = _make_expander(task_context, program)
     successors: list[Successor] = []
     if result.outcome is RolloutOutcome.OPEN_STATE:
-        for labeled in search_context.successor_generator.get_labeled_successor_nodes(Node(terminal.state, 0.0)):
+        for labeled in task_context.search_context.successor_generator.get_labeled_successor_nodes(Node(terminal.state, 0.0)):
             target_state: State = labeled.node.get_state()
             rule = expander.matching_rule(terminal, labeled.label, target_state)
             edge = {

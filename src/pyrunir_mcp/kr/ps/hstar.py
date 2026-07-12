@@ -91,7 +91,7 @@ class HStarEvaluator:
             options.start_node = GroundNode(self._ground_state(state), 0.0)
             options.max_num_states = self._options.max_num_states
             options.max_time = timedelta(seconds=self._options.max_time_seconds)
-            options.action_cost_mode = CostMode.UNIT
+            options.cost_mode = CostMode.UNIT
             result = find_ground_solution(
                 self._ground_context.task,
                 self._ground_context.successor_generator,
@@ -103,7 +103,7 @@ class HStarEvaluator:
             options.start_node = LiftedNode(self._lifted_state(state), 0.0)
             options.max_num_states = self._options.max_num_states
             options.max_time = timedelta(seconds=self._options.max_time_seconds)
-            options.action_cost_mode = CostMode.UNIT
+            options.cost_mode = CostMode.UNIT
             result = find_lifted_solution(
                 self._lifted_context.task,
                 self._lifted_context.successor_generator,

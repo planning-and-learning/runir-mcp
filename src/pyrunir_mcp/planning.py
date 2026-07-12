@@ -6,6 +6,7 @@ from typing import Protocol, cast
 
 from pypddl.formalism import ParserOptions
 from pyrunir.datasets import GroundTaskSearchContext, LiftedTaskSearchContext
+from pyrunir.kr import GroundTaskContext
 from pytyr.formalism.planning import Parser, PlanningTask
 from pytyr.planning.lifted import (
     GroundTaskInstantiationOptions,
@@ -29,7 +30,11 @@ def parse_task_file(parser: Parser, problem_path: Path, parser_options: ParserOp
 @dataclass(frozen=True)
 class LoadedSearchContext:
     problem_path: Path
-    search_context: GroundTaskSearchContext
+    task_context: GroundTaskContext
+
+    @property
+    def search_context(self) -> GroundTaskSearchContext:
+        return self.task_context.search_context
 
 
 @dataclass(frozen=True)
@@ -85,5 +90,7 @@ def load_grounded_search_context(
 ) -> LoadedSearchContext:
     return LoadedSearchContext(
         problem_path=problem_path,
-        search_context=build_ground_search_context(domain_path, problem_path, execution_context),
+        task_context=GroundTaskContext(
+            build_ground_search_context(domain_path, problem_path, execution_context)
+        ),
     )

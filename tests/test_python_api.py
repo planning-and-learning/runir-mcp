@@ -43,6 +43,37 @@ def test_public_exports_use_typed_names() -> None:
     assert public.ClassifierObservationDetails is ClassifierObservationDetails
 
 
+def test_task_context_reuses_ground_semantic_resources(tmp_path: Path) -> None:
+    domain_file = tmp_path / "domain.pddl"
+    problem_file = tmp_path / "problem.pddl"
+    domain_file.write_text(
+        "(define (domain tiny-context) (:requirements :strips) (:predicates (p)))",
+        encoding="utf-8",
+    )
+    problem_file.write_text(
+        "(define (problem tiny-context-p) (:domain tiny-context) (:init (p)) (:goal (p)))",
+        encoding="utf-8",
+    )
+
+    domain = create_domain_context(domain_file)
+    first = create_task_context(domain, problem_file)
+    second = create_task_context(domain, problem_file)
+    first_loaded = first.base_task
+    second_loaded = second.base_task
+    first_ground = first_loaded.search_context
+
+    assert first_loaded is first.ext_task
+    assert first_ground is first_loaded.task_context.search_context
+    assert first_loaded.task_context is not second_loaded.task_context
+    assert first_loaded.task_context.dl_builder is not second_loaded.task_context.dl_builder
+    assert (
+        first_loaded.task_context.dl_denotation_repository
+        is not second_loaded.task_context.dl_denotation_repository
+    )
+    assert not hasattr(first_ground, "dl_builder")
+    assert not hasattr(first_ground, "dl_denotation_repository")
+
+
 def test_cycle_fingerprint_rotates_smallest_state_id_first() -> None:
     assert rotate_smallest_state_id_first(["s3384", "s3403", "s3384"]) == (
         "s3384",

@@ -3,11 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeAlias
 
+from pyrunir.kr import GroundTaskContext
 from pyrunir.kr.dl.base.semantics import (
     BooleanDenotation,
-    Builder,
     ConceptDenotation,
-    DenotationRepositoryFactory,
     NumericalDenotation,
     RoleDenotation,
 )
@@ -77,9 +76,11 @@ def feature_key(feature: Feature) -> str:
     return symbol or str(feature)
 
 
-def _evaluate_feature_value(feature: Feature, state: GroundState) -> JsonValue:
-    builder = Builder()
-    denotations = DenotationRepositoryFactory().create()
+def _evaluate_feature_value(
+    task_context: GroundTaskContext, feature: Feature, state: GroundState
+) -> JsonValue:
+    builder = task_context.dl_builder
+    denotations = task_context.dl_denotation_repository
     if isinstance(feature, BaseBooleanFeature | BaseNumericalFeature):
         context = BaseGroundEvaluationContext(state, builder, denotations)
         return json_value(feature.evaluate(context))
@@ -87,11 +88,13 @@ def _evaluate_feature_value(feature: Feature, state: GroundState) -> JsonValue:
     return json_value(feature.get_variant().get_expression().evaluate(context))
 
 
-def evaluate_features(state: GroundState, features: list[Feature]) -> JsonObject:
+def evaluate_features(
+    task_context: GroundTaskContext, state: GroundState, features: list[Feature]
+) -> JsonObject:
     values: JsonObject = {}
     for feature in features:
         try:
-            values[feature_key(feature)] = _evaluate_feature_value(feature, state)
+            values[feature_key(feature)] = _evaluate_feature_value(task_context, feature, state)
         except RuntimeError as exc:
             values[feature_key(feature)] = {Keys.ERROR: str(exc)}
     return values
@@ -111,6 +114,7 @@ def heuristic_json_value(value: HStarValue | LMCutValue) -> JsonValue:
 
 
 def state_evidence(
+    task_context: GroundTaskContext,
     features: list[Feature],
     *,
     include_facts: bool,
@@ -119,7 +123,9 @@ def state_evidence(
     include_hlmcut: bool = True,
 ) -> FeatureEvidence:
     def evidence(state: GroundState) -> JsonObject:
-        data: JsonObject = {Keys.FEATURE_VALUES: evaluate_features(state, features)}
+        data: JsonObject = {
+            Keys.FEATURE_VALUES: evaluate_features(task_context, state, features)
+        }
         if hstar is not None:
             if include_hstar:
                 data[Keys.HSTAR] = heuristic_json_value(hstar.evaluate(state))

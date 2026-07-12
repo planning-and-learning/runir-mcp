@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import timedelta
 
-from pyrunir.datasets import GroundTaskSearchContext
+from pyrunir.kr import GroundTaskContext
 from pytyr.planning import CostMode, SearchStatus
 from pytyr.planning.ground import FFRPGHeuristic
 from pytyr.planning.ground import Node as GroundNode
@@ -36,6 +36,7 @@ def _feature_symbols(features: Sequence[Feature], dicts: Dictionaries) -> list[s
 
 
 def _state_row(
+    task_context: GroundTaskContext,
     state: GroundState,
     *,
     features: Sequence[Feature],
@@ -45,7 +46,7 @@ def _state_row(
     atoms = state_atom_evidence(state)
     return PlanTraceState(
         state=int(state.get_index()),
-        features=evaluate_features(state, list(features)),
+        features=evaluate_features(task_context, state, list(features)),
         fluent=atoms[AtomKind.FLUENT],
         derived=atoms[AtomKind.DERIVED],
         flags=flags,
@@ -62,7 +63,7 @@ def _delta(
 
 def plan_open_state_trace(
     *,
-    ground_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     state: GroundState,
     features: Sequence[Feature],
     dicts: Dictionaries,
@@ -73,15 +74,15 @@ def plan_open_state_trace(
     feature_symbols = _feature_symbols(features, dicts)
     effective_max_num_states = max_num_states if max_num_states is not None else 1_000_000
     effective_max_time_seconds = max_time_seconds if max_time_seconds is not None else 10.0
-    heuristic = FFRPGHeuristic(ground_context.task, ground_context.execution_context)
+    heuristic = FFRPGHeuristic(task_context.search_context.task, task_context.search_context.execution_context)
     options = Options()
     options.start_node = GroundNode(state, 0.0)
     options.max_num_states = effective_max_num_states
     options.max_time = timedelta(seconds=effective_max_time_seconds)
-    options.action_cost_mode = CostMode.UNIT
+    options.cost_mode = CostMode.UNIT
     result = find_solution(
-        ground_context.task,
-        ground_context.successor_generator,
+        task_context.search_context.task,
+        task_context.search_context.successor_generator,
         heuristic,
         options,
     )
@@ -93,7 +94,7 @@ def plan_open_state_trace(
     ground_states = [state, *(labeled.node.get_state() for labeled in labeled_nodes)]
 
     hstar = HStarEvaluator(
-        ground_context,
+        task_context.search_context,
         HStarOptions(max_num_states=effective_max_num_states, max_time_seconds=effective_max_time_seconds),
     )
     state_rows: list[PlanTraceState] = []
@@ -108,7 +109,15 @@ def plan_open_state_trace(
             flags = (Flag.GOAL,)
         else:
             flags = ()
-        state_rows.append(_state_row(ground_state, features=features, hstar=hstar, flags=flags))
+        state_rows.append(
+            _state_row(
+                task_context,
+                ground_state,
+                features=features,
+                hstar=hstar,
+                flags=flags,
+            )
+        )
 
     steps = [
         PlanStep(

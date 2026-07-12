@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from random import Random
 
-from pyrunir.datasets import GroundTaskSearchContext
+from pyrunir.kr import GroundTaskContext
 from pyrunir.kr.ps.base import ExecutionContext, SuccessorExpander
 from pyrunir.kr.ps.base import Sketch as Policy
 from pyrunir.kr.uns import Classifier
@@ -67,7 +67,7 @@ def compatible_rule(
 
 
 def greedy_policy_rollout(
-    search_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     policy: Policy,
     classifier: Classifier,
     *,
@@ -75,13 +75,13 @@ def greedy_policy_rollout(
     random_seed: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
 ) -> RolloutResult:
-    generator = search_context.successor_generator
-    is_goal = goal_test(search_context)
-    is_unsolvable = unsolvability_test(classifier)
-    expander = SuccessorExpander(policy)
+    generator = task_context.search_context.successor_generator
+    is_goal = goal_test(task_context)
+    is_unsolvable = unsolvability_test(task_context, classifier)
+    expander = SuccessorExpander(task_context, policy)
 
     rng = Random(random_seed)
-    current = search_context.state_repository.get_initial_state()
+    current = task_context.search_context.state_repository.get_initial_state()
     current_context = expander.context_at(current)
     states: list[State] = [current]
     steps: list[RolloutStep] = []
@@ -140,7 +140,7 @@ def rollout_witness(result: RolloutResult) -> tuple[str, ...]:
 
 
 def rollout_trace_document(
-    search_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     result: RolloutResult,
     features: list[Feature],
     evidence: FeatureEvidence,
@@ -151,7 +151,7 @@ def rollout_trace_document(
     include_hstar: bool = True,
     include_hlmcut: bool = True,
 ) -> Document:
-    is_goal = goal_test(search_context)
+    is_goal = goal_test(task_context)
     summaries = [
         {
             Keys.STATE_INDEX: int(state.get_index()),
@@ -198,7 +198,7 @@ def rollout_trace_document(
 
 
 def rollout_artifacts(
-    search_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     policy: Policy,
     features: list[Feature],
     classifier: Classifier | None,
@@ -222,7 +222,7 @@ def rollout_artifacts(
         if classifier is None:
             raise ValueError("classifier is required when rollout result is not supplied")
         result = greedy_policy_rollout(
-            search_context,
+            task_context,
             policy,
             classifier,
             max_steps=max_steps,
@@ -232,9 +232,9 @@ def rollout_artifacts(
     if result.outcome is RolloutOutcome.GOAL:
         return None
 
-    is_goal = goal_test(search_context)
-    generator = search_context.successor_generator
-    expander = SuccessorExpander(policy)
+    is_goal = goal_test(task_context)
+    generator = task_context.search_context.successor_generator
+    expander = SuccessorExpander(task_context, policy)
     terminal_unsolvable = result.outcome is RolloutOutcome.UNSOLVABLE
     is_cycle = result.outcome is RolloutOutcome.CYCLE
     last = len(result.states) - 1

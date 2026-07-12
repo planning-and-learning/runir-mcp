@@ -21,8 +21,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeAlias
 
-from pyrunir.datasets import GroundTaskSearchContext
-from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
+from pyrunir.kr import GroundTaskContext
 from pyrunir.kr.ps.base import GroundSketchProofGraph, Sketch
 from pyrunir.kr.ps.base.dl import GroundEvaluationContext
 from pyrunir.kr.ps.ext import (
@@ -53,9 +52,9 @@ def format_ground_action(action: GroundAction) -> str:
     return f"{inner.get_name()}({arguments})"
 
 
-def goal_test(search_context: GroundTaskSearchContext) -> Callable[[State], bool]:
-    goal = ConjunctiveGoalStrategy(search_context.task)
-    seed_state = search_context.state_repository.get_initial_state()
+def goal_test(task_context: GroundTaskContext) -> Callable[[State], bool]:
+    goal = ConjunctiveGoalStrategy(task_context.search_context.task)
+    seed_state = task_context.search_context.state_repository.get_initial_state()
 
     def is_goal(state: State) -> bool:
         try:
@@ -90,17 +89,17 @@ def successor(
 
 
 def make_frontier_expander(
-    search_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     sketch: Sketch,
     evidence: FeatureEvidence,
 ) -> FrontierExpander:
     """Base sketch: every 1-step successor of each trace vertex's state, tagged with the sketch
     rule that selects it (empty = the gap)."""
-    generator = search_context.successor_generator
+    generator = task_context.search_context.successor_generator
     rules = list(sketch.get_rules())
-    builder = Builder()
-    denotations = DenotationRepositoryFactory().create()
-    is_goal = goal_test(search_context)
+    builder = task_context.dl_builder
+    denotations = task_context.dl_denotation_repository
+    is_goal = goal_test(task_context)
 
     def compatible_rule(source_state: State, target_state: State) -> str | None:
         context = GroundEvaluationContext(source_state, target_state, builder, denotations)
@@ -127,7 +126,7 @@ def make_frontier_expander(
 
 
 def make_ext_frontier_expander(
-    search_context: GroundTaskSearchContext,
+    task_context: GroundTaskContext,
     program: ModuleProgram,
     evidence: FeatureEvidence,
 ) -> FrontierExpander:
@@ -136,10 +135,10 @@ def make_ext_frontier_expander(
     taken move — the module + resulting memory the rule lands in. The `SuccessorExpander` is the
     same engine the executor/prover uses, built once with the program's modules so Call rules can
     resolve their callee."""
-    generator = search_context.successor_generator
-    is_goal = goal_test(search_context)
-    initial_state = search_context.state_repository.get_initial_state()
-    expander = SuccessorExpander(search_context, initial_state, program)
+    generator = task_context.search_context.successor_generator
+    is_goal = goal_test(task_context)
+    initial_state = task_context.search_context.state_repository.get_initial_state()
+    expander = SuccessorExpander(task_context, initial_state, program)
 
     def expand(graph: ProofGraph, vertices: list[int]) -> list[Successor]:
         if not isinstance(graph, GroundModuleProgramProofGraph):

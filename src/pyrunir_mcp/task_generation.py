@@ -3,11 +3,11 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import json
-import os
 import re
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from types import FunctionType, ModuleType
 
@@ -18,6 +18,7 @@ from pyrunir_mcp.keys import (
 )
 
 _BATCH_NAME_RE = re.compile(r"[^A-Za-z0-9_-]+")
+_GENERATORS_PACKAGE = "pypddl_datasets.generators.classical"
 WORKFLOW_NAME = "runir.task_generation"
 
 
@@ -25,14 +26,8 @@ def batch_slug(batch_name: str) -> str:
     return _BATCH_NAME_RE.sub("_", str(batch_name)).strip("_") or "batch"
 
 
-def benchmark_root() -> Path:
-    return Path(
-        os.environ.get("PYRUNIR_MCP_BENCHMARK_ROOT", Path.cwd() / "data" / "planning-benchmarks")
-    ).resolve()
-
-
 def generator_root() -> Path:
-    return benchmark_root() / "generators" / "classical"
+    return Path(str(resources.files(_GENERATORS_PACKAGE))).resolve()
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,11 +74,13 @@ class TaskGenerationResult:
 
 
 def get_generator_path(domain_name: str) -> Path:
+    if not domain_name.isidentifier():
+        raise ValueError(f"Invalid generator domain name: {domain_name!r}")
     return generator_root() / domain_name / "generator.py"
 
 
 def get_generator_domain_path(domain_name: str) -> Path:
-    return generator_root() / domain_name / "domain.pddl"
+    return get_generator_path(domain_name).with_name("domain.pddl")
 
 
 def load_generator_module(domain_name: str) -> ModuleType:

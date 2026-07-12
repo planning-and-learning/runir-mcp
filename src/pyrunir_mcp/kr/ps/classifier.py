@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
+from pyrunir.kr import GroundTaskContext
 from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
 from pyrunir.kr.uns import Classifier, classify
 from pyrunir.kr.uns import Repository as ClassifierRepository
@@ -36,10 +36,12 @@ def build_classifier(context: ClassifierContext, classifier_file: Path | None) -
     )
 
 
-def unsolvability_test(classifier: Classifier) -> Callable[[State], bool]:
-    """Build a classifier predicate with its own denotation cache."""
-    builder = Builder()
-    denotations = DenotationRepositoryFactory().create()
+def unsolvability_test(
+    task_context: GroundTaskContext, classifier: Classifier
+) -> Callable[[State], bool]:
+    """Build a classifier predicate backed by the task's denotation cache."""
+    builder = task_context.dl_builder
+    denotations = task_context.dl_denotation_repository
 
     def is_unsolvable(state: State) -> bool:
         return bool(classify(classifier, GroundEvaluationContext(state, builder, denotations)))
@@ -47,11 +49,15 @@ def unsolvability_test(classifier: Classifier) -> Callable[[State], bool]:
     return is_unsolvable
 
 
-def classifier_evidence(evidence: StateEvidence, classifier: Classifier | None) -> StateEvidence:
+def classifier_evidence(
+    task_context: GroundTaskContext,
+    evidence: StateEvidence,
+    classifier: Classifier | None,
+) -> StateEvidence:
     if classifier is None:
         return evidence
 
-    is_unsolvable = unsolvability_test(classifier)
+    is_unsolvable = unsolvability_test(task_context, classifier)
 
     def with_classifier(state: State) -> JsonObject:
         out = evidence(state)

@@ -49,6 +49,14 @@ Returns a `TaskContext`: parent `DomainContext`, parsed problem, lifted/grounded
 | `ext_task` | `LoadedSearchContext` | Ground task view for module-program execution/proof. |
 | `ext_lifted_task` | `LoadedLiftedSearchContext` | Lifted task view for module-program h*/LM-cut evidence. |
 
+The base and extended ground views share one `LoadedSearchContext`, which owns one native
+`GroundTaskContext`. Its `search_context`, `dl_builder`, and `dl_denotation_repository` are
+reused by execution, proof, classifier, frontier, evidence, dump, and plan-trace evaluation
+for the lifetime of the task context. The dataset `GroundTaskSearchContext` does not own
+description-logic resources.
+These mutable semantic resources are used sequentially within one task context; parallel work
+uses distinct task contexts.
+
 ```python
 domain = create_domain_context("domain.pddl")
 task_a = create_task_context(domain, "p01.pddl")

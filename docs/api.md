@@ -52,7 +52,7 @@ write_empty_policy(domain, "empty_policy.formatted.txt")
 - [Contexts](context.md): `create_domain_context(...)`, `create_task_context(...)`
 - [Candidates](candidates.md): policy, module-program, and classifier creation
 - [Validation History](history.md): `ValidationHistory.fold(...)`
-- [`runir.task_generation`](runir.task_generation.md): `describe_generator(...)`, `generate_tasks(...)`
+- [`runir.task_generation`](runir.task_generation.md): generator paths, descriptions, and task generation
 - [Dumping](dumping.md): `dump_result(...)`, `dump_validation_history(...)`, formats
 
 ## Candidates
@@ -66,6 +66,7 @@ Pass `None` for an empty candidate. Use `write_empty_policy(domain, path)` when 
 ## runir.task_generation
 
 - `describe_generator(domain_name)` returns `(generator_path, signature)`.
+- `get_generator_path(domain_name)` and `get_generator_domain_path(domain_name)` resolve bundled `pypddl-datasets` resources.
 - `generate_tasks(domain_name, output_dir, batch_name, configs, allow_invalid=False)` writes generated domain/problem files and returns `TaskGenerationResult`.
 
 See [`runir.task_generation`](runir.task_generation.md) for generator lookup, result fields, invalid config handling, and output files.

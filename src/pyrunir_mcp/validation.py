@@ -13,7 +13,7 @@ from pyrunir.datasets import (
     annotate_ground_state_graph,
     generate_ground_state_graph_result,
 )
-from pyrunir.kr.dl.base.semantics import Builder, DenotationRepositoryFactory
+from pyrunir.kr import GroundTaskContext
 from pyrunir.kr.dl.base.semantics import ConstructorRepositoryFactory as BaseDLRepositoryFactory
 from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtDLRepositoryFactory
 from pyrunir.kr.dl.uns import ConstructorRepositoryFactory as UnsDLRepositoryFactory
@@ -96,10 +96,6 @@ from pyrunir_mcp.kr.ps.base.rollout import (
 )
 from pyrunir_mcp.kr.ps.classifier import ClassifierContext, classifier_evidence
 from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds
-from pyrunir_mcp.kr.ps.ext.core.data_loader import (
-    LoadedLiftedSearchContext as ExtLoadedLiftedSearchContext,
-)
-from pyrunir_mcp.kr.ps.ext.core.data_loader import LoadedSearchContext as ExtLoadedSearchTaskContext
 from pyrunir_mcp.kr.ps.ext.core.features import (
     ExecutionFailure as ExtExecutionFailure,
 )
@@ -353,25 +349,24 @@ def create_task_context(
     )
     if grounded.status != GroundTaskInstantiationStatus.SUCCESS:
         raise RuntimeError(f"Grounding failed for {problem_path}: {grounded.status}")
-    ground_context = GroundTaskSearchContext(grounded.task, execution_context)
+    ground_search_context = GroundTaskSearchContext(grounded.task, execution_context)
+    ground_task_context = GroundTaskContext(ground_search_context)
+    loaded_ground_context = BaseLoadedSearchTaskContext(
+        problem_path=problem_path, task_context=ground_task_context
+    )
+    loaded_lifted_context = BaseLoadedLiftedSearchContext(
+        problem_path=problem_path, search_context=lifted_context
+    )
     return TaskContext(
         id=f"task_{index:06d}",
         domain_context=domain_context,
         index=index,
         problem_file=problem_path,
         execution_context=execution_context,
-        base_task=BaseLoadedSearchTaskContext(
-            problem_path=problem_path, search_context=ground_context
-        ),
-        base_lifted_task=BaseLoadedLiftedSearchContext(
-            problem_path=problem_path, search_context=lifted_context
-        ),
-        ext_task=ExtLoadedSearchTaskContext(
-            problem_path=problem_path, search_context=ground_context
-        ),
-        ext_lifted_task=ExtLoadedLiftedSearchContext(
-            problem_path=problem_path, search_context=lifted_context
-        ),
+        base_task=loaded_ground_context,
+        base_lifted_task=loaded_lifted_context,
+        ext_task=loaded_ground_context,
+        ext_lifted_task=loaded_lifted_context,
     )
 
 
@@ -715,24 +710,44 @@ def _classifier_details(
     )
 
 
-def _base_classifier_evidence(policy: Policy, classifier: Classifier | None) -> StateEvidence | None:
+def _base_classifier_evidence(
+    task_context: GroundTaskContext,
+    policy: Policy,
+    classifier: Classifier | None,
+) -> StateEvidence | None:
     if classifier is None:
         return None
     features = collect_base_policy_features(policy.value)
     return classifier_evidence(
-        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        task_context,
+        state_evidence(
+            task_context,
+            features,
+            include_facts=True,
+            include_hstar=False,
+            include_hlmcut=False,
+        ),
         classifier.value,
     )
 
 
 def _ext_classifier_evidence(
-    module_program: ModuleProgram, classifier: Classifier | None
+    task_context: GroundTaskContext,
+    module_program: ModuleProgram,
+    classifier: Classifier | None,
 ) -> StateEvidence | None:
     if classifier is None:
         return None
     features = collect_ext_program_features(module_program.value)
     return classifier_evidence(
-        state_evidence(features, include_facts=True, include_hstar=False, include_hlmcut=False),
+        task_context,
+        state_evidence(
+            task_context,
+            features,
+            include_facts=True,
+            include_hstar=False,
+            include_hlmcut=False,
+        ),
         classifier.value,
     )
 
@@ -784,7 +799,7 @@ def execute_policy(
     max_steps = search_budget.max_num_states
     for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
         rollout = greedy_policy_rollout(
-            context.base_task.search_context,
+            context.base_task.task_context,
             policy.value,
             classifier_value,
             max_steps=max_steps if max_steps is not None else 1_000_000,
@@ -861,7 +876,7 @@ def execute_module_program(
             max_time_seconds=search_budget.max_time_seconds,
         )
         rollout = greedy_module_program_rollout(
-            context.ext_task.search_context,
+            context.ext_task.task_context,
             module_program.value,
             classifier_value,
             options,
@@ -917,7 +932,7 @@ def prove_policy(
         search_budget, name="prove_policy search_budget"
     )
     proof = prove_base_solution(
-        context.base_task.search_context,
+        context.base_task.task_context,
         policy.value,
         make_search_options(GroundSketchSearchOptions(), max_num_states, max_time_seconds),
     )
@@ -935,7 +950,9 @@ def prove_policy(
             status=status,
             problem_file=context.problem_file.name,
             proof=proof,
-            evidence=_base_classifier_evidence(policy, evidence_classifier),
+            evidence=_base_classifier_evidence(
+                context.base_task.task_context, policy, evidence_classifier
+            ),
         ),
     )
     return ProvePolicyResult(
@@ -968,7 +985,7 @@ def prove_module_program(
         GroundModuleProgramSearchOptions(), max_num_states, max_time_seconds
     )
     options.max_arity = max_arity
-    proof = prove_ext_solution(context.ext_task.search_context, module_program.value, options)
+    proof = prove_ext_solution(context.ext_task.task_context, module_program.value, options)
     status = ValidationStatus.SUCCESS if proof.is_successful() else ValidationStatus.FAILURE
     result_id = _next_result_id(context.domain_context)
     observation = _validation_observation(
@@ -983,7 +1000,9 @@ def prove_module_program(
             status=status,
             problem_file=context.problem_file.name,
             proof=proof,
-            evidence=_ext_classifier_evidence(module_program, evidence_classifier),
+            evidence=_ext_classifier_evidence(
+                context.ext_task.task_context, module_program, evidence_classifier
+            ),
         ),
     )
     return ProveModuleProgramResult(
@@ -1131,8 +1150,8 @@ def prove_classifier(
     graph = annotate_ground_state_graph(
         context.base_task.search_context, graph_result.graph, StateGraphCostMode.UNIT_COST
     ).get_forward_graph()
-    builder = Builder()
-    denotations = DenotationRepositoryFactory().create()
+    builder = context.base_task.task_context.dl_builder
+    denotations = context.base_task.task_context.dl_denotation_repository
     states = 0
     unsolvable = 0
     false_positive = 0
