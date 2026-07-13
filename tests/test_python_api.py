@@ -29,6 +29,7 @@ from pyrunir_mcp import (
     dump_result,
     dump_validation_history,
     execute_module_program,
+    get_generator_domain_path,
     prove_termination,
 )
 from pyrunir_mcp.dumping import execute_observation_from_manifest
@@ -273,6 +274,81 @@ def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) ->
     assert run_json["tool"] == "runir.ps.ext.prove_termination"
     assert (output_dir / "summary.psv").is_file()
     assert (output_dir / "dicts" / "variables.psv").is_file()
+
+
+def test_nonterminating_module_program_dumps_native_graph_witness(tmp_path: Path) -> None:
+    domain = create_domain_context(
+        get_generator_domain_path("gripper")
+    )
+    program_file = tmp_path / "program.txt"
+    program_file.write_text(
+        """(:program
+    (:entry nonterm)
+    (:module
+        (:symbol nonterm)
+        (:arguments)
+        (:registers)
+        (:entry m0)
+        (:memory m0 m1)
+        (:features
+            (:numerical
+                (:symbol fn)
+                (:expression (n_count (c_atomic_state \"ball\")))
+            )
+        )
+        (:rules
+            (:rule
+                (:symbol loop1)
+                (:expression
+                    (:source-memory m0)
+                    (:target-memory m1)
+                    (:sketch (:conditions) (:effects (unchanged fn)))
+                )
+            )
+            (:rule
+                (:symbol loop2)
+                (:expression
+                    (:source-memory m1)
+                    (:target-memory m0)
+                    (:sketch (:conditions) (:effects (unchanged fn)))
+                )
+            )
+        )
+    )
+)\n""",
+        encoding="utf-8",
+    )
+    program = create_module_program(domain, program_file)
+
+    result = prove_termination(
+        domain,
+        program,
+        max_features=1,
+        use_incomplete_preprocessing=False,
+    )
+    dumped = dump_result(
+        result,
+        tmp_path / "termination_failure",
+        formats=(DumpFormat.PSV, DumpFormat.JSON),
+    )
+
+    run_json = json.loads((dumped.output_dir / "run.json").read_text(encoding="utf-8"))
+    witness = (
+        dumped.output_dir
+        / "failures"
+        / "structural_termination-001"
+        / "witness.psv"
+    )
+    assert result.status is ValidationStatus.FAILURE
+    assert result.nonterminating_modules == ("nonterm",)
+    assert result.observation.fingerprint is not None
+    assert result.observation.fingerprint.witness == ("non_terminating", "nonterm")
+    assert run_json["status"] == "failure"
+    assert run_json["metadata"]["program_status"] == "non_terminating"
+    assert witness.is_file()
+    witness_text = witness.read_text(encoding="utf-8")
+    assert "[vertices]" in witness_text
+    assert "[edges]" in witness_text
 
 
 def test_execute_fallback_docs_are_reheaded_after_reclassification() -> None:

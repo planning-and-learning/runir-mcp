@@ -77,9 +77,14 @@ See [`runir.task_generation`](runir.task_generation.md) for generator lookup, re
 - `prove_policy(task, policy, evidence_classifier=None, ...)`
 - `execute_module_program(task, module_program, classifier=None, ...)`
 - `prove_module_program(task, module_program, evidence_classifier=None, ...)`
+- `prove_termination(domain, module_program, *, max_features=16, use_incomplete_preprocessing=True)`
 - `prove_classifier(task, classifier, ...)`
 
 Every result includes `kind`, `status`, candidate, `observation`, optional `FailureFingerprint`, and validation-specific payload such as failure, proof, or classifier counts.
+
+Structural termination limits each residual memory component to `max_features` relevant
+boolean and numerical features. The sound incomplete preprocessing pass is enabled by default;
+disable it with `use_incomplete_preprocessing=False` when the complete check must run directly.
 
 ## SearchBudget
 

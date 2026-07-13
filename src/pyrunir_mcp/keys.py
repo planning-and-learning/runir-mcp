@@ -55,6 +55,8 @@ class Keys(StrEnum):
     PLAN_TRACE_BUDGET = "plan_trace_budget"
     MAX_STATE_COUNT = "max_state_count"
     MAX_TIME_SECONDS = "max_time_seconds"
+    MAX_FEATURES = "max_features"
+    USE_INCOMPLETE_PREPROCESSING = "use_incomplete_preprocessing"
     STATE_COUNT = "state_count"
     UNSOLVABLE_STATE_COUNT = "unsolvable_state_count"
     FALSE_POSITIVE_COUNT = "false_positive_count"

@@ -13,6 +13,8 @@ from pyrunir_mcp.defaults import (
     EXECUTE_SEARCH_BUDGET,
     PLAN_TRACE_BUDGET,
     PROVE_SEARCH_BUDGET,
+    STRUCTURAL_TERMINATION_MAX_FEATURES,
+    STRUCTURAL_TERMINATION_USE_INCOMPLETE_PREPROCESSING,
 )
 from pyrunir_mcp.dumping import DumpResult
 from pyrunir_mcp.enums import DumpFormat
@@ -175,8 +177,18 @@ def prove_classifier(
 def prove_termination(
     domain_context: DomainContext,
     module_program: ModuleProgram,
+    *,
+    max_features: int = STRUCTURAL_TERMINATION_MAX_FEATURES,
+    use_incomplete_preprocessing: bool = (
+        STRUCTURAL_TERMINATION_USE_INCOMPLETE_PREPROCESSING
+    ),
 ) -> ProveTerminationResult:
-    return _validation.prove_termination(domain_context, module_program)
+    return _validation.prove_termination(
+        domain_context,
+        module_program,
+        max_features=max_features,
+        use_incomplete_preprocessing=use_incomplete_preprocessing,
+    )
 
 
 def dump_result(

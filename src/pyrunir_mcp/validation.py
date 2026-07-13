@@ -1062,8 +1062,15 @@ def _termination_fingerprint(
 def prove_termination(
     domain_context: DomainContext,
     module_program: ModuleProgram,
+    *,
+    max_features: int,
+    use_incomplete_preprocessing: bool,
 ) -> ProveTerminationResult:
-    program_result = structural_termination(module_program.value)
+    program_result = structural_termination(
+        module_program.value,
+        max_features=max_features,
+        use_incomplete_preprocessing=use_incomplete_preprocessing,
+    )
     module_names = _module_names(module_program)
     module_results = tuple(program_result.module_results)
     nonterminating_modules = tuple(
@@ -1237,4 +1244,3 @@ def prove_classifier(
         ),
         search_budget=search_budget,
     )
-

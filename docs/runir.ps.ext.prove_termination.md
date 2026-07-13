@@ -4,6 +4,22 @@
 
 This page documents the structural-termination output layout. Table schemas are in [module-program termination tables](tables/runir.ps.ext.prove_termination.md).
 
+## Python API
+
+```python
+prove_termination(
+    domain_context,
+    module_program,
+    *,
+    max_features=16,
+    use_incomplete_preprocessing=True,
+)
+```
+
+`max_features` caps the relevant boolean and numerical features in each residual memory
+component. `use_incomplete_preprocessing` enables the sound incomplete pass before the complete
+structural-termination check.
+
 ## Current Status
 
 The artifact layout below defines the structural-termination output format.

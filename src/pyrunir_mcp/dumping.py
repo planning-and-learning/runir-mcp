@@ -6,7 +6,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, cast
 
-from pyrunir.kr.ps.ext.dl import ModulePolicyGraph
+from pyrunir.kr.ps.ext import Module
+from pyrunir.kr.ps.ext.dl import ModuleStructuralTerminationResult
 
 from pyrunir_mcp.candidates import Candidate
 from pyrunir_mcp.enums import (
@@ -1015,36 +1016,62 @@ def _dump_prove_classifier_artifacts(
 
 
 def _termination_vertices_edges(
-    counterexample: ModulePolicyGraph,
+    module_result: ModuleStructuralTerminationResult,
+    module: Module,
 ) -> tuple[list[TerminationVertex], list[TerminationEdge]]:
-    vertices = [
-        TerminationVertex(
-            index,
-            "" if vertex.memory_state is None else vertex.memory_state.get_name(),
-            booleans={
-                feature.get_variant().get_symbol(): str(value)
-                for feature, value in vertex.booleans
-            },
-            numericals={
-                feature.get_variant().get_symbol(): str(value)
-                for feature, value in vertex.numericals
-            },
-        )
-        for index, vertex in enumerate(counterexample.vertices)
+    counterexample = module_result.counterexample
+    boolean_features = {
+        int(feature.get_index()): feature for feature in module.get_boolean_features()
+    }
+    numerical_features = {
+        int(feature.get_index()): feature for feature in module.get_numerical_features()
+    }
+    boolean_symbols = [
+        feature_key(boolean_features[int(index)]) for index in module_result.booleans
     ]
-    edges = [
-        TerminationEdge(
-            index,
-            edge.source,
-            edge.target,
-            "" if edge.rule is None else edge.rule.get_symbol(),
-            numerical_changes={
-                feature.get_variant().get_symbol(): str(value)
-                for feature, value in edge.numerical_changes
-            },
-        )
-        for index, edge in enumerate(counterexample.edges)
+    numerical_symbols = [
+        feature_key(numerical_features[int(index)]) for index in module_result.numericals
     ]
+
+    vertices: list[TerminationVertex] = []
+    for index in counterexample.get_vertex_indices():
+        vertex = counterexample.get_vertex_property(index)
+        vertices.append(
+            TerminationVertex(
+                int(index),
+                vertex.memory_state.get_name(),
+                booleans={
+                    symbol: str(value)
+                    for symbol, value in zip(
+                        boolean_symbols, vertex.boolean_values, strict=True
+                    )
+                },
+                numericals={
+                    symbol: str(value)
+                    for symbol, value in zip(
+                        numerical_symbols, vertex.numerical_values, strict=True
+                    )
+                },
+            )
+        )
+
+    edges: list[TerminationEdge] = []
+    for index in counterexample.get_edge_indices():
+        edge = counterexample.get_edge_property(index)
+        edges.append(
+            TerminationEdge(
+                int(index),
+                int(counterexample.get_source(index)),
+                int(counterexample.get_target(index)),
+                edge.rule.get_symbol(),
+                numerical_changes={
+                    symbol: str(value)
+                    for symbol, value in zip(
+                        numerical_symbols, edge.numerical_changes, strict=True
+                    )
+                },
+            )
+        )
     return vertices, edges
 
 
@@ -1060,12 +1087,12 @@ def _dump_prove_termination_artifacts(
     for index, module_result in enumerate(result.program_result.module_results):
         if module_result.is_terminating():
             continue
-        counterexample = module_result.counterexample
-        if counterexample is None:
-            continue
-        module_name = modules[index].get_name() if index < len(modules) else f"module_{index}"
+        if index >= len(modules):
+            raise ValueError("termination result/module count mismatch")
+        module = modules[index]
+        module_name = module.get_name()
         item_id = f"structural_termination-{len(items) + 1:03d}"
-        vertices, edges = _termination_vertices_edges(counterexample)
+        vertices, edges = _termination_vertices_edges(module_result, module)
         witness_name = f"failures/{item_id}/witness"
         artifacts[witness_name] = termination_counterexample_document(
             header=[
