@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyrunir-mcp"
-version = "0.0.23"
+version = "0.0.24"
 description = "Stateful pyrunir validation API for planning-and-learning agents"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -13,7 +13,7 @@ authors = [
 ]
 dependencies = [
     "jinja2>=3",
-    "pypddl-datasets==0.0.5",
+    "pypddl-datasets>=0.0.8,<0.1",
     "pyrunir>=0.0.22,<0.1",
     "pytyr>=0.0.30,<0.1",
 ]
