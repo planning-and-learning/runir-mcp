@@ -4,7 +4,7 @@
 
 ## Generator Lookup
 
-Generators and their domains are loaded from `pypddl-datasets>=0.0.8,<0.1` package resources:
+Generators and their domains are loaded from `pypddl-datasets>=0.0.7,<0.1` package resources:
 
 ```text
 pypddl_datasets/generators/classical/<domain_name>/generator.py
