@@ -3,12 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyrunir.kr.dl.base.semantics import ConstructorRepository as DLConstructorRepository
-from pyrunir.kr.ps.base import GroundSketchProofResults as PolicyProofResults
 from pyrunir.kr.ps.base import Repository as PolicyRepository
 from pyrunir.kr.ps.base import Sketch
 from pytyr.formalism.planning import PlanningDomain
 
-from pyrunir_mcp.kr.ps.base.core.data_loader import LoadedSearchContext
 from pyrunir_mcp.kr.ps.feature_evidence import Feature, feature_key
 from pyrunir_mcp.output.dictionaries import Dictionaries
 
@@ -18,12 +16,6 @@ class BasePolicyContext:
     planning_domain: PlanningDomain
     dl_repository: DLConstructorRepository
     policy_repository: PolicyRepository
-
-
-@dataclass(frozen=True)
-class ExecutionFailure:
-    task: LoadedSearchContext
-    result: PolicyProofResults
 
 
 def intern_rules(policy: Sketch, dicts: Dictionaries) -> None:
@@ -43,4 +35,3 @@ def collect_features(policy: Sketch) -> list[Feature]:
     for feature in policy.get_numerical_features():
         features_by_key.setdefault(feature_key(feature), feature)
     return list(features_by_key.values())
-

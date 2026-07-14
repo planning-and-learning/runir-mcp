@@ -6,17 +6,17 @@ These tables index emitted artifacts. They are rendered in the requested output 
 
 See [`native.summary.md`](indexes/native.summary.md).
 
-## Execute `summary.*`
+## Solution `summary.*`
 
-See [`execute.summary.md`](indexes/execute.summary.md).
+See [`solution.summary.md`](indexes/solution.summary.md).
 
-## Execute `failures.*`
+## Solution `failures.*`
 
-See [`execute.failures.md`](indexes/execute.failures.md).
+See [`solution.failures.md`](indexes/solution.failures.md).
 
-## Execute `successes.*`
+## Solution `successes.*`
 
-See [`execute.successes.md`](indexes/execute.successes.md).
+See [`solution.successes.md`](indexes/solution.successes.md).
 
 ## Classifier `failures.*`
 

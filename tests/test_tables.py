@@ -97,14 +97,14 @@ def test_uint32_max_sentinel_renders_as_inf():
 
 def test_render_document_psv_matches_spec_layout():
     doc = Document(
-        header=[("tool", "execute_policy"), ("features", "a|b")],
+        header=[("tool", "runir.ps.find_solution"), ("features", "a|b")],
         sections=[
             Table(name="states", columns=["idx", "a", "b"], rows=[[0, 3, False]]),
             Table(name="transitions", columns=["step", "src", "tgt"], rows=[[0, 0, 1]]),
         ],
     )
     assert render_document(doc, "psv") == (
-        "@tool execute_policy\n"
+        "@tool runir.ps.find_solution\n"
         "@features a|b\n"
         "\n"
         "[states]\n"
@@ -119,12 +119,12 @@ def test_render_document_psv_matches_spec_layout():
 
 def test_render_document_json():
     doc = Document(
-        header=[("tool", "execute_policy")],
+        header=[("tool", "runir.ps.find_solution")],
         sections=[Table(name="states", columns=["idx", "a"], rows=[[0, 3]])],
     )
     parsed = json.loads(render_document(doc, "json"))
     assert parsed == {
-        "header": {"tool": "execute_policy"},
+        "header": {"tool": "runir.ps.find_solution"},
         "sections": {"states": [{"idx": 0, "a": 3}]},
     }
 

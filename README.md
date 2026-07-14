@@ -13,7 +13,7 @@ from pyrunir_mcp import (
     create_policy,
     create_task_context,
     dump_result,
-    execute_policy,
+    find_solution,
     generate_tasks,
 )
 
@@ -22,9 +22,9 @@ task = create_task_context(domain, "problem.pddl")
 policy = create_policy(domain, "policy.txt")
 history = ValidationHistory()
 
-result = execute_policy(task, policy)
+result = find_solution(task, policy)
 feedback = history.fold(result.observation)
-dump_result(result, "artifacts/execute-policy")
+dump_result(result, "artifacts/find-solution")
 ```
 
 ## Entry Points
@@ -46,10 +46,7 @@ Context/candidates:
 
 Validation:
 
-- `execute_policy(task_context, policy, classifier=None, ...)`
-- `prove_policy(task_context, policy, evidence_classifier=None, ...)`
-- `execute_module_program(task_context, module_program, classifier=None, ...)`
-- `prove_module_program(task_context, module_program, evidence_classifier=None, ...)`
+- `find_solution(task_context, policy_or_module_program, classifier=None, universal=False, ...)`
 - `prove_classifier(task_context, classifier, ...)`
 
 Dumping:

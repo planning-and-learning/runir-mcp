@@ -23,11 +23,8 @@ from pyrunir_mcp import (
     create_task_context,
     dump_result,
     dump_validation_history,
-    execute_module_program,
-    execute_policy,
+    find_solution,
     prove_classifier,
-    prove_module_program,
-    prove_policy,
     write_empty_policy,
 )
 ```
@@ -40,20 +37,20 @@ Validation returns typed result objects. Dump only when another process needs fi
 
 - [`runir.task_generation`](runir.task_generation.md): generated PDDL task batches, optional `dump_result(...)`
 
+### Solution Search
+
+- [`runir.ps.find_solution`](runir.ps.find_solution.md): `find_solution(...)` for base policies or module programs, existential rollout or universal proof, with optional `dump_result(...)`
+
 ### Base Sketch Policy
 
 - [`runir.ps.base.create_empty_policy`](runir.ps.base.create_empty_policy.md): `create_policy(domain, None)` or `write_empty_policy(domain, path)`
 - [`runir.ps.base.reformat_policy`](runir.ps.base.reformat_policy.md): formatting workflow/table notes
-- [`runir.ps.base.execute_policy`](runir.ps.base.execute_policy.md): `execute_policy(...)`, optional `dump_result(...)`
-- [`runir.ps.base.prove_policy`](runir.ps.base.prove_policy.md): `prove_policy(...)`, optional `dump_result(...)`
 
 ### Extended Module Programs
 
 - [`runir.ps.ext.create_empty_module_program`](runir.ps.ext.create_empty_module_program.md): `create_module_program(domain, None)`
 - [`runir.ps.ext.reformat_module_program`](runir.ps.ext.reformat_module_program.md): formatting workflow/table notes
 - [`runir.ps.ext.reformat_module`](runir.ps.ext.reformat_module.md): formatting workflow/table notes
-- [`runir.ps.ext.execute_module_program`](runir.ps.ext.execute_module_program.md): `execute_module_program(...)`, optional `dump_result(...)`
-- [`runir.ps.ext.prove_module_program`](runir.ps.ext.prove_module_program.md): `prove_module_program(...)`, optional `dump_result(...)`
 - [`runir.ps.ext.prove_termination`](runir.ps.ext.prove_termination.md): structural-termination table notes
 
 ### Unsolvability Classifiers

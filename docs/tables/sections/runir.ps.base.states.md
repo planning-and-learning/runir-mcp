@@ -8,6 +8,6 @@ State annotations and feature vectors for witnesses, traces, cycles, and success
 |---|---|
 | `state_id` | Planning-state id (`sK`). |
 | `flags` | Comma-separated state flags; see [base flag values](runir.ps.base.flags.md). |
-| `hstar` | Shortest remaining plan length; `inf` for proven deadends; empty when inconclusive. |
-| `hlmcut` | LM-cut lower bound for the same planning state. |
+| `hstar` | Optional exact remaining plan length supplied by an explicit state-evidence evaluator; `inf` means proven dead. |
+| `hlmcut` | Optional LM-cut lower bound supplied by the same evaluator. |
 | `f0`, `f1`, ... | Feature values, one column per row in [`features.*`](../dictionaries/runir.ps.base.features.md). |

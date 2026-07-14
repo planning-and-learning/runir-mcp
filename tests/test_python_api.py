@@ -13,9 +13,9 @@ from pyrunir_mcp import (
     ClassifierObservationDetails,
     ClassifierProofCounts,
     DumpFormat,
-    ExecuteObservationDetails,
-    ExecutePolicyResult,
     FailureFingerprint,
+    FindPolicySolutionResult,
+    FindSolutionObservationDetails,
     Policy,
     SearchBudget,
     TaskContext,
@@ -28,20 +28,27 @@ from pyrunir_mcp import (
     create_task_context,
     dump_result,
     dump_validation_history,
-    execute_module_program,
+    find_solution,
     get_generator_domain_path,
     prove_termination,
 )
-from pyrunir_mcp.dumping import execute_observation_from_manifest
-from pyrunir_mcp.kr.ps.execute import with_docs_header
-from pyrunir_mcp.tables import Document, Table
+from pyrunir_mcp.dumping import solution_observation_from_manifest
 from pyrunir_mcp.validation import rotate_smallest_state_id_first
 
 
 def test_public_exports_use_typed_names() -> None:
     assert public.Policy is Policy
-    assert public.ExecuteObservationDetails is ExecuteObservationDetails
+    assert public.FindSolutionObservationDetails is FindSolutionObservationDetails
     assert public.ClassifierObservationDetails is ClassifierObservationDetails
+
+
+def _failed_solution_details(num_rollouts: int = 1) -> FindSolutionObservationDetails:
+    return FindSolutionObservationDetails(
+        proof_statuses=(),
+        successful=False,
+        universal=False,
+        num_rollouts=num_rollouts,
+    )
 
 
 def test_task_context_reuses_ground_semantic_resources(tmp_path: Path) -> None:
@@ -154,7 +161,9 @@ def test_empty_classifier_dumps_false_negative_witness_artifacts(tmp_path: Path)
     assert "p0|fluent_atoms|" in atoms.read_text(encoding="utf-8")
 
 
-def test_empty_module_program_execute_dumps_open_state_artifacts(tmp_path: Path) -> None:
+def test_empty_module_program_find_solution_dumps_open_state_artifacts(
+    tmp_path: Path,
+) -> None:
     domain_file = tmp_path / "domain.pddl"
     problem_file = tmp_path / "problem.pddl"
     classifier_file = tmp_path / "classifier.txt"
@@ -188,7 +197,7 @@ def test_empty_module_program_execute_dumps_open_state_artifacts(tmp_path: Path)
     task = create_task_context(domain, problem_file)
     program = create_module_program(domain, None)
 
-    result = execute_module_program(
+    result = find_solution(
         task,
         program,
         num_rollouts=1,
@@ -196,7 +205,11 @@ def test_empty_module_program_execute_dumps_open_state_artifacts(tmp_path: Path)
         search_budget=SearchBudget(max_num_states=200, max_time_seconds=5.0),
         plan_trace_budget=SearchBudget(max_num_states=10_000, max_time_seconds=5.0),
     )
-    dumped = dump_result(result, tmp_path / "ext_execute", formats=(DumpFormat.PSV, DumpFormat.JSON))
+    dumped = dump_result(
+        result,
+        tmp_path / "ext_find_solution",
+        formats=(DumpFormat.PSV, DumpFormat.JSON),
+    )
 
     output_dir = dumped.output_dir
     witness = output_dir / "failures" / "open_state-001" / "witness.psv"
@@ -227,17 +240,21 @@ def test_empty_module_program_execute_dumps_open_state_artifacts(tmp_path: Path)
         encoding="utf-8",
     )
     classifier = public.create_classifier(domain, classifier_file)
-    classified = execute_module_program(task, program, classifier=classifier)
+    classified = find_solution(task, program, classifier=classifier)
     classified_dump = dump_result(
         classified,
-        tmp_path / "ext_execute_classified",
+        tmp_path / "ext_find_solution_classified",
         formats=(DumpFormat.PSV,),
     )
     classified_witness = (
         classified_dump.output_dir / "failures" / "deadend-001" / "witness.psv"
     )
 
-    assert classified.rollout_results[0][1].outcome.value == "unsolvable"
+    classified_proof = classified.results[0][1]
+    classified_label = classified_proof.graph.get_vertex_property(
+        classified_proof.deadend_states[0]
+    )
+    assert classified_label.is_unsolvable
     assert classified_witness.is_file()
     assert "witness,deadend" in classified_witness.read_text(encoding="utf-8")
     assert not (
@@ -351,28 +368,10 @@ def test_nonterminating_module_program_dumps_native_graph_witness(tmp_path: Path
     assert "[edges]" in witness_text
 
 
-def test_execute_fallback_docs_are_reheaded_after_reclassification() -> None:
-    old_header = [("id", "open_state-001"), ("category", "open_state")]
-    new_header = [("id", "deadend-001"), ("category", "deadend")]
-    table = Table("state", ["id", "flags"], [["s87", "witness,deadend"]])
-    witness = Document(old_header, [table])
-    trace = Document(old_header, [table])
-
-    updated_witness, updated_trace, updated_successors = with_docs_header(
-        (witness, trace, None), new_header
-    )
-
-    assert updated_witness.header == new_header
-    assert updated_trace is not None
-    assert updated_trace.header == new_header
-    assert updated_successors is None
-    assert witness.header == old_header
-
-
-def test_execute_fingerprint_refresh_promotes_cycle_witness(tmp_path: Path) -> None:
+def test_solution_fingerprint_refresh_promotes_cycle_witness(tmp_path: Path) -> None:
     witness_path = tmp_path / "cycle_witness.psv"
     witness_path.write_text(
-        """@tool base_execute
+        """@tool runir.ps.find_solution
 @id open_state-001
 @category cycle
 
@@ -403,31 +402,38 @@ s8666|open,witness,cycle
     )
     observation = ValidationObservation(
         result_id="result_000001",
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         candidate_id="policy_000001",
         classifier_id=None,
-        details=ExecuteObservationDetails("p03.pddl", SearchStatus.FAILED, 1),
+        details=FindSolutionObservationDetails(
+            proof_statuses=(),
+            successful=False,
+            universal=False,
+            num_rollouts=1,
+        ),
         fingerprint=None,
     )
-    result = ExecutePolicyResult(
-        "result_000001",
-        ValidationKind.BASE_EXECUTE,
-        ValidationStatus.FAILURE,
-        cast(TaskContext, None),
-        cast(Policy, None),
-        observation,
-        None,
-        None,
-        (),
-        1,
+    result = FindPolicySolutionResult(
+        id="result_000001",
+        kind=ValidationKind.BASE_FIND_SOLUTION,
+        status=ValidationStatus.FAILURE,
+        context=cast(TaskContext, None),
+        candidate=cast(Policy, None),
+        observation=observation,
+        classifier=None,
+        universal=False,
+        num_rollouts=1,
+        results=(),
+        search_budget=SearchBudget(None, None),
+        plan_trace_budget=SearchBudget(1_000_000, 10.0),
     )
 
-    refreshed = execute_observation_from_manifest(result, manifest_path)
+    refreshed = solution_observation_from_manifest(result, manifest_path)
 
     assert result.observation.fingerprint is None
     assert refreshed.fingerprint == FailureFingerprint(
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         problem_file="p03.pddl",
         category="cycle",
@@ -435,10 +441,10 @@ s8666|open,witness,cycle
     )
 
 
-def test_execute_fingerprint_refresh_uses_manifest_witness(tmp_path: Path) -> None:
+def test_solution_fingerprint_refresh_uses_manifest_witness(tmp_path: Path) -> None:
     witness_path = tmp_path / "witness.psv"
     witness_path.write_text(
-        """@tool base_execute
+        """@tool runir.ps.find_solution
 @id deadend-001
 @category deadend
 
@@ -468,7 +474,7 @@ s339|p0
         encoding="utf-8",
     )
     original = FailureFingerprint(
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         problem_file="p01.pddl",
         category="open_state",
@@ -476,31 +482,38 @@ s339|p0
     )
     observation = ValidationObservation(
         result_id="result_000001",
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         candidate_id="policy_000001",
         classifier_id=None,
-        details=ExecuteObservationDetails("p01.pddl", SearchStatus.FAILED, 1),
+        details=FindSolutionObservationDetails(
+            proof_statuses=(),
+            successful=False,
+            universal=False,
+            num_rollouts=1,
+        ),
         fingerprint=original,
     )
-    result = ExecutePolicyResult(
-        "result_000001",
-        ValidationKind.BASE_EXECUTE,
-        ValidationStatus.FAILURE,
-        cast(TaskContext, None),
-        cast(Policy, None),
-        observation,
-        None,
-        None,
-        (),
-        1,
+    result = FindPolicySolutionResult(
+        id="result_000001",
+        kind=ValidationKind.BASE_FIND_SOLUTION,
+        status=ValidationStatus.FAILURE,
+        context=cast(TaskContext, None),
+        candidate=cast(Policy, None),
+        observation=observation,
+        classifier=None,
+        universal=False,
+        num_rollouts=1,
+        results=(),
+        search_budget=SearchBudget(None, None),
+        plan_trace_budget=SearchBudget(1_000_000, 10.0),
     )
 
-    refreshed = execute_observation_from_manifest(result, manifest_path)
+    refreshed = solution_observation_from_manifest(result, manifest_path)
 
     assert result.observation.fingerprint == original
     assert refreshed.fingerprint == FailureFingerprint(
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         problem_file="p01.pddl",
         category="deadend",
@@ -531,22 +544,18 @@ def test_validation_history_keeps_typed_observations_until_dump(tmp_path: Path) 
     history = ValidationHistory()
     observation = ValidationObservation(
         result_id="result_000001",
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         candidate_id="policy_000001",
         classifier_id=None,
-        details=ExecuteObservationDetails(
-            failure_problem_file="p01.pddl",
-            failure_status=SearchStatus.FAILED,
-            num_rollouts=3,
-        ),
+        details=_failed_solution_details(num_rollouts=3),
     )
     feedback = history.fold(observation)
 
     assert feedback.repeated is False
     assert feedback.previous_occurrences == 0
-    assert isinstance(history.observations[0].details, ExecuteObservationDetails)
-    assert history.observations[0].details.failure_status is SearchStatus.FAILED
+    assert isinstance(history.observations[0].details, FindSolutionObservationDetails)
+    assert history.observations[0].details.num_rollouts == 3
 
     dumped = dump_validation_history(history, tmp_path / "history", formats=(DumpFormat.JSON,))
     assert dumped.files == (tmp_path / "history" / "history.json",)
@@ -555,14 +564,16 @@ def test_validation_history_keeps_typed_observations_until_dump(tmp_path: Path) 
     assert payload["observations"] == [
         {
             "result_id": "result_000001",
-            "kind": "base_execute",
+            "kind": "base_find_solution",
             "status": "failure",
             "candidate_id": "policy_000001",
             "classifier_id": None,
             "witness": None,
             "details": {
                 "rollout_count": 3,
-                "failure": {"task_file": "p01.pddl", "status": "failed"},
+                "universal": False,
+                "successful": False,
+                "proof_statuses": [],
             },
         }
     ]
@@ -572,11 +583,11 @@ def test_history_fold_reports_repeated_observations() -> None:
     history = ValidationHistory()
     observation = ValidationObservation(
         result_id="result_000001",
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         candidate_id="policy_000001",
         classifier_id=None,
-        details=ExecuteObservationDetails(None, None, 1),
+        details=_failed_solution_details(),
     )
 
     first = history.fold(observation)
@@ -591,7 +602,7 @@ def test_history_fold_reports_repeated_observations() -> None:
 def test_history_fold_uses_failure_fingerprint_when_present() -> None:
     history = ValidationHistory()
     fingerprint = FailureFingerprint(
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         problem_file="p01.pddl",
         category="open_state",
@@ -599,20 +610,20 @@ def test_history_fold_uses_failure_fingerprint_when_present() -> None:
     )
     first_observation = ValidationObservation(
         result_id="result_000001",
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         candidate_id="policy_000001",
         classifier_id=None,
-        details=ExecuteObservationDetails("p01.pddl", SearchStatus.FAILED, 1),
+        details=_failed_solution_details(),
         fingerprint=fingerprint,
     )
     second_observation = ValidationObservation(
         result_id="result_000002",
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=ValidationKind.BASE_FIND_SOLUTION,
         status=ValidationStatus.FAILURE,
         candidate_id="policy_000002",
         classifier_id=None,
-        details=ExecuteObservationDetails("p01.pddl", SearchStatus.FAILED, 1),
+        details=_failed_solution_details(),
         fingerprint=fingerprint,
     )
 

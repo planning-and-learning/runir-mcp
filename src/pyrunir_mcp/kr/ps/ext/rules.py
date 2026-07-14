@@ -1,9 +1,4 @@
-"""Shared module-program introspection for the ext prove and execute services.
-
-Both walk a `ModuleProgram` the same way to enumerate its memory-transition rules (for the
-run-global `rules`/`memory` dictionaries) and to collect its declared features (deduped by
-symbol). Keeping it here avoids the two services drifting apart.
-"""
+"""Module-program feature and rule introspection for solution artifacts."""
 
 from __future__ import annotations
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import overload
 
 import pyrunir_mcp.dumping as _dumping
 import pyrunir_mcp.validation as _validation
@@ -10,9 +11,7 @@ from pyrunir_mcp.context import DomainContext, TaskContext
 from pyrunir_mcp.defaults import (
     CLASSIFIER_MISTAKE_LIMIT,
     CLASSIFIER_PROOF_BUDGET,
-    EXECUTE_SEARCH_BUDGET,
     PLAN_TRACE_BUDGET,
-    PROVE_SEARCH_BUDGET,
     STRUCTURAL_TERMINATION_MAX_FEATURES,
     STRUCTURAL_TERMINATION_USE_INCOMPLETE_PREPROCESSING,
 )
@@ -28,11 +27,10 @@ from pyrunir_mcp.task_generation import (
     task_generation,
 )
 from pyrunir_mcp.validation import (
-    ExecuteModuleProgramResult,
-    ExecutePolicyResult,
+    FindModuleProgramSolutionResult,
+    FindPolicySolutionResult,
     ProveClassifierResult,
-    ProveModuleProgramResult,
-    ProvePolicyResult,
+    ProvePolicyTerminationResult,
     ProveTerminationResult,
     SearchBudget,
     ValidationResult,
@@ -69,93 +67,66 @@ def create_classifier(
     return _validation.create_classifier(domain_context, classifier_file)
 
 
-def execute_policy(
+@overload
+def find_solution(
     context: TaskContext,
-    policy: Policy,
+    candidate: Policy,
     *,
     classifier: Classifier | None = None,
+    universal: bool = False,
     num_rollouts: int = 1,
     random_seed: int = 0,
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
-    max_arity: int = 0,
-    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET,
+    shuffle_choice_points: bool = True,
+    search_budget: SearchBudget | None = None,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
-) -> ExecutePolicyResult:
-    return _validation.execute_policy(
-        context,
-        policy,
-        classifier=classifier,
-        num_rollouts=num_rollouts,
-        random_seed=random_seed,
-        random_seed_start=random_seed_start,
-        shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
-        max_arity=max_arity,
-        search_budget=search_budget,
-        plan_trace_budget=plan_trace_budget,
-    )
+) -> FindPolicySolutionResult: ...
 
 
-def execute_module_program(
+@overload
+def find_solution(
     context: TaskContext,
-    module_program: ModuleProgram,
+    candidate: ModuleProgram,
     *,
     classifier: Classifier | None = None,
+    universal: bool = False,
     num_rollouts: int = 1,
     random_seed: int = 0,
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
-    max_arity: int = 0,
-    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET,
+    shuffle_choice_points: bool = True,
+    search_budget: SearchBudget | None = None,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
-) -> ExecuteModuleProgramResult:
-    return _validation.execute_module_program(
+) -> FindModuleProgramSolutionResult: ...
+
+
+def find_solution(
+    context: TaskContext,
+    candidate: Policy | ModuleProgram,
+    *,
+    classifier: Classifier | None = None,
+    universal: bool = False,
+    num_rollouts: int = 1,
+    random_seed: int = 0,
+    random_seed_start: int = 0,
+    shuffle_labeled_succ_nodes: bool = True,
+    shuffle_choice_points: bool = True,
+    search_budget: SearchBudget | None = None,
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
+) -> FindPolicySolutionResult | FindModuleProgramSolutionResult:
+    return _validation.find_solution(
         context,
-        module_program,
+        candidate,
         classifier=classifier,
+        universal=universal,
         num_rollouts=num_rollouts,
         random_seed=random_seed,
         random_seed_start=random_seed_start,
         shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
-        max_arity=max_arity,
+        shuffle_choice_points=shuffle_choice_points,
         search_budget=search_budget,
         plan_trace_budget=plan_trace_budget,
-    )
-
-
-def prove_policy(
-    context: TaskContext,
-    policy: Policy,
-    *,
-    evidence_classifier: Classifier | None = None,
-    search_budget: SearchBudget = PROVE_SEARCH_BUDGET,
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
-) -> ProvePolicyResult:
-    return _validation.prove_policy(
-        context,
-        policy,
-        evidence_classifier=evidence_classifier,
-        search_budget=search_budget,
-        plan_trace_budget=plan_trace_budget,
-    )
-
-
-def prove_module_program(
-    context: TaskContext,
-    module_program: ModuleProgram,
-    *,
-    evidence_classifier: Classifier | None = None,
-    search_budget: SearchBudget = PROVE_SEARCH_BUDGET,
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
-    max_arity: int = 0,
-) -> ProveModuleProgramResult:
-    return _validation.prove_module_program(
-        context,
-        module_program,
-        evidence_classifier=evidence_classifier,
-        search_budget=search_budget,
-        plan_trace_budget=plan_trace_budget,
-        max_arity=max_arity,
     )
 
 
@@ -171,6 +142,23 @@ def prove_classifier(
         classifier,
         search_budget=search_budget,
         max_mistakes_per_category=max_mistakes_per_category,
+    )
+
+
+def prove_policy_termination(
+    domain_context: DomainContext,
+    policy: Policy,
+    *,
+    max_features: int = STRUCTURAL_TERMINATION_MAX_FEATURES,
+    use_incomplete_preprocessing: bool = (
+        STRUCTURAL_TERMINATION_USE_INCOMPLETE_PREPROCESSING
+    ),
+) -> ProvePolicyTerminationResult:
+    return _validation.prove_policy_termination(
+        domain_context,
+        policy,
+        max_features=max_features,
+        use_incomplete_preprocessing=use_incomplete_preprocessing,
     )
 
 

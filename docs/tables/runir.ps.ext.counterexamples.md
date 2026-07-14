@@ -1,6 +1,6 @@
 # Tables: module-program counterexamples, traces, and successors
 
-Used by [`runir.ps.ext.execute_module_program`](../runir.ps.ext.execute_module_program.md) and [`runir.ps.ext.prove_module_program`](../runir.ps.ext.prove_module_program.md). Rendering conventions are in [Table Rendering](rendering.md).
+Used by module-program calls to [`runir.ps.find_solution`](../runir.ps.find_solution.md). Rendering conventions are in [Table Rendering](rendering.md).
 
 Module-program output mirrors the base sketch-policy output tables, with an added module/memory control dimension. A graph vertex is `(planning state, memory location)`.
 
@@ -24,7 +24,7 @@ Run-global dictionary files live under `dicts/`.
 - [`[facts]`](sections/runir.ps.ext.facts.md)
 - [`[successors]`](sections/runir.ps.ext.successors.md)
 
-`hstar` and `hlmcut` have the same meaning as in the base policy tables. Flags use the [base flag vocabulary](sections/runir.ps.base.flags.md).
+As in the base tables, optional `hstar` and `hlmcut` columns require an explicit state-evidence evaluator. Flags use the [base flag vocabulary](sections/runir.ps.base.flags.md).
 
 ## Artifact Documents
 
@@ -36,4 +36,4 @@ Run-global dictionary files live under `dicts/`.
 
 `plan_trace.*` uses the shared [open-state FF plan trace](runir.ps.open_state.plan_trace.md) schema. It is planner evidence from an open-state witness, not module-program execution.
 
-Successful rollout traces use the module-program trace schema and contain no witness or successor frontier.
+Successful traces use the module-program trace schema and contain no witness or successor frontier.

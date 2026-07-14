@@ -18,22 +18,12 @@ class CounterexampleKind(StrEnum):
     CYCLE = "cycle"
     OPEN_STATE = "open_state"
     DEADEND = "deadend"
-    DEADEND_TRANSITION = "deadend_transition"
 
 
 class DumpFormat(StrEnum):
     JSON = "json"
     PSV = "psv"
     MD = "md"
-
-
-class RolloutOutcome(StrEnum):
-    OPEN_STATE = "open_state"
-    CYCLE = "cycle"
-    GOAL = "goal"
-    UNSOLVABLE = "unsolvable"
-    OUT_OF_TIME = "out_of_time"
-    OUT_OF_STATES = "out_of_states"
 
 
 class Flag(StrEnum):
@@ -69,15 +59,9 @@ class RunItemCategory(StrEnum):
     CYCLE = "cycle"
     OPEN_STATE = "open_state"
     DEADEND = "deadend"
-    DEADEND_TRANSITION = "deadend_transition"
     FALSE_POSITIVE = "false_positive"
     FALSE_NEGATIVE = "false_negative"
     STRUCTURAL_TERMINATION = "structural_termination"
-
-
-class SuccessStatus(StrEnum):
-    SOLVED = "solved"
-    SUCCESS = "success"
 
 
 class ExecutionStatus(StrEnum):
@@ -89,10 +73,9 @@ class ExecutionStatus(StrEnum):
 
 
 class ValidationKind(StrEnum):
-    BASE_EXECUTE = "base_execute"
-    BASE_PROVE = "base_prove"
-    EXT_EXECUTE = "ext_execute"
-    EXT_PROVE = "ext_prove"
+    BASE_FIND_SOLUTION = "base_find_solution"
+    BASE_TERMINATION = "base_termination"
+    EXT_FIND_SOLUTION = "ext_find_solution"
     EXT_TERMINATION = "ext_termination"
     UNS_PROVE = "uns_prove"
 

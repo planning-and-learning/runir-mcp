@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-import pytest
 from pytyr.formalism.planning import GroundAction
 
 from pyrunir_mcp.enums import CounterexampleKind
-from pyrunir_mcp.kr.ps import proof
 from pyrunir_mcp.kr.ps.frontier import format_ground_action
-from pyrunir_mcp.kr.ps.proof import ProofResult, StateEvidence, failure_items
-from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.planning import LoadedSearchContext
-from pyrunir_mcp.tables import Table
+from pyrunir_mcp.kr.ps.proof import ProofResult, failure_items
 
 
 def test_format_ground_action_uses_get_objects() -> None:
@@ -26,92 +20,48 @@ def test_format_ground_action_uses_get_objects() -> None:
     assert format_ground_action(cast(GroundAction, ground_action)) == "leave(left, shaker1)"
 
 
-def test_failure_items_bounds_open_deadends_and_keeps_one_cycle() -> None:
+def test_failure_items_bounds_deadends_and_keeps_one_cycle() -> None:
     result = SimpleNamespace(
         cycle=[7, 8, 9],
         open_states=[1, 2, 3],
-        deadend_transitions=[10, 11, 12],
+        deadend_states=[10, 11, 12],
     )
 
     assert failure_items(
         cast(ProofResult, result),
-        max_open_state_counterexamples=2,
-        max_deadend_transition_counterexamples=1,
+        max_counterexamples=3,
     ) == [
         (CounterexampleKind.CYCLE, [7, 8, 9]),
-        (CounterexampleKind.OPEN_STATE, 1),
-        (CounterexampleKind.OPEN_STATE, 2),
-        (CounterexampleKind.DEADEND_TRANSITION, 10),
+        (CounterexampleKind.DEADEND, 10),
+        (CounterexampleKind.DEADEND, 11),
+        (CounterexampleKind.DEADEND, 12),
     ]
 
 
-def test_failure_items_can_suppress_open_and_deadends_but_not_cycle() -> None:
+def test_failure_items_can_suppress_deadends_and_open_states_but_not_cycle() -> None:
     result = SimpleNamespace(
         cycle=[7, 8, 9],
         open_states=[1, 2, 3],
-        deadend_transitions=[10, 11, 12],
+        deadend_states=[10, 11, 12],
     )
 
     assert failure_items(
         cast(ProofResult, result),
-        max_open_state_counterexamples=0,
-        max_deadend_transition_counterexamples=0,
+        max_counterexamples=0,
     ) == [(CounterexampleKind.CYCLE, [7, 8, 9])]
 
 
-def test_build_proof_run_treats_goal_open_state_as_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    result = SimpleNamespace(
-        graph=SimpleNamespace(),
-        cycle=[],
-        open_states=[0],
-        deadend_transitions=[],
-        status=SimpleNamespace(name="FAILURE"),
-        is_successful=lambda: False,
-    )
-    task = SimpleNamespace(problem_path=tmp_path / "p.pddl")
-    task.problem_path.write_text("(define (problem p))", encoding="utf-8")
-
-    def is_goal_result(observed: object) -> bool:
-        return observed is result
-
-    monkeypatch.setattr(proof, "is_goal_open_state_result", is_goal_result)
-
-    def no_tables() -> dict[str, Table]:
-        return {}
-
-    envelope = proof.build_proof_run(
-        tool="prove_policy",
-        output_dir=tmp_path / "out",
-        metadata={},
-        task=cast(LoadedSearchContext, task),
-        result=cast(ProofResult, result),
-        feature_symbols=[],
-        dicts=cast(Dictionaries, SimpleNamespace(tables=no_tables)),
-        ext=False,
-    )
-
-    assert envelope["status"] == "success"
-    assert envelope["counterexamples"] == []
-
-
-def test_failure_items_promotes_classifier_deadend_open_states(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_failure_items_uses_native_deadend_and_open_state_partition() -> None:
     result = SimpleNamespace(
         cycle=[],
-        open_states=[1, 2, 3],
-        deadend_transitions=[],
+        deadend_states=[2],
+        open_states=[1, 3],
     )
-    def is_deadend(observed: ProofResult, vertex: int, evidence: StateEvidence | None) -> bool:
-        return vertex == 2
-
-    monkeypatch.setattr(proof, "_open_state_is_deadend", is_deadend)
 
     assert failure_items(
         cast(ProofResult, result),
-        max_open_state_counterexamples=2,
-        max_deadend_transition_counterexamples=1,
-        evidence=lambda _state: {},
+        max_counterexamples=2,
     ) == [
         (CounterexampleKind.DEADEND, 2),
         (CounterexampleKind.OPEN_STATE, 1),
-        (CounterexampleKind.OPEN_STATE, 3),
     ]

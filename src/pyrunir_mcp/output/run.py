@@ -1,8 +1,8 @@
-"""Write a native (prove / termination / classifier) run and build the MCP result envelope.
+"""Write a native termination/classifier run and build the MCP result envelope.
 
 The service builds the run-global dictionary tables and the per-witness artifacts; this module
 writes them (plus a `summary` index) in every format and assembles the envelope that the MCP
-layer returns. Execute tools keep their own `manifest.json`-driven path (see `results.py`).
+layer returns. Solution searches use their richer `manifest.json` artifact path.
 """
 
 from __future__ import annotations

@@ -29,14 +29,12 @@ class Keys(StrEnum):
     SEED = "seed"
     COUNTS = "counts"
 
-    # Execution results.
+    # Solution results.
     ROLLOUTS = "rollouts"
     ROLLOUT_COUNT = "rollout_count"
-    TASKS = "tasks"
-    FAILURE = "failure"
-    FAILURE_SEEDS = "failure_seeds"
-    SUCCESS_SEEDS = "success_seeds"
-    PROOF = "proof"
+    UNIVERSAL = "universal"
+    SUCCESSFUL = "successful"
+    PROOF_STATUSES = "proof_statuses"
     TERMINATION = "termination"
     PROGRAM_STATUS = "program_status"
     STATE_GRAPH_STATUS = "state_graph_status"

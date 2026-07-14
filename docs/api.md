@@ -6,7 +6,7 @@ Typed API for keeping parsing, candidates, validation contexts, observations, an
 src/pyrunir_mcp/
   context.py     # DomainContext and TaskContext
   candidates.py  # Policy, ModuleProgram, Classifier, CandidateSource
-  validation.py  # create/execute/prove calls and result/observation types
+  validation.py  # create/find/prove calls and result/observation types
   history.py            # ValidationHistory and HistoryFeedback
   task_generation.py  # generated PDDL task batches
   dumping.py            # dump boundary
@@ -19,7 +19,7 @@ Callers own all state. `TaskContext` stores the `DomainContext` that created it.
 feedback = history.fold(result.observation)
 ```
 
-`HistoryFeedback` reports repeat failures. Failed observations carry a `FailureFingerprint` when available: validation kind, status, problem file, category (`open_state`, `cycle`, `deadend`, `deadend_transition`, or proof/search status), and witness indices. Without a fingerprint, history compares kind/status/candidate/classifier.
+`HistoryFeedback` reports repeat failures. Failed observations carry a `FailureFingerprint` when available: validation kind, status, problem file, category (`open_state`, `cycle`, `deadend`, or proof/search status), and witness indices. Without a fingerprint, history compares kind/status/candidate/classifier.
 
 ## Typical Flow
 
@@ -31,7 +31,7 @@ from pyrunir_mcp import (
     create_policy,
     create_task_context,
     dump_validation_history,
-    execute_policy,
+    find_solution,
     write_empty_policy,
 )
 
@@ -39,7 +39,7 @@ domain = create_domain_context("domain.pddl")
 task = create_task_context(domain, "problem.pddl")
 policy = create_policy(domain, "policy.txt")
 history = ValidationHistory()
-result = execute_policy(task, policy)
+result = find_solution(task, policy)
 feedback = history.fold(result.observation)
 
 assert feedback.total_observations == len(history.observations)
@@ -73,14 +73,14 @@ See [`runir.task_generation`](runir.task_generation.md) for generator lookup, re
 
 ## Validation
 
-- `execute_policy(task, policy, classifier=None, ...)`
-- `prove_policy(task, policy, evidence_classifier=None, ...)`
-- `execute_module_program(task, module_program, classifier=None, ...)`
-- `prove_module_program(task, module_program, evidence_classifier=None, ...)`
+- `find_solution(task, policy, classifier=None, universal=False, ...)` returns `FindPolicySolutionResult`.
+- `find_solution(task, module_program, classifier=None, universal=False, ...)` returns `FindModuleProgramSolutionResult`.
 - `prove_termination(domain, module_program, *, max_features=16, use_incomplete_preprocessing=True)`
 - `prove_classifier(task, classifier, ...)`
 
-Every result includes `kind`, `status`, candidate, `observation`, optional `FailureFingerprint`, and validation-specific payload such as failure, proof, or classifier counts.
+`find_solution(...)` performs seeded greedy rollouts when `universal=False` and one exhaustive search when `universal=True`. In universal mode, `num_rollouts=n` allows at most `n` non-cycle counterexamples, fills unused capacity with successful traces, and permits one additional cycle outside that limit. See [`runir.ps.find_solution`](runir.ps.find_solution.md).
+
+Every result includes `kind`, `status`, candidate, `observation`, optional `FailureFingerprint`, and validation-specific payload such as solution evidence, termination proof, or classifier counts.
 
 Structural termination limits each residual memory component to `max_features` relevant
 boolean and numerical features. The sound incomplete preprocessing pass is enabled by default;
@@ -90,7 +90,7 @@ disable it with `use_incomplete_preprocessing=False` when the complete check mus
 
 `SearchBudget(max_num_states, max_time_seconds)` groups a state limit and a wall-clock limit. `None` means that side of the budget is left unconstrained for searches that support optional limits.
 
-Policy/module-program execute and prove calls take two budgets: `search_budget` for the validation search itself, and `plan_trace_budget` for optional FF plan traces emitted later by `dump_result(...)` for open-state failures. Execute defaults to `SearchBudget(max_num_states=None, max_time_seconds=None)`, prove defaults to `SearchBudget(max_num_states=100_000, max_time_seconds=5.0)`, and plan traces default to `SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0)`. `prove_classifier` also accepts `search_budget` and defaults to `SearchBudget(max_num_states=1_000_000, max_time_seconds=None)`. Policy/module-program prove budgets must set both fields; classifier proof leaves a `None` field unconstrained.
+`find_solution(...)` takes `search_budget` for native validation and `plan_trace_budget` for optional FF plan traces emitted later by `dump_result(...)` for open-state failures. `search_budget=None` selects `SearchBudget(max_num_states=None, max_time_seconds=None)` in existential mode and `SearchBudget(max_num_states=100_000, max_time_seconds=5.0)` in universal mode. Plan traces default to `SearchBudget(max_num_states=1_000_000, max_time_seconds=10.0)`. Explicit universal budgets must set both fields. `prove_classifier` also accepts `search_budget` and defaults to `SearchBudget(max_num_states=1_000_000, max_time_seconds=None)`.
 
 ## Dumping
 

@@ -2,20 +2,14 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable
-from datetime import timedelta
-from pathlib import Path
-from typing import TypeAlias, overload
-
-from pypddl.formalism import ParserOptions
+from typing import TypeAlias
 from pyrunir.datasets import (
-    GroundAnnotatedStateGraphVertexLabel,
-    GroundStateGraphVertexLabel,
     StateGraphEdgeLabel,
 )
 from pyrunir.kr.ps.base import (
     GroundSketchProofGraph,
     GroundSketchProofResults,
-    GroundSketchSearchOptions,
+    GroundSketchProofVertexLabel,
     SketchProofEdgeLabel,
     SketchProofStatus,
 )
@@ -26,14 +20,13 @@ from pyrunir.kr.ps.ext import (
     GroundModuleProgramProofGraph,
     GroundModuleProgramProofResults,
     GroundModuleProgramProofVertexLabel,
-    GroundModuleProgramSearchOptions,
     ModuleProgramProofStatus,
     RuleVariant,
 )
-from pytyr.formalism.planning import GroundAction, Parser, PlanningDomain
+from pytyr.formalism.planning import GroundAction
 from pytyr.planning.ground import State as GroundState
 
-from pyrunir_mcp.enums import CounterexampleKind, RunItemCategory, RunStatus
+from pyrunir_mcp.enums import CounterexampleKind
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.keys import (
     Keys,
@@ -54,31 +47,16 @@ from pyrunir_mcp.output.proof_witness import (
     witness_state,
     witness_transition,
 )
-from pyrunir_mcp.output.run import (
-    RunItem,
-    build_run_envelope,
-    status_category,
-)
-from pyrunir_mcp.output.writer import Artifact
-from pyrunir_mcp.planning import LoadedSearchContext
 from pyrunir_mcp.tables import Document
 
 ProofGraph: TypeAlias = GroundSketchProofGraph | GroundModuleProgramProofGraph
-ProofVertexLabel: TypeAlias = (
-    GroundAnnotatedStateGraphVertexLabel
-    | GroundStateGraphVertexLabel
-    | GroundModuleProgramProofVertexLabel
-)
+ProofVertexLabel: TypeAlias = GroundSketchProofVertexLabel | GroundModuleProgramProofVertexLabel
 ProofResult: TypeAlias = GroundSketchProofResults | GroundModuleProgramProofResults
 ProofRule: TypeAlias = SketchRule | RuleVariant
 ProofStatus: TypeAlias = SketchProofStatus | ModuleProgramProofStatus
-ProofSearchOptions: TypeAlias = GroundSketchSearchOptions | GroundModuleProgramSearchOptions
-
-
 FailureWitness: TypeAlias = int | list[int]
 FailureItem: TypeAlias = tuple[CounterexampleKind, FailureWitness]
 StateEvidence: TypeAlias = Callable[[GroundState], JsonObject]
-PlanTraceBuilder: TypeAlias = Callable[[GroundState], Document | None]
 
 
 def _witness_vertices(witness: FailureWitness) -> list[int]:
@@ -96,105 +74,53 @@ def _witness_vertex(witness: FailureWitness) -> int:
 def _label_is_goal(label: object) -> bool:
     if isinstance(
         label,
-        GroundAnnotatedStateGraphVertexLabel
-        | GroundStateGraphVertexLabel
-        | GroundModuleProgramProofVertexLabel,
+        GroundSketchProofVertexLabel | GroundModuleProgramProofVertexLabel,
     ):
         return bool(getattr(label, "is_goal", False))
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
 
 
-def _open_state_is_goal(result: ProofResult, vertex: int) -> bool:
+def _state_is_goal(result: ProofResult, vertex: int) -> bool:
     graph = getattr(result, "graph", None)
     if graph is None:
         return False
     return _label_is_goal(graph.get_vertex_property(int(vertex)))
 
 
-def is_goal_open_state_result(result: ProofResult) -> bool:
-    """True when a failed search reports only open vertices that are already goal states."""
-    if result.cycle or result.deadend_transitions or not result.open_states:
-        return False
-    return all(_open_state_is_goal(result, int(vertex)) for vertex in result.open_states)
-
-
-def _open_state_is_deadend(
-    result: ProofResult, vertex: int, evidence: StateEvidence | None
-) -> bool:
-    if evidence is None:
-        return False
-    graph = getattr(result, "graph", None)
-    if graph is None:
-        return False
-    return bool(state_summary(graph, int(vertex), evidence).get(Keys.IS_UNSOLVABLE))
-
-
-def task_name(task: LoadedSearchContext) -> str:
-    return task.problem_path.name
-
-
 def status_name(status: ProofStatus) -> str:
     return str(status.name).lower()
-
-
-@overload
-def make_search_options(
-    options: GroundSketchSearchOptions, max_num_states: int, max_time_seconds: float
-) -> GroundSketchSearchOptions: ...
-
-
-@overload
-def make_search_options(
-    options: GroundModuleProgramSearchOptions, max_num_states: int, max_time_seconds: float
-) -> GroundModuleProgramSearchOptions: ...
-
-
-def make_search_options(
-    options: ProofSearchOptions, max_num_states: int, max_time_seconds: float
-) -> ProofSearchOptions:
-    options.max_arity = 0
-    max_time = timedelta(seconds=max_time_seconds)
-    options.brfs_options.max_num_states = max_num_states
-    options.brfs_options.max_time = max_time
-    options.iw_options.max_num_states = max_num_states
-    options.iw_options.max_time = max_time
-    return options
 
 
 def failure_items(
     result: ProofResult,
     *,
-    max_open_state_counterexamples: int,
-    max_deadend_transition_counterexamples: int,
-    evidence: StateEvidence | None = None,
+    max_counterexamples: int,
 ) -> list[FailureItem]:
+    """Return one optional cycle plus at most ``max_counterexamples`` other failures."""
     items: list[FailureItem] = []
     if result.cycle:
         items.append((CounterexampleKind.CYCLE, [int(vertex) for vertex in result.cycle]))
 
-    open_vertices = [
-        int(vertex) for vertex in result.open_states if not _open_state_is_goal(result, int(vertex))
-    ]
-    classifier_deadends = [
-        vertex for vertex in open_vertices if _open_state_is_deadend(result, vertex, evidence)
-    ]
-    ordinary_open = [vertex for vertex in open_vertices if vertex not in set(classifier_deadends)]
+    if max_counterexamples <= 0:
+        return items
 
-    if max_deadend_transition_counterexamples > 0:
-        items.extend(
-            (CounterexampleKind.DEADEND, vertex)
-            for vertex in classifier_deadends[:max_deadend_transition_counterexamples]
-        )
-    if max_open_state_counterexamples > 0:
-        items.extend(
-            (CounterexampleKind.OPEN_STATE, vertex)
-            for vertex in ordinary_open[:max_open_state_counterexamples]
-        )
-    if max_deadend_transition_counterexamples > 0:
-        items.extend(
-            (CounterexampleKind.DEADEND_TRANSITION, int(edge))
-            for edge in result.deadend_transitions[:max_deadend_transition_counterexamples]
-        )
+    counterexamples: list[FailureItem] = []
+    for raw_vertex in result.deadend_states:
+        vertex = int(raw_vertex)
+        if not _state_is_goal(result, vertex):
+            counterexamples.append((CounterexampleKind.DEADEND, vertex))
+        if len(counterexamples) == max_counterexamples:
+            break
+
+    for raw_vertex in result.open_states:
+        if len(counterexamples) == max_counterexamples:
+            break
+        vertex = int(raw_vertex)
+        if _state_is_goal(result, vertex):
+            continue
+        counterexamples.append((CounterexampleKind.OPEN_STATE, vertex))
+
+    items.extend(counterexamples)
     return items
 
 
@@ -209,9 +135,7 @@ def _out_edge_indices(graph: ProofGraph, vertex: int) -> list[int]:
 def _label_is_initial(label: object) -> bool:
     if isinstance(
         label,
-        GroundAnnotatedStateGraphVertexLabel
-        | GroundStateGraphVertexLabel
-        | GroundModuleProgramProofVertexLabel,
+        GroundSketchProofVertexLabel | GroundModuleProgramProofVertexLabel,
     ):
         return bool(getattr(label, "is_initial", False))
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
@@ -276,12 +200,9 @@ def _cycle_edges(graph: ProofGraph, vertices: list[int]) -> list[int]:
 
 
 def _label_state(label: object) -> GroundState:
-    if isinstance(
-        label,
-        GroundAnnotatedStateGraphVertexLabel
-        | GroundStateGraphVertexLabel
-        | GroundModuleProgramProofVertexLabel,
-    ):
+    if isinstance(label, GroundModuleProgramProofVertexLabel):
+        return label.execution_state.state
+    if isinstance(label, GroundSketchProofVertexLabel):
         return label.state
     raise TypeError(f"unsupported proof vertex label: {type(label).__name__}")
 
@@ -301,18 +222,16 @@ def state_summary(
         Keys.STATE_INDEX: int(state.get_index()),
     }
     if isinstance(label, GroundModuleProgramProofVertexLabel):
-        memory = label.memory_state
-        memory_view = memory.value if hasattr(memory, "value") else memory
-        out[Keys.MEMORY] = str(getattr(memory_view, "get_name")())
-        out[Keys.MODULE] = str(label.module.get_name())
-    if isinstance(label, GroundAnnotatedStateGraphVertexLabel):
-        out[Keys.IS_INITIAL] = bool(getattr(label, "is_initial", False))
-        out[Keys.IS_GOAL] = bool(getattr(label, "is_goal", False))
+        stack = label.execution_state.call_stack
+        out[Keys.MEMORY] = str(stack.memory_state.get_name())
+        out[Keys.MODULE] = str(stack.module.get_name())
+        out[Keys.IS_INITIAL] = bool(label.is_initial)
+        out[Keys.IS_GOAL] = bool(label.is_goal)
         out[Keys.IS_UNSOLVABLE] = bool(label.is_unsolvable)
-        out[Keys.HSTAR] = label.goal_distance
-    elif isinstance(label, GroundStateGraphVertexLabel):
-        out[Keys.IS_INITIAL] = bool(getattr(label, "is_initial", False))
-        out[Keys.IS_GOAL] = bool(getattr(label, "is_goal", False))
+    else:
+        out[Keys.IS_INITIAL] = bool(label.is_initial)
+        out[Keys.IS_GOAL] = bool(label.is_goal)
+        out[Keys.IS_UNSOLVABLE] = bool(label.is_unsolvable)
     if evidence is not None:
         out.update(evidence(state))
     return out
@@ -442,25 +361,29 @@ def _expand_frontier(
     return expander(graph, vertices)
 
 
-def successful_trace_artifact(
+def successful_trace_artifacts(
     graph: ProofGraph,
     evidence: StateEvidence | None,
     *,
+    max_traces: int,
     feature_symbols: list[str],
     dicts: Dictionaries,
     ext: bool,
     header: list[tuple[str, str]],
     include_hstar: bool = True,
     include_hlmcut: bool = True,
-) -> Document | None:
-    """Return a trace to the first reachable goal vertex in a successful proof graph."""
+) -> list[Document]:
+    """Return traces to at most ``max_traces`` distinct reachable goal vertices."""
+    traces: list[Document] = []
+    if max_traces <= 0:
+        return traces
     for vertex in _vertex_indices(graph):
         if not _label_is_goal(graph.get_vertex_property(vertex)):
             continue
         path_edges = _path_edges_to(graph, vertex)
         if path_edges is None:
             continue
-        return _trace_document(
+        trace = _trace_document(
             graph,
             path_edges,
             evidence,
@@ -472,7 +395,11 @@ def successful_trace_artifact(
             include_hstar=include_hstar,
             include_hlmcut=include_hlmcut,
         )
-    return None
+        if trace is not None:
+            traces.append(trace)
+            if len(traces) == max_traces:
+                break
+    return traces
 
 
 def witness_artifacts(
@@ -555,44 +482,6 @@ def witness_artifacts(
             include_hlmcut=include_hlmcut,
         )
         successors = []
-    elif kind == CounterexampleKind.DEADEND_TRANSITION:
-        edge = _witness_vertex(witness)
-        source_vertex, dead_vertex = int(graph.get_source(edge)), int(graph.get_target(edge))
-        counterexample = counterexample_document(
-            header=header,
-            feature_symbols=feature_symbols,
-            states=[witness_state(state_summary(graph, dead_vertex, evidence), witness=True)],
-            transitions=[],
-            cycle=False,
-            dicts=dicts,
-            ext=ext,
-            include_hstar=include_hstar,
-            include_hlmcut=include_hlmcut,
-        )
-        path_edges = _path_edges_to(graph, source_vertex)
-        trace_edges = ([*path_edges, edge]) if path_edges is not None else None
-        trace = _trace_document(
-            graph,
-            trace_edges,
-            evidence,
-            feature_symbols=feature_symbols,
-            dicts=dicts,
-            ext=ext,
-            header=header,
-            witness_vertices={dead_vertex},
-            include_hstar=include_hstar,
-            include_hlmcut=include_hlmcut,
-        )
-        successors = _expand_frontier(
-            graph,
-            expander,
-            evidence,
-            trace_vertices=_vertices_for_edges(graph, trace_edges)
-            if trace_edges is not None
-            else [source_vertex, dead_vertex],
-            graph_vertices=[source_vertex],
-            exclude=set(),
-        )
     else:  # CounterexampleKind.OPEN_STATE
         vertex = _witness_vertex(witness)
         counterexample = counterexample_document(
@@ -648,101 +537,3 @@ def witness_artifacts(
         else None
     )
     return counterexample, trace, successor_doc
-
-
-def build_proof_run(
-    *,
-    tool: str,
-    output_dir: Path,
-    metadata: JsonObject,
-    task: LoadedSearchContext,
-    result: ProofResult,
-    feature_symbols: list[str],
-    dicts: Dictionaries,
-    ext: bool,
-    evidence: StateEvidence | None = None,
-    expander: FrontierExpander | None = None,
-    max_open_state_counterexamples: int = 1,
-    max_deadend_transition_counterexamples: int = 1,
-    include_hstar: bool = True,
-    include_hlmcut: bool = True,
-    open_state_plan: PlanTraceBuilder | None = None,
-) -> JsonObject:
-    graph = result.graph
-    effective_success = result.is_successful() or is_goal_open_state_result(result)
-    status = RunStatus.SUCCESS if effective_success else RunStatus.FAILURE
-    artifacts: dict[str, Artifact] = {}
-    items: list[RunItem] = []
-    if not effective_success:
-        counts: dict[str, int] = {}
-        for kind, witness in failure_items(
-            result,
-            max_open_state_counterexamples=max_open_state_counterexamples,
-            max_deadend_transition_counterexamples=max_deadend_transition_counterexamples,
-            evidence=evidence,
-        ):
-            category = RunItemCategory(kind.value)
-            category_value = category.value
-            counts[category_value] = counts.get(category_value, 0) + 1
-            failure_id = f"{category_value}-{counts[category_value]:03d}"
-            header: list[tuple[str, str]] = [
-                (Keys.TOOL, tool),
-                (Keys.ID, failure_id),
-                (Keys.CATEGORY, category_value),
-                (Keys.STATUS, status_name(result.status)),
-                (Keys.TASK_FILE, task_name(task)),
-            ]
-            witness_doc, trace, successors = witness_artifacts(
-                graph,
-                kind,
-                witness,
-                evidence,
-                feature_symbols=feature_symbols,
-                dicts=dicts,
-                ext=ext,
-                header=header,
-                expander=expander,
-                include_hstar=include_hstar,
-                include_hlmcut=include_hlmcut,
-            )
-            plan_trace = None
-            if kind == CounterexampleKind.OPEN_STATE and open_state_plan is not None:
-                plan_trace = open_state_plan(witness_ground_state(graph, witness))
-                if plan_trace is not None:
-                    plan_trace = Document(header=[*header, (Keys.ORIGIN, "ff")], sections=plan_trace.sections)
-            names = {Keys.WITNESS: f"failures/{failure_id}/witness"}
-            artifacts[names[Keys.WITNESS]] = witness_doc
-            if trace is not None:
-                names[Keys.TRACE] = f"failures/{failure_id}/trace"
-                artifacts[names[Keys.TRACE]] = trace
-            if successors is not None:
-                names[Keys.SUCCESSORS] = f"failures/{failure_id}/successors"
-                artifacts[names[Keys.SUCCESSORS]] = successors
-            if plan_trace is not None:
-                names[Keys.PLAN_TRACE] = f"failures/{failure_id}/plan_trace"
-                artifacts[names[Keys.PLAN_TRACE]] = plan_trace
-            items.append(
-                RunItem(
-                    id=failure_id,
-                    category=category,
-                    subject=task_name(task),
-                    witness=names[Keys.WITNESS],
-                    trace=names.get(Keys.TRACE),
-                    successors=names.get(Keys.SUCCESSORS),
-                    plan_trace=names.get(Keys.PLAN_TRACE),
-                )
-            )
-    return build_run_envelope(
-        tool=tool,
-        status=status,
-        category=status_category(status_name(result.status)),
-        output_dir=output_dir,
-        metadata=metadata,
-        dictionary_tables=dicts.tables(),
-        artifacts=artifacts,
-        items=items,
-    )
-
-
-def planning_domain(domain_path: Path) -> PlanningDomain:
-    return Parser(domain_path, ParserOptions()).get_domain()

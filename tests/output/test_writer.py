@@ -16,7 +16,7 @@ def test_write_run_emits_all_formats_and_nests(tmp_path: Path) -> None:
     artifacts: dict[str, Artifact] = {
         "summary": Table(name="summary", columns=["a", "b"], rows=[[1, 2]]),
         "failures/cycle-001/witness": Document(
-            header=[("tool", "execute_policy")],
+            header=[("tool", "runir.ps.find_solution")],
             sections=[Table(name="states", columns=["idx"], rows=[[0]])],
         ),
     }

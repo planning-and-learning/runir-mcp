@@ -44,21 +44,22 @@ Returns a `TaskContext`: parent `DomainContext`, parsed problem, lifted/grounded
 | `index` | `int` | Per-domain task index. |
 | `problem_file` | `Path` | Absolute problem file path. |
 | `execution_context` | `ExecutionContext` | Shared pytyr/yggdrasil execution context. |
-| `base_task` | `LoadedSearchContext` | Ground task view for base sketch execution/proof. |
+| `base_task` | `LoadedSearchContext` | Ground task view for base sketch solution search. |
 | `base_lifted_task` | `LoadedLiftedSearchContext` | Lifted task view for base h*/LM-cut evidence. |
-| `ext_task` | `LoadedSearchContext` | Ground task view for module-program execution/proof. |
+| `ext_task` | `LoadedSearchContext` | Ground task view for module-program solution search. |
 | `ext_lifted_task` | `LoadedLiftedSearchContext` | Lifted task view for module-program h*/LM-cut evidence. |
 
 The base and extended ground views share one `LoadedSearchContext`, which owns one native
 `GroundTaskContext`. Its `search_context`, `dl_builder`, and `dl_denotation_repository` are
-reused by execution, proof, classifier, frontier, evidence, dump, and plan-trace evaluation
+reused by solution search, classifier validation, frontier evidence, dumping, and plan-trace evaluation
 for the lifetime of the task context. The dataset `GroundTaskSearchContext` does not own
-description-logic resources.
+description-logic resources. Each module-program search keeps one native `ExecutionRepository`
+for its complete graph, so memory/control-state views reuse the same repository throughout that search.
 These mutable semantic resources are used sequentially within one task context; parallel work
 uses distinct task contexts.
 
 ```python
 domain = create_domain_context("domain.pddl")
 task_a = create_task_context(domain, "p01.pddl")
-result = execute_policy(task_a, policy)
+result = find_solution(task_a, policy)
 ```

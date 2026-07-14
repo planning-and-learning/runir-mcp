@@ -28,7 +28,7 @@ The emitted renderings are selected by `dump_result(..., formats=...)`.
 Witness, trace, and successor artifacts are sectioned documents:
 
 ```text
-@tool execute_policy
+@tool runir.ps.find_solution
 @id cycle-001
 @category cycle
 
@@ -40,7 +40,7 @@ s0|init
 In JSON, a sectioned document is one object with headers and sections separated:
 
 ```json
-{"header": {"tool": "execute_policy"}, "sections": {"states": [{"id": "s0", "flags": "init"}]}}
+{"header": {"tool": "runir.ps.find_solution"}, "sections": {"states": [{"id": "s0", "flags": "init"}]}}
 ```
 
 ## Interned Aliases

@@ -4,17 +4,17 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, TypeAlias, cast
 
 from pyrunir.kr.ps.ext import Module
 from pyrunir.kr.ps.ext.dl import ModuleStructuralTerminationResult
 
+from pyrunir_mcp.artifacts import fresh_output_dir
 from pyrunir_mcp.candidates import Candidate
 from pyrunir_mcp.enums import (
     AtomKind,
     CounterexampleKind,
     DumpFormat,
-    RolloutOutcome,
     RunCategory,
     RunItemCategory,
     RunStatus,
@@ -31,23 +31,7 @@ from pyrunir_mcp.kr.ps.base.core.features import (
 from pyrunir_mcp.kr.ps.base.core.features import (
     intern_rules as intern_base_rules,
 )
-from pyrunir_mcp.kr.ps.base.rollout import (
-    RolloutResult,
-    rollout_artifacts,
-    rollout_category,
-    rollout_trace_document,
-)
 from pyrunir_mcp.kr.ps.classifier import classifier_evidence
-from pyrunir_mcp.kr.ps.ext.rollout import (
-    ExtRolloutResult,
-    ext_rollout_category,
-)
-from pyrunir_mcp.kr.ps.ext.rollout import (
-    rollout_artifacts as ext_rollout_artifacts,
-)
-from pyrunir_mcp.kr.ps.ext.rollout import (
-    rollout_trace_document as ext_rollout_trace_document,
-)
 from pyrunir_mcp.kr.ps.ext.rules import (
     collect_features as collect_ext_features,
 )
@@ -61,7 +45,15 @@ from pyrunir_mcp.kr.ps.feature_evidence import (
 )
 from pyrunir_mcp.kr.ps.frontier import make_ext_frontier_expander, make_frontier_expander
 from pyrunir_mcp.kr.ps.plan_trace import plan_open_state_trace
-from pyrunir_mcp.kr.ps.proof import StateEvidence, build_proof_run
+from pyrunir_mcp.kr.ps.proof import (
+    FailureWitness,
+    ProofResult,
+    failure_items,
+    status_name,
+    successful_trace_artifacts,
+    witness_artifacts,
+    witness_ground_state,
+)
 from pyrunir_mcp.kr.uns.serialize import feature_symbols as classifier_feature_symbols
 from pyrunir_mcp.output.classifier import ClassifierRow, classifier_witness
 from pyrunir_mcp.output.dictionaries import Dictionaries
@@ -86,15 +78,13 @@ from pyrunir_mcp.task_generation import (
 )
 from pyrunir_mcp.validation import (
     ClassifierProofCounts,
-    ExecuteModuleProgramResult,
-    ExecuteObservationDetails,
-    ExecutePolicyResult,
     FailureFingerprint,
+    FindModuleProgramSolutionResult,
+    FindPolicySolutionResult,
+    FindSolutionObservationDetails,
     ObservationDetails,
-    ProofObservationDetails,
     ProveClassifierResult,
-    ProveModuleProgramResult,
-    ProvePolicyResult,
+    ProvePolicyTerminationResult,
     ProveTerminationResult,
     SearchBudget,
     ValidationObservation,
@@ -140,29 +130,27 @@ def _budget_json(budget: SearchBudget) -> JsonObject:
 
 
 def _observation_details_json(details: ObservationDetails) -> JsonObject:
-    from pyrunir_mcp.validation import TerminationObservationDetails
+    from pyrunir_mcp.validation import (
+        PolicyTerminationObservationDetails,
+        TerminationObservationDetails,
+    )
 
-    if isinstance(details, ExecuteObservationDetails):
+    if isinstance(details, FindSolutionObservationDetails):
         return {
             Keys.ROLLOUT_COUNT: details.num_rollouts,
-            Keys.FAILURE: None
-            if details.failure_problem_file is None
-            else {
-                Keys.TASK_FILE: details.failure_problem_file,
-                Keys.STATUS: str(getattr(details.failure_status, "name", details.failure_status)).lower()
-                if details.failure_status is not None
-                else None,
-            },
+            Keys.UNIVERSAL: details.universal,
+            Keys.SUCCESSFUL: details.successful,
+            Keys.PROOF_STATUSES: [status.name.lower() for status in details.proof_statuses],
         }
-    if isinstance(details, ProofObservationDetails):
+    if isinstance(details, PolicyTerminationObservationDetails):
         return {
-            Keys.PROOF: {
-                Keys.STATUS: details.proof_status.name.lower(),
-            }
+            Keys.PROGRAM_STATUS: details.policy_status.name.lower(),
+            Keys.SUCCESSFUL: details.terminating,
         }
     if isinstance(details, TerminationObservationDetails):
         return {
             Keys.PROGRAM_STATUS: details.program_status.name.lower(),
+            Keys.SUCCESSFUL: details.terminating,
             Keys.NONTERMINATING_MODULES: list(details.nonterminating_modules),
         }
     return {
@@ -197,7 +185,7 @@ def _candidate_json(candidate: Candidate) -> JsonObject:
 
 
 def _result_context_json(result: ValidationResult) -> JsonObject:
-    if isinstance(result, ProveTerminationResult):
+    if isinstance(result, (ProvePolicyTerminationResult, ProveTerminationResult)):
         return {
             Keys.ID: result.domain_context.id,
             Keys.DOMAIN_PATH: result.domain_context.domain_file.as_posix(),
@@ -217,54 +205,31 @@ def _result_json(
         Keys.CANDIDATE: _candidate_json(result.candidate),
         Keys.OBSERVATION: _observation_json(observation),
     }
-    if isinstance(
-        result,
-        (
-            ExecutePolicyResult,
-            ExecuteModuleProgramResult,
-            ProvePolicyResult,
-            ProveModuleProgramResult,
-        ),
-    ):
+    if isinstance(result, (FindPolicySolutionResult, FindModuleProgramSolutionResult)):
         base[Keys.SEARCH_BUDGET] = _budget_json(result.search_budget)
         base[Keys.PLAN_TRACE_BUDGET] = _budget_json(result.plan_trace_budget)
+        base[Keys.UNIVERSAL] = result.universal
+        base[Keys.ROLLOUT_COUNT] = result.num_rollouts
+        base[Keys.ROLLOUTS] = [
+            {
+                Keys.SEED: None if result.universal else seed,
+                Keys.STATUS: status_name(proof.status),
+                Keys.SUCCESSFUL: bool(proof.is_successful()),
+            }
+            for seed, proof in result.results
+        ]
     elif isinstance(result, ProveClassifierResult):
         base[Keys.SEARCH_BUDGET] = _budget_json(result.search_budget)
-    if isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult)):
-        base[Keys.ROLLOUT_COUNT] = result.num_rollouts
-        base[Keys.FAILURE] = (
-            None
-            if result.failure is None
-            else {
-                Keys.TASK_FILE: result.failure.task.problem_path.name,
-                Keys.STATUS: result.failure.result.status.name.lower(),
-            }
-        )
-        if result.rollout_results:
-            base[Keys.FAILURE_SEEDS] = [
-                seed
-                for seed, rollout in result.rollout_results
-                if rollout.outcome is not RolloutOutcome.GOAL
-            ]
-            base[Keys.SUCCESS_SEEDS] = [
-                seed
-                for seed, rollout in result.rollout_results
-                if rollout.outcome is RolloutOutcome.GOAL
-            ]
-        else:
-            base[Keys.FAILURE_SEEDS] = [seed for seed, _failure in result.failure_results]
-            base[Keys.SUCCESS_SEEDS] = [seed for seed, _proof in result.successful_results]
-    elif isinstance(result, (ProvePolicyResult, ProveModuleProgramResult)):
-        base[Keys.PROOF] = {
-            Keys.STATUS: result.proof.status.name.lower(),
-        }
+        base[Keys.COUNTS] = _counts_json(result.counts)
     elif isinstance(result, ProveTerminationResult):
         base[Keys.TERMINATION] = {
             Keys.PROGRAM_STATUS: result.program_result.status.name.lower(),
             Keys.NONTERMINATING_MODULES: list(result.nonterminating_modules),
         }
     else:
-        base[Keys.COUNTS] = _counts_json(result.counts)
+        base[Keys.TERMINATION] = {
+            Keys.PROGRAM_STATUS: result.policy_result.status.name.lower(),
+        }
     return base
 
 
@@ -284,15 +249,25 @@ def _populate_feature_dictionary(dicts: Dictionaries, features: Sequence[Feature
 
 
 
-_CUSTOM_ROLLOUT_ORIGIN = "custom_rollout"
+_FIND_SOLUTION_TOOL = "runir.ps.find_solution"
+_FIND_SOLUTION_ORIGIN = "find_solution"
+SolutionResult: TypeAlias = FindPolicySolutionResult | FindModuleProgramSolutionResult
 
 
 @dataclass(frozen=True, slots=True)
-class _ExecuteFailureRow:
+class _FailureEvidence:
+    seed: int | None
+    proof: ProofResult
+    kind: CounterexampleKind
+    witness: FailureWitness
+
+
+@dataclass(frozen=True, slots=True)
+class _SolutionFailureRow:
     id: str
     category: str
     status: str
-    seed: int
+    seed: int | None
     problem: str
     witness: str
     trace: str | None
@@ -301,17 +276,16 @@ class _ExecuteFailureRow:
 
 
 @dataclass(frozen=True, slots=True)
-class _ExecuteSuccessRow:
+class _SolutionSuccessRow:
     id: str
-    category: str
     status: str
-    seed: int
+    seed: int | None
     problem: str
     trace: str
 
 
-def _artifact_relative(name: str | None) -> str | None:
-    return None if name is None else f"{name}.psv"
+def _artifact_relative(name: str | None, fmt: Fmt) -> str | None:
+    return None if name is None else f"{name}.{fmt}"
 
 
 def _output_dir_from_envelope(envelope: JsonObject, fallback: Path) -> Path:
@@ -319,43 +293,61 @@ def _output_dir_from_envelope(envelope: JsonObject, fallback: Path) -> Path:
     return Path(output_dir) if isinstance(output_dir, str) else fallback
 
 
-def _rollout_failure_docs(
-    result: ExecutePolicyResult,
-    rollout: RolloutResult,
-    features: list[Feature],
-    evidence: StateEvidence,
-    feature_symbols: list[str],
-    dicts: Dictionaries,
-    header: list[tuple[str, str]],
-) -> tuple[Document, Document | None, Document | None, str | None]:
-    docs = rollout_artifacts(
-        result.context.base_task.task_context,
-        result.candidate.value,
-        features,
-        result.classifier.value if result.classifier is not None else None,
-        evidence,
-        feature_symbols=feature_symbols,
-        dicts=dicts,
-        header=header,
-        include_hstar=False,
-        include_hlmcut=False,
-        result=rollout,
-    )
-    if docs is None:
-        raise RuntimeError("cannot build failure artifacts for a successful rollout")
-    return docs
+def _solution_header(
+    *,
+    item_id: str,
+    category: str,
+    status: str,
+    problem: str,
+    seed: int | None,
+) -> list[tuple[str, str]]:
+    header: list[tuple[str, str]] = [
+        (Keys.TOOL, _FIND_SOLUTION_TOOL),
+        (Keys.ID, item_id),
+        (Keys.CATEGORY, category),
+        (Keys.STATUS, status),
+        (Keys.TASK_FILE, problem),
+    ]
+    if seed is not None:
+        header.append((Keys.SEED, str(seed)))
+    return header
 
 
-def _dump_execute_policy_artifacts(
-    result: ExecutePolicyResult, output_path: Path, formats: tuple[Fmt, ...]
+def select_failure_evidence(result: SolutionResult) -> tuple[list[_FailureEvidence], int]:
+    cycle: _FailureEvidence | None = None
+    regular: list[_FailureEvidence] = []
+    for raw_seed, proof in result.results:
+        seed = None if result.universal else raw_seed
+        for kind, witness in failure_items(
+            proof,
+            max_counterexamples=result.num_rollouts - len(regular),
+        ):
+            item = _FailureEvidence(seed, proof, kind, witness)
+            if kind is CounterexampleKind.CYCLE:
+                cycle = cycle or item
+            elif len(regular) < result.num_rollouts:
+                regular.append(item)
+    return ([cycle] if cycle is not None else []) + regular, len(regular)
+
+
+def _dump_solution_artifacts(
+    result: SolutionResult, output_path: Path, formats: tuple[Fmt, ...]
 ) -> RichDumpResult | None:
-    if not formats or not result.rollout_results:
+    if not formats:
         return None
-    task_context = result.context.base_task.task_context
-    features = collect_base_features(result.candidate.value)
-    dicts = Dictionaries(task=result.context.base_task.task_context.search_context.task, ext=False)
+
+    ext = isinstance(result, FindModuleProgramSolutionResult)
+    if ext:
+        task = result.context.ext_task
+        features = collect_ext_features(result.candidate.value)
+    else:
+        task = result.context.base_task
+        features = collect_base_features(result.candidate.value)
+
+    task_context = task.task_context
+    problem = task.problem_path.name
+    dicts = Dictionaries(task=task_context.search_context.task, ext=ext)
     feature_symbols = _populate_feature_dictionary(dicts, features)
-    intern_base_rules(result.candidate.value, dicts)
     evidence = classifier_evidence(
         task_context,
         state_evidence(
@@ -367,159 +359,124 @@ def _dump_execute_policy_artifacts(
         ),
         result.classifier.value if result.classifier is not None else None,
     )
+    if isinstance(result, FindModuleProgramSolutionResult):
+        intern_ext_rules(result.candidate.value, dicts)
+        expander = make_ext_frontier_expander(
+            task_context, result.candidate.value, evidence
+        )
+    else:
+        intern_base_rules(result.candidate.value, dicts)
+        expander = make_frontier_expander(task_context, result.candidate.value, evidence)
 
-    output_path.mkdir(parents=True, exist_ok=True)
+    output_path = fresh_output_dir(output_path)
     artifacts: dict[str, Artifact] = {}
-    rollouts: list[JsonObject] = []
-    task_rows: list[JsonObject] = []
-    failure_rows: list[_ExecuteFailureRow] = []
-    success_rows: list[_ExecuteSuccessRow] = []
-    first_failure_id: str | None = None
-    problem = result.context.base_task.problem_path.name
+    failure_rows: list[_SolutionFailureRow] = []
+    success_rows: list[_SolutionSuccessRow] = []
+    category_counts: dict[str, int] = {}
+    selected_failures, regular_failure_count = select_failure_evidence(result)
 
-    for seed, rollout in result.rollout_results:
-        category = rollout_category(rollout)
-        if category is None:
-            success_id = f"success-{len(success_rows) + 1:03d}"
-            trace_name = f"successes/{success_id}/trace"
-            header: list[tuple[str, str]] = [
-                (Keys.TOOL, result.kind.value),
-                (Keys.ID, success_id),
-                (Keys.CATEGORY, RunItemCategory.SUCCESS.value),
-                (Keys.STATUS, RunStatus.SUCCESS.value),
-                (Keys.TASK_FILE, problem),
-                (Keys.SEED, str(seed)),
-            ]
-            artifacts[trace_name] = rollout_trace_document(
-                result.context.base_task.task_context,
-                rollout,
-                features,
-                evidence,
-                feature_symbols=feature_symbols,
-                dicts=dicts,
-                header=header,
-                include_hstar=False,
-                include_hlmcut=False,
-            )
-            success_rows.append(
-                _ExecuteSuccessRow(
-                    id=success_id,
-                    category=RunItemCategory.SUCCESS.value,
-                    status=RunStatus.SUCCESS.value,
-                    seed=seed,
-                    problem=problem,
-                    trace=trace_name,
-                )
-            )
-            rollouts.append(
-                {
-                    Keys.SEED: seed,
-                    Keys.STATUS: RunStatus.SUCCESS.value,
-                    Keys.CATEGORY: None,
-                }
-            )
-            task_rows.append(
-                {
-                    Keys.TASK_FILE: problem,
-                    Keys.STATUS: RunStatus.SUCCESS.value,
-                    Keys.CATEGORY: None,
-                    Keys.SEED: seed,
-                }
-            )
-            continue
-
-        failure_id = f"{category}-{len(failure_rows) + 1:03d}"
-        header: list[tuple[str, str]] = [
-            (Keys.TOOL, result.kind.value),
-            (Keys.ID, failure_id),
-            (Keys.CATEGORY, category),
-            (Keys.STATUS, RunStatus.FAILURE.value),
-            (Keys.TASK_FILE, problem),
-            (Keys.SEED, str(seed)),
-        ]
-        witness_doc, trace_doc, successors_doc, category_override = _rollout_failure_docs(
-            result,
-            rollout,
-            features,
+    for selected in selected_failures:
+        category = selected.kind.value
+        category_counts[category] = category_counts.get(category, 0) + 1
+        item_id = f"{category}-{category_counts[category]:03d}"
+        native_status = status_name(selected.proof.status)
+        header = _solution_header(
+            item_id=item_id,
+            category=category,
+            status=native_status,
+            problem=problem,
+            seed=selected.seed,
+        )
+        witness, trace, successors = witness_artifacts(
+            selected.proof.graph,
+            selected.kind,
+            selected.witness,
             evidence,
-            feature_symbols,
-            dicts,
-            header,
+            feature_symbols=feature_symbols,
+            dicts=dicts,
+            ext=ext,
+            header=header,
+            expander=expander,
+            include_hstar=False,
+            include_hlmcut=False,
         )
-        if category_override is not None and category_override != category:
-            category = category_override
-            failure_id = f"{category}-{len(failure_rows) + 1:03d}"
-            header = [
-                (key, failure_id if key == Keys.ID else category if key == Keys.CATEGORY else value)
-                for key, value in header
-            ]
-            witness_doc, trace_doc, successors_doc, _ = _rollout_failure_docs(
-                result,
-                rollout,
-                features,
-                evidence,
-                feature_symbols,
-                dicts,
-                header,
-            )
-        witness_name = f"failures/{failure_id}/witness"
-        trace_name = f"failures/{failure_id}/trace" if trace_doc is not None else None
+        witness_name = f"failures/{item_id}/witness"
+        trace_name = f"failures/{item_id}/trace" if trace is not None else None
         successors_name = (
-            f"failures/{failure_id}/successors" if successors_doc is not None else None
+            f"failures/{item_id}/successors" if successors is not None else None
         )
-        plan_trace_name = None
-        artifacts[witness_name] = witness_doc
-        if trace_doc is not None and trace_name is not None:
-            artifacts[trace_name] = trace_doc
-        if successors_doc is not None and successors_name is not None:
-            artifacts[successors_name] = successors_doc
-        if category == RunItemCategory.OPEN_STATE.value:
-            terminal = rollout.states[-1]
+        plan_trace_name: str | None = None
+        artifacts[witness_name] = witness
+        if trace is not None and trace_name is not None:
+            artifacts[trace_name] = trace
+        if successors is not None and successors_name is not None:
+            artifacts[successors_name] = successors
+        if selected.kind is CounterexampleKind.OPEN_STATE:
             plan_trace = plan_open_state_trace(
-                task_context=result.context.base_task.task_context,
-                state=terminal,
+                task_context=task_context,
+                state=witness_ground_state(selected.proof.graph, selected.witness),
                 features=features,
                 dicts=dicts,
                 max_num_states=result.plan_trace_budget.max_num_states,
                 max_time_seconds=result.plan_trace_budget.max_time_seconds,
             )
             if plan_trace is not None:
-                plan_trace_name = f"failures/{failure_id}/plan_trace"
+                plan_trace_name = f"failures/{item_id}/plan_trace"
                 artifacts[plan_trace_name] = Document(
                     header=[*header, (Keys.ORIGIN, "ff")], sections=plan_trace.sections
                 )
         failure_rows.append(
-            _ExecuteFailureRow(
-                id=failure_id,
-                category=category,
-                status=RunStatus.FAILURE.value,
-                seed=seed,
-                problem=problem,
-                witness=witness_name,
-                trace=trace_name,
-                successors=successors_name,
-                plan_trace=plan_trace_name,
+            _SolutionFailureRow(
+                item_id,
+                category,
+                native_status,
+                selected.seed,
+                problem,
+                witness_name,
+                trace_name,
+                successors_name,
+                plan_trace_name,
             )
         )
-        first_failure_id = first_failure_id or failure_id
-        rollouts.append(
-            {
-                Keys.SEED: seed,
-                Keys.STATUS: RunStatus.FAILURE.value,
-                Keys.CATEGORY: category,
-            }
-        )
-        task_rows.append(
-            {
-                Keys.TASK_FILE: problem,
-                Keys.STATUS: RunStatus.FAILURE.value,
-                Keys.CATEGORY: category,
-                Keys.SEED: seed,
-            }
-        )
 
+    remaining = result.num_rollouts - regular_failure_count
+    for raw_seed, proof in result.results:
+        if remaining == 0:
+            break
+        seed = None if result.universal else raw_seed
+        traces = successful_trace_artifacts(
+            proof.graph,
+            evidence,
+            max_traces=remaining,
+            feature_symbols=feature_symbols,
+            dicts=dicts,
+            ext=ext,
+            header=[],
+            include_hstar=False,
+            include_hlmcut=False,
+        )
+        for trace in traces:
+            item_id = f"success-{len(success_rows) + 1:03d}"
+            native_status = status_name(proof.status)
+            trace_name = f"successes/{item_id}/trace"
+            artifacts[trace_name] = Document(
+                header=_solution_header(
+                    item_id=item_id,
+                    category=RunItemCategory.SUCCESS.value,
+                    status=native_status,
+                    problem=problem,
+                    seed=seed,
+                ),
+                sections=trace.sections,
+            )
+            success_rows.append(
+                _SolutionSuccessRow(item_id, native_status, seed, problem, trace_name)
+            )
+            remaining -= 1
+
+    primary_format = formats[0]
     artifacts[Keys.FAILURES] = Table(
-        name="failures",
+        name=Keys.FAILURES,
         columns=[
             Keys.ID,
             Keys.CATEGORY,
@@ -539,273 +496,50 @@ def _dump_execute_policy_artifacts(
                 row.status,
                 row.seed,
                 row.problem,
-                _CUSTOM_ROLLOUT_ORIGIN,
-                _artifact_relative(row.trace),
-                _artifact_relative(row.witness),
-                _artifact_relative(row.successors),
-                _artifact_relative(row.plan_trace),
+                _FIND_SOLUTION_ORIGIN,
+                _artifact_relative(row.trace, primary_format),
+                _artifact_relative(row.witness, primary_format),
+                _artifact_relative(row.successors, primary_format),
+                _artifact_relative(row.plan_trace, primary_format),
             ]
             for row in failure_rows
         ],
     )
     artifacts[Keys.SUCCESSES] = Table(
-        name="successes",
-        columns=[Keys.ID, Keys.CATEGORY, Keys.STATUS, Keys.SEED, Keys.TASK_FILE, Keys.ORIGIN, Keys.TRACE],
+        name=Keys.SUCCESSES,
+        columns=[
+            Keys.ID,
+            Keys.CATEGORY,
+            Keys.STATUS,
+            Keys.SEED,
+            Keys.TASK_FILE,
+            Keys.ORIGIN,
+            Keys.TRACE,
+        ],
         rows=[
             [
                 row.id,
-                row.category,
+                RunItemCategory.SUCCESS.value,
                 row.status,
                 row.seed,
                 row.problem,
-                _CUSTOM_ROLLOUT_ORIGIN,
-                _artifact_relative(row.trace),
+                _FIND_SOLUTION_ORIGIN,
+                _artifact_relative(row.trace, primary_format),
             ]
             for row in success_rows
         ],
     )
-    artifacts[Keys.SUMMARY] = Table(
-        name=Keys.SUMMARY,
-        columns=[Keys.ID, Keys.CATEGORY, Keys.STATUS, Keys.SEED, Keys.TASK_FILE],
-        rows=[
-            [row.id, row.category, row.status, row.seed, row.problem]
-            for row in failure_rows
-        ],
-    )
-
-    paths = write_run(
-        output_path,
-        {**{f"dicts/{name}": table for name, table in dicts.tables().items()}, **artifacts},
-        formats,
-    )
-    manifest = {
-        Keys.TOOL: result.kind.value,
-        **_candidate_metadata(result),
-        Keys.STATUS: RunStatus.SUCCESS.value if first_failure_id is None else RunStatus.FAILURE.value,
-        Keys.ROLLOUTS: rollouts,
-        Keys.TASKS: task_rows,
-        Keys.FAILURES: [
-            {
-                Keys.ID: row.id,
-                Keys.CATEGORY: row.category,
-                Keys.TASK_FILE: row.problem,
-                Keys.SEED: row.seed,
-                Keys.WITNESS_PATH: paths.get(row.witness),
-                Keys.TRACE_PATH: paths.get(row.trace) if row.trace is not None else None,
-                Keys.SUCCESSORS_PATH: paths.get(row.successors)
-                if row.successors is not None
-                else None,
-                Keys.PLAN_TRACE_PATH: paths.get(row.plan_trace)
-                if row.plan_trace is not None
-                else None,
-            }
-            for row in failure_rows
-        ],
-        Keys.SUCCESSES: [
-            {
-                Keys.ID: row.id,
-                Keys.CATEGORY: row.category,
-                Keys.TASK_FILE: row.problem,
-                Keys.SEED: row.seed,
-                Keys.TRACE_PATH: paths.get(row.trace),
-            }
-            for row in success_rows
-        ],
-    }
-    (output_path / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    manifest_path = output_path / "manifest.json"
-    return RichDumpResult(output_dir=output_path, primary_file=manifest_path)
-
-def _ext_rollout_failure_docs(
-    result: ExecuteModuleProgramResult,
-    rollout: ExtRolloutResult,
-    options: object,
-    features: list[Feature],
-    evidence: StateEvidence,
-    feature_symbols: list[str],
-    dicts: Dictionaries,
-    header: list[tuple[str, str]],
-) -> tuple[Document, Document | None, Document | None, str | None]:
-    from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions
-
-    if not isinstance(options, GroundModuleProgramSearchOptions):
-        raise TypeError("expected GroundModuleProgramSearchOptions")
-    docs = ext_rollout_artifacts(
-        result.context.ext_task.task_context,
-        result.candidate.value,
-        options,
-        features,
-        result.classifier.value if result.classifier is not None else None,
-        evidence,
-        feature_symbols=feature_symbols,
-        dicts=dicts,
-        header=header,
-        include_hstar=False,
-        include_hlmcut=False,
-        result=rollout,
-    )
-    if docs is None:
-        raise RuntimeError("cannot build failure artifacts for a successful ext rollout")
-    return docs
-
-
-def _dump_execute_module_program_artifacts(
-    result: ExecuteModuleProgramResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> RichDumpResult | None:
-    if not formats or not result.rollout_results:
-        return None
-    from pyrunir.kr.ps.ext import GroundModuleProgramSearchOptions
-
-    task_context = result.context.ext_task.task_context
-    features = collect_ext_features(result.candidate.value)
-    dicts = Dictionaries(task=result.context.ext_task.task_context.search_context.task, ext=True)
-    feature_symbols = _populate_feature_dictionary(dicts, features)
-    intern_ext_rules(result.candidate.value, dicts)
-    evidence = classifier_evidence(
-        task_context,
-        state_evidence(
-            task_context,
-            features,
-            include_facts=True,
-            include_hstar=False,
-            include_hlmcut=False,
-        ),
-        result.classifier.value if result.classifier is not None else None,
-    )
-
-    output_path.mkdir(parents=True, exist_ok=True)
-    artifacts: dict[str, Artifact] = {}
-    rollouts: list[JsonObject] = []
-    task_rows: list[JsonObject] = []
-    failure_rows: list[_ExecuteFailureRow] = []
-    success_rows: list[_ExecuteSuccessRow] = []
-    first_failure_id: str | None = None
-    problem = result.context.ext_task.problem_path.name
-    options = GroundModuleProgramSearchOptions()
-
-    for seed, rollout in result.rollout_results:
-        category = ext_rollout_category(rollout)
-        if category is None:
-            success_id = f"success-{len(success_rows) + 1:03d}"
-            trace_name = f"successes/{success_id}/trace"
-            header: list[tuple[str, str]] = [
-                (Keys.TOOL, result.kind.value),
-                (Keys.ID, success_id),
-                (Keys.CATEGORY, RunItemCategory.SUCCESS.value),
-                (Keys.STATUS, RunStatus.SUCCESS.value),
-                (Keys.TASK_FILE, problem),
-                (Keys.SEED, str(seed)),
-            ]
-            artifacts[trace_name] = ext_rollout_trace_document(
-                result.context.ext_task.task_context,
-                rollout,
-                features,
-                evidence,
-                feature_symbols=feature_symbols,
-                dicts=dicts,
-                header=header,
-                include_hstar=False,
-                include_hlmcut=False,
-            )
-            success_rows.append(
-                _ExecuteSuccessRow(success_id, RunItemCategory.SUCCESS.value, RunStatus.SUCCESS.value, seed, problem, trace_name)
-            )
-            rollouts.append({Keys.SEED: seed, Keys.STATUS: RunStatus.SUCCESS.value, Keys.CATEGORY: None})
-            task_rows.append({Keys.TASK_FILE: problem, Keys.STATUS: RunStatus.SUCCESS.value, Keys.CATEGORY: None, Keys.SEED: seed})
-            continue
-
-        failure_id = f"{category}-{len(failure_rows) + 1:03d}"
-        header: list[tuple[str, str]] = [
-            (Keys.TOOL, result.kind.value),
-            (Keys.ID, failure_id),
-            (Keys.CATEGORY, category),
-            (Keys.STATUS, RunStatus.FAILURE.value),
-            (Keys.TASK_FILE, problem),
-            (Keys.SEED, str(seed)),
-        ]
-        witness_doc, trace_doc, successors_doc, category_override = _ext_rollout_failure_docs(
-            result,
-            rollout,
-            options,
-            features,
-            evidence,
-            feature_symbols,
-            dicts,
-            header,
+    def summary_row(
+        row: _SolutionFailureRow | _SolutionSuccessRow,
+    ) -> list[JsonValue]:
+        category = (
+            row.category
+            if isinstance(row, _SolutionFailureRow)
+            else RunItemCategory.SUCCESS.value
         )
-        if category_override is not None and category_override != category:
-            category = category_override
-            failure_id = f"{category}-{len(failure_rows) + 1:03d}"
-            header = [(key, failure_id if key == Keys.ID else category if key == Keys.CATEGORY else value) for key, value in header]
-            witness_doc, trace_doc, successors_doc, _ = _ext_rollout_failure_docs(
-                result,
-                rollout,
-                options,
-                features,
-                evidence,
-                feature_symbols,
-                dicts,
-                header,
-            )
-        witness_name = f"failures/{failure_id}/witness"
-        trace_name = f"failures/{failure_id}/trace" if trace_doc is not None else None
-        successors_name = f"failures/{failure_id}/successors" if successors_doc is not None else None
-        plan_trace_name = None
-        artifacts[witness_name] = witness_doc
-        if trace_doc is not None and trace_name is not None:
-            artifacts[trace_name] = trace_doc
-        if successors_doc is not None and successors_name is not None:
-            artifacts[successors_name] = successors_doc
-        if category == RunItemCategory.OPEN_STATE.value:
-            terminal = rollout.contexts[-1].state
-            plan_trace = plan_open_state_trace(
-                task_context=result.context.ext_task.task_context,
-                state=terminal,
-                features=features,
-                dicts=dicts,
-                max_num_states=result.plan_trace_budget.max_num_states,
-                max_time_seconds=result.plan_trace_budget.max_time_seconds,
-            )
-            if plan_trace is not None:
-                plan_trace_name = f"failures/{failure_id}/plan_trace"
-                artifacts[plan_trace_name] = Document(header=[*header, (Keys.ORIGIN, "ff")], sections=plan_trace.sections)
-        failure_rows.append(
-            _ExecuteFailureRow(failure_id, category, RunStatus.FAILURE.value, seed, problem, witness_name, trace_name, successors_name, plan_trace_name)
-        )
-        first_failure_id = first_failure_id or failure_id
-        rollouts.append({Keys.SEED: seed, Keys.STATUS: RunStatus.FAILURE.value, Keys.CATEGORY: category})
-        task_rows.append({Keys.TASK_FILE: problem, Keys.STATUS: RunStatus.FAILURE.value, Keys.CATEGORY: category, Keys.SEED: seed})
+        return [row.id, category, row.status, row.seed, row.problem]
 
-    artifacts[Keys.FAILURES] = Table(
-        name="failures",
-        columns=[Keys.ID, Keys.CATEGORY, Keys.STATUS, Keys.SEED, Keys.TASK_FILE, Keys.ORIGIN, Keys.TRACE, Keys.WITNESS, Keys.SUCCESSORS, Keys.PLAN_TRACE],
-        rows=[
-            [
-                row.id,
-                row.category,
-                row.status,
-                row.seed,
-                row.problem,
-                _CUSTOM_ROLLOUT_ORIGIN,
-                _artifact_relative(row.trace),
-                _artifact_relative(row.witness),
-                _artifact_relative(row.successors),
-                _artifact_relative(row.plan_trace),
-            ]
-            for row in failure_rows
-        ],
-    )
-    artifacts[Keys.SUCCESSES] = Table(
-        name="successes",
-        columns=[Keys.ID, Keys.CATEGORY, Keys.STATUS, Keys.SEED, Keys.TASK_FILE, Keys.ORIGIN, Keys.TRACE],
-        rows=[[row.id, row.category, row.status, row.seed, row.problem, _CUSTOM_ROLLOUT_ORIGIN, _artifact_relative(row.trace)] for row in success_rows],
-    )
-    def summary_row(row: _ExecuteFailureRow | _ExecuteSuccessRow) -> list[JsonValue]:
-        return [row.id, row.category, row.status, row.seed, row.problem]
-
-    summary_rows: list[list[JsonValue]] = [summary_row(row) for row in failure_rows] + [
+    summary_rows = [summary_row(row) for row in failure_rows] + [
         summary_row(row) for row in success_rows
     ]
     artifacts[Keys.SUMMARY] = Table(
@@ -814,141 +548,74 @@ def _dump_execute_module_program_artifacts(
         rows=summary_rows,
     )
 
-    paths = write_run(output_path, {**{f"dicts/{name}": table for name, table in dicts.tables().items()}, **artifacts}, formats)
-    manifest = {
-        Keys.TOOL: result.kind.value,
+    paths = write_run(
+        output_path,
+        {
+            **{f"dicts/{name}": table for name, table in dicts.tables().items()},
+            **artifacts,
+        },
+        formats,
+    )
+    manifest: JsonObject = {
+        Keys.SCHEMA_VERSION: 1,
+        Keys.TOOL: _FIND_SOLUTION_TOOL,
+        Keys.STATUS: result.status.value,
+        Keys.CONTEXT: {Keys.ID: result.context.id, Keys.INDEX: result.context.index},
         **_candidate_metadata(result),
-        Keys.STATUS: RunStatus.SUCCESS.value if first_failure_id is None else RunStatus.FAILURE.value,
-        Keys.ROLLOUTS: rollouts,
-        Keys.TASKS: task_rows,
+        Keys.CLASSIFIER_ID: result.classifier.id if result.classifier is not None else None,
+        Keys.UNIVERSAL: result.universal,
+        Keys.ROLLOUT_COUNT: result.num_rollouts,
+        Keys.SEARCH_BUDGET: _budget_json(result.search_budget),
+        Keys.PLAN_TRACE_BUDGET: _budget_json(result.plan_trace_budget),
+        Keys.ROLLOUTS: [
+            {
+                Keys.SEED: None if result.universal else seed,
+                Keys.STATUS: status_name(proof.status),
+                Keys.SUCCESSFUL: bool(proof.is_successful()),
+            }
+            for seed, proof in result.results
+        ],
+        Keys.ARTIFACTS: {
+            Keys.SUMMARY: paths[Keys.SUMMARY],
+            Keys.FAILURES: paths[Keys.FAILURES],
+            Keys.SUCCESSES: paths[Keys.SUCCESSES],
+        },
         Keys.FAILURES: [
             {
                 Keys.ID: row.id,
                 Keys.CATEGORY: row.category,
+                Keys.STATUS: row.status,
                 Keys.TASK_FILE: row.problem,
                 Keys.SEED: row.seed,
-                Keys.WITNESS_PATH: paths.get(row.witness),
-                Keys.TRACE_PATH: paths.get(row.trace) if row.trace is not None else None,
-                Keys.SUCCESSORS_PATH: paths.get(row.successors) if row.successors is not None else None,
-                Keys.PLAN_TRACE_PATH: paths.get(row.plan_trace) if row.plan_trace is not None else None,
+                Keys.WITNESS_PATH: paths[row.witness],
+                Keys.TRACE_PATH: paths[row.trace] if row.trace is not None else None,
+                Keys.SUCCESSORS_PATH: paths[row.successors]
+                if row.successors is not None
+                else None,
+                Keys.PLAN_TRACE_PATH: paths[row.plan_trace]
+                if row.plan_trace is not None
+                else None,
             }
             for row in failure_rows
         ],
         Keys.SUCCESSES: [
             {
                 Keys.ID: row.id,
-                Keys.CATEGORY: row.category,
+                Keys.CATEGORY: RunItemCategory.SUCCESS.value,
+                Keys.STATUS: row.status,
                 Keys.TASK_FILE: row.problem,
                 Keys.SEED: row.seed,
-                Keys.TRACE_PATH: paths.get(row.trace),
+                Keys.TRACE_PATH: paths[row.trace],
             }
             for row in success_rows
         ],
+        Keys.OUTPUT_DIR: output_path.resolve().as_posix(),
     }
-    (output_path / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return RichDumpResult(output_dir=output_path, primary_file=output_path / "manifest.json")
-
-
-def _dump_prove_policy_artifacts(
-    result: ProvePolicyResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> RichDumpResult | None:
-    if not formats:
-        return None
-    task_context = result.context.base_task.task_context
-    features = collect_base_features(result.candidate.value)
-    dicts = Dictionaries(task=result.context.base_task.task_context.search_context.task, ext=False)
-    feature_symbols = _populate_feature_dictionary(dicts, features)
-    intern_base_rules(result.candidate.value, dicts)
-    evidence = classifier_evidence(
-        task_context,
-        state_evidence(
-            task_context,
-            features,
-            include_facts=True,
-            include_hstar=False,
-            include_hlmcut=False,
-        ),
-        result.evidence_classifier.value if result.evidence_classifier is not None else None,
+    manifest_path = output_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    envelope: JsonObject = build_proof_run(
-        tool=result.kind.value,
-        output_dir=output_path,
-        metadata=_candidate_metadata(result),
-        task=result.context.base_task,
-        result=result.proof,
-        feature_symbols=feature_symbols,
-        dicts=dicts,
-        ext=False,
-        evidence=evidence,
-        expander=make_frontier_expander(
-            result.context.base_task.task_context, result.candidate.value, evidence
-        ),
-        open_state_plan=lambda state: plan_open_state_trace(
-            task_context=result.context.base_task.task_context,
-            state=state,
-            features=features,
-            dicts=dicts,
-            max_num_states=result.plan_trace_budget.max_num_states,
-            max_time_seconds=result.plan_trace_budget.max_time_seconds,
-        ),
-        include_hstar=False,
-        include_hlmcut=False,
-    )
-    output_dir = _output_dir_from_envelope(envelope, output_path)
-    path = output_dir / "run.json"
-    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return RichDumpResult(output_dir=output_dir, primary_file=path)
-
-
-def _dump_prove_module_program_artifacts(
-    result: ProveModuleProgramResult, output_path: Path, formats: tuple[Fmt, ...]
-) -> RichDumpResult | None:
-    if not formats:
-        return None
-    task_context = result.context.ext_task.task_context
-    features = collect_ext_features(result.candidate.value)
-    dicts = Dictionaries(task=result.context.ext_task.task_context.search_context.task, ext=True)
-    feature_symbols = _populate_feature_dictionary(dicts, features)
-    intern_ext_rules(result.candidate.value, dicts)
-    evidence = classifier_evidence(
-        task_context,
-        state_evidence(
-            task_context,
-            features,
-            include_facts=True,
-            include_hstar=False,
-            include_hlmcut=False,
-        ),
-        result.evidence_classifier.value if result.evidence_classifier is not None else None,
-    )
-    envelope: JsonObject = build_proof_run(
-        tool=result.kind.value,
-        output_dir=output_path,
-        metadata=_candidate_metadata(result),
-        task=result.context.ext_task,
-        result=result.proof,
-        feature_symbols=feature_symbols,
-        dicts=dicts,
-        ext=True,
-        evidence=evidence,
-        expander=make_ext_frontier_expander(
-            result.context.ext_task.task_context, result.candidate.value, evidence
-        ),
-        open_state_plan=lambda state: plan_open_state_trace(
-            task_context=result.context.ext_task.task_context,
-            state=state,
-            features=features,
-            dicts=dicts,
-            max_num_states=result.plan_trace_budget.max_num_states,
-            max_time_seconds=result.plan_trace_budget.max_time_seconds,
-        ),
-        include_hstar=False,
-        include_hlmcut=False,
-    )
-    output_dir = _output_dir_from_envelope(envelope, output_path)
-    path = output_dir / "run.json"
-    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return RichDumpResult(output_dir=output_dir, primary_file=path)
+    return RichDumpResult(output_dir=output_path, primary_file=manifest_path)
 
 
 def _dump_prove_classifier_artifacts(
@@ -1141,16 +808,12 @@ def _dump_prove_termination_artifacts(
 def _dump_rich_artifacts(
     result: ValidationResult, output_path: Path, formats: tuple[Fmt, ...]
 ) -> RichDumpResult | None:
-    if isinstance(result, ExecutePolicyResult):
-        return _dump_execute_policy_artifacts(result, output_path, formats)
-    if isinstance(result, ExecuteModuleProgramResult):
-        return _dump_execute_module_program_artifacts(result, output_path, formats)
-    if isinstance(result, ProvePolicyResult):
-        return _dump_prove_policy_artifacts(result, output_path, formats)
-    if isinstance(result, ProveModuleProgramResult):
-        return _dump_prove_module_program_artifacts(result, output_path, formats)
+    if isinstance(result, (FindPolicySolutionResult, FindModuleProgramSolutionResult)):
+        return _dump_solution_artifacts(result, output_path, formats)
     if isinstance(result, ProveClassifierResult):
         return _dump_prove_classifier_artifacts(result, output_path, formats)
+    if isinstance(result, ProvePolicyTerminationResult):
+        return None
     return _dump_prove_termination_artifacts(result, output_path, formats)
 
 
@@ -1223,10 +886,10 @@ def _witness_info_from_file(path: Path) -> tuple[str | None, tuple[str, ...]]:
     return None, tuple(ids)
 
 
-def execute_observation_from_manifest(
+def solution_observation_from_manifest(
     result: ValidationResult, manifest_path: Path | None
 ) -> ValidationObservation:
-    if not isinstance(result, (ExecutePolicyResult, ExecuteModuleProgramResult)):
+    if not isinstance(result, (FindPolicySolutionResult, FindModuleProgramSolutionResult)):
         return result.observation
     if manifest_path is None or not manifest_path.exists():
         return result.observation
@@ -1300,7 +963,7 @@ def dump_result(
     actual_output_dir = rich_dump.output_dir if rich_dump is not None else output_path
     if rich_dump is not None:
         files.append(rich_dump.primary_file)
-    observation = execute_observation_from_manifest(
+    observation = solution_observation_from_manifest(
         result, rich_dump.primary_file if rich_dump is not None else None
     )
 

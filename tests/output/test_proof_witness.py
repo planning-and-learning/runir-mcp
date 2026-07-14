@@ -42,7 +42,7 @@ def test_open_state_counterexample_document():
     dicts = Dictionaries()
     state = witness_state(OPEN_STATE, witness=True, open_state=True)
     doc = counterexample_document(
-        header=[("tool", "prove_policy"), ("category", "open_state")],
+        header=[("tool", "runir.ps.find_solution"), ("category", "open_state")],
         feature_symbols=["n_undeliv", "b_goal"],
         states=[state],
         transitions=[],
@@ -61,7 +61,7 @@ def test_trace_transitions_alias_and_delta():
     edge: JsonObject = {"action": "(deliver ball1)", "rule": "deliver"}
     transition = witness_transition(edge, step=0, source=BASE_STATE, target={**OPEN_STATE, "feature_values": {"n_undeliv": 2, "b_goal": False}}, ext=False)
     doc = trace_document(
-        header=[("tool", "prove_policy")],
+        header=[("tool", "runir.ps.find_solution")],
         feature_symbols=["n_undeliv", "b_goal"],
         states=[witness_state(BASE_STATE)],
         transitions=[transition],
@@ -87,7 +87,7 @@ def test_successor_targets_and_gap():
     src: JsonObject = BASE_STATE
     goal_target: JsonObject = {**OPEN_STATE, "state_index": 20, "is_goal": True, "feature_values": {"n_undeliv": 2, "b_goal": True}}
     succ = successor(src, {"action": "(deliver)", "rule": None}, goal_target)
-    doc = successors_document(header=[("tool", "prove_policy")], feature_symbols=["n_undeliv", "b_goal"], successors=[succ], dicts=dicts, ext=False)
+    doc = successors_document(header=[("tool", "runir.ps.find_solution")], feature_symbols=["n_undeliv", "b_goal"], successors=[succ], dicts=dicts, ext=False)
     psv = render_document(doc, "psv")
     # goal-reaching successor with an empty rule cell = the missing-guidance gap
     assert "s10|a0|s20||goal|f0:3>2 f1:F>T" in psv

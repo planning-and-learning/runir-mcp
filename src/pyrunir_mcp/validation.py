@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
-from typing import TypeAlias
+from typing import TypeAlias, overload
 
 from pypddl.formalism import ParserOptions
 from pyrunir.datasets import (
@@ -19,25 +20,29 @@ from pyrunir.kr.dl.ext import ConstructorRepositoryFactory as ExtDLRepositoryFac
 from pyrunir.kr.dl.uns import ConstructorRepositoryFactory as UnsDLRepositoryFactory
 from pyrunir.kr.dl.uns.semantics import GroundEvaluationContext
 from pyrunir.kr.ps.base import (
+    GroundSketchProofResults,
     GroundSketchSearchOptions,
+    find_ground_solution as find_base_solution,
 )
 from pyrunir.kr.ps.base import RepositoryFactory as BasePolicyRepositoryFactory
-from pyrunir.kr.ps.base import (
-    prove_ground_solution as prove_base_solution,
+from pyrunir.kr.ps.base.dl import (
+    SketchFactory,
+    StructuralTerminationResult as PolicyStructuralTerminationResult,
+    StructuralTerminationStatus as PolicyStructuralTerminationStatus,
+    parse_sketch,
+    structural_termination as policy_structural_termination,
 )
-from pyrunir.kr.ps.base.dl import SketchFactory, parse_sketch
 from pyrunir.kr.ps.ext import (
+    GroundModuleProgramProofResults,
     GroundModuleProgramSearchOptions,
+    find_ground_solution as find_ext_solution,
 )
 from pyrunir.kr.ps.ext import RepositoryFactory as ExtPolicyRepositoryFactory
-from pyrunir.kr.ps.ext import (
-    prove_ground_solution as prove_ext_solution,
-)
 from pyrunir.kr.ps.ext.dl import (
     ModuleProgramStructuralTerminationResult,
     StructuralTerminationStatus,
     parse_module_program,
-    structural_termination,
+    structural_termination as module_program_structural_termination,
 )
 from pyrunir.kr.uns import RepositoryFactory as ClassifierRepositoryFactory
 from pyrunir.kr.uns import classify
@@ -67,7 +72,6 @@ from pyrunir_mcp.enums import (
     AtomKind,
     CandidateSource,
     CounterexampleKind,
-    RolloutOutcome,
     ValidationKind,
     ValidationStatus,
 )
@@ -84,39 +88,16 @@ from pyrunir_mcp.kr.ps.base.core.data_loader import (
 from pyrunir_mcp.kr.ps.base.core.features import (
     BasePolicyContext,
 )
-from pyrunir_mcp.kr.ps.base.core.features import (
-    ExecutionFailure as BaseExecutionFailure,
-)
-from pyrunir_mcp.kr.ps.base.core.features import collect_features as collect_base_policy_features
-from pyrunir_mcp.kr.ps.base.rollout import (
-    RolloutResult,
-    greedy_policy_rollout,
-    rollout_category,
-    rollout_witness,
-)
-from pyrunir_mcp.kr.ps.classifier import ClassifierContext, classifier_evidence
-from pyrunir_mcp.kr.ps.execute import configure_search_options, rollout_seeds
-from pyrunir_mcp.kr.ps.ext.core.features import (
-    ExecutionFailure as ExtExecutionFailure,
-)
+from pyrunir_mcp.kr.ps.classifier import ClassifierContext
 from pyrunir_mcp.kr.ps.ext.core.features import (
     ModuleProgramContext,
 )
-from pyrunir_mcp.kr.ps.ext.rollout import (
-    ExtRolloutResult,
-    ext_rollout_category,
-    ext_rollout_witness,
-    greedy_module_program_rollout,
-)
-from pyrunir_mcp.kr.ps.ext.rules import collect_features as collect_ext_program_features
-from pyrunir_mcp.kr.ps.feature_evidence import AtomEvidence, state_atom_evidence, state_evidence
+from pyrunir_mcp.kr.ps.feature_evidence import AtomEvidence, state_atom_evidence
 from pyrunir_mcp.kr.ps.proof import (
     FailureWitness,
     ProofResult,
     ProofStatus,
-    StateEvidence,
     failure_items,
-    make_search_options,
     state_summary,
 )
 from pyrunir_mcp.kr.uns.serialize import feature_values as classifier_feature_values
@@ -151,22 +132,23 @@ class FailureFingerprint:
 
 
 @dataclass(frozen=True, slots=True)
-class ExecuteObservationDetails:
-    failure_problem_file: str | None
-    failure_status: object | None
-    num_rollouts: int
-
-
-@dataclass(frozen=True, slots=True)
-class ProofObservationDetails:
-    proof_status: ProofStatus
+class FindSolutionObservationDetails:
+    proof_statuses: tuple[ProofStatus, ...]
     successful: bool
+    universal: bool
+    num_rollouts: int
 
 
 @dataclass(frozen=True, slots=True)
 class ClassifierObservationDetails:
     counts: ClassifierProofCounts
     state_graph_status: SearchStatus | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyTerminationObservationDetails:
+    policy_status: PolicyStructuralTerminationStatus
+    terminating: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,9 +159,9 @@ class TerminationObservationDetails:
 
 
 ObservationDetails: TypeAlias = (
-    ExecuteObservationDetails
-    | ProofObservationDetails
+    FindSolutionObservationDetails
     | ClassifierObservationDetails
+    | PolicyTerminationObservationDetails
     | TerminationObservationDetails
 )
 
@@ -195,9 +177,6 @@ class ValidationObservation:
     fingerprint: FailureFingerprint | None = None
 
 
-ExecutionFailure: TypeAlias = BaseExecutionFailure | ExtExecutionFailure
-
-
 def _required_budget_values(budget: SearchBudget, *, name: str) -> tuple[int, float]:
     if budget.max_num_states is None or budget.max_time_seconds is None:
         raise ValueError(f"{name} requires max_num_states and max_time_seconds")
@@ -205,7 +184,7 @@ def _required_budget_values(budget: SearchBudget, *, name: str) -> tuple[int, fl
 
 
 @dataclass(frozen=True, slots=True)
-class ExecutePolicyResult:
+class FindPolicySolutionResult:
     id: str
     kind: ValidationKind
     status: ValidationStatus
@@ -213,17 +192,15 @@ class ExecutePolicyResult:
     candidate: Policy
     observation: ValidationObservation
     classifier: Classifier | None
-    failure: BaseExecutionFailure | None
-    successful_results: tuple[tuple[int, ProofResult], ...]
+    universal: bool
     num_rollouts: int
-    failure_results: tuple[tuple[int, BaseExecutionFailure], ...] = ()
-    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
-    rollout_results: tuple[tuple[int, RolloutResult], ...] = ()
+    results: tuple[tuple[int, GroundSketchProofResults], ...]
+    search_budget: SearchBudget
+    plan_trace_budget: SearchBudget
 
 
 @dataclass(frozen=True, slots=True)
-class ExecuteModuleProgramResult:
+class FindModuleProgramSolutionResult:
     id: str
     kind: ValidationKind
     status: ValidationStatus
@@ -231,41 +208,11 @@ class ExecuteModuleProgramResult:
     candidate: ModuleProgram
     observation: ValidationObservation
     classifier: Classifier | None
-    failure: ExtExecutionFailure | None
-    successful_results: tuple[tuple[int, ProofResult], ...]
+    universal: bool
     num_rollouts: int
-    failure_results: tuple[tuple[int, ExtExecutionFailure], ...] = ()
-    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
-    rollout_results: tuple[tuple[int, ExtRolloutResult], ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class ProvePolicyResult:
-    id: str
-    kind: ValidationKind
-    status: ValidationStatus
-    context: TaskContext
-    candidate: Policy
-    observation: ValidationObservation
-    evidence_classifier: Classifier | None
-    proof: ProofResult
-    search_budget: SearchBudget = PROVE_SEARCH_BUDGET
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
-
-
-@dataclass(frozen=True, slots=True)
-class ProveModuleProgramResult:
-    id: str
-    kind: ValidationKind
-    status: ValidationStatus
-    context: TaskContext
-    candidate: ModuleProgram
-    observation: ValidationObservation
-    evidence_classifier: Classifier | None
-    proof: ProofResult
-    search_budget: SearchBudget = PROVE_SEARCH_BUDGET
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET
+    results: tuple[tuple[int, GroundModuleProgramProofResults], ...]
+    search_budget: SearchBudget
+    plan_trace_budget: SearchBudget
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +230,17 @@ class ProveClassifierResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ProvePolicyTerminationResult:
+    id: str
+    kind: ValidationKind
+    status: ValidationStatus
+    domain_context: DomainContext
+    candidate: Policy
+    observation: ValidationObservation
+    policy_result: PolicyStructuralTerminationResult
+
+
+@dataclass(frozen=True, slots=True)
 class ProveTerminationResult:
     id: str
     kind: ValidationKind
@@ -295,11 +253,10 @@ class ProveTerminationResult:
 
 
 ValidationResult: TypeAlias = (
-    ExecutePolicyResult
-    | ExecuteModuleProgramResult
-    | ProvePolicyResult
-    | ProveModuleProgramResult
+    FindPolicySolutionResult
+    | FindModuleProgramSolutionResult
     | ProveClassifierResult
+    | ProvePolicyTerminationResult
     | ProveTerminationResult
 )
 
@@ -475,87 +432,6 @@ def _next_result_id(domain_context: DomainContext) -> str:
 
 
 
-def _execute_rollout_details(
-    context: TaskContext, first_failure: RolloutResult | None, num_rollouts: int
-) -> ExecuteObservationDetails:
-    if first_failure is None:
-        return ExecuteObservationDetails(
-            failure_problem_file=None,
-            failure_status=None,
-            num_rollouts=num_rollouts,
-        )
-    return ExecuteObservationDetails(
-        failure_problem_file=context.base_task.problem_path.name,
-        failure_status=rollout_category(first_failure),
-        num_rollouts=num_rollouts,
-    )
-
-
-def _execute_rollout_fingerprint(
-    *,
-    kind: ValidationKind,
-    status: ValidationStatus,
-    context: TaskContext,
-    first_failure: RolloutResult | None,
-) -> FailureFingerprint | None:
-    if first_failure is None or status is ValidationStatus.SUCCESS:
-        return None
-    category = rollout_category(first_failure)
-    if category is None:
-        return None
-    return FailureFingerprint(
-        kind=kind,
-        status=status,
-        problem_file=context.base_task.problem_path.name,
-        category=category,
-        witness=rollout_witness(first_failure),
-    )
-
-
-
-def _execute_ext_rollout_details(
-    context: TaskContext, first_failure: ExtRolloutResult | None, num_rollouts: int
-) -> ExecuteObservationDetails:
-    if first_failure is None:
-        return ExecuteObservationDetails(
-            failure_problem_file=None,
-            failure_status=None,
-            num_rollouts=num_rollouts,
-        )
-    return ExecuteObservationDetails(
-        failure_problem_file=context.ext_task.problem_path.name,
-        failure_status=ext_rollout_category(first_failure),
-        num_rollouts=num_rollouts,
-    )
-
-
-def _execute_ext_rollout_fingerprint(
-    *,
-    kind: ValidationKind,
-    status: ValidationStatus,
-    context: TaskContext,
-    first_failure: ExtRolloutResult | None,
-) -> FailureFingerprint | None:
-    if first_failure is None or status is ValidationStatus.SUCCESS:
-        return None
-    category = ext_rollout_category(first_failure)
-    if category is None:
-        return None
-    return FailureFingerprint(
-        kind=kind,
-        status=status,
-        problem_file=context.ext_task.problem_path.name,
-        category=category,
-        witness=ext_rollout_witness(first_failure),
-    )
-
-def _proof_details(proof: ProofResult) -> ProofObservationDetails:
-    return ProofObservationDetails(
-        proof_status=proof.status,
-        successful=bool(proof.is_successful()),
-    )
-
-
 def _state_id_for_vertex(proof: ProofResult, vertex: int) -> str:
     graph = getattr(proof, "graph", None)
     if graph is None:
@@ -567,16 +443,6 @@ def _state_id_for_vertex(proof: ProofResult, vertex: int) -> str:
     if isinstance(state_index, int | str | float):
         return f"s{int(state_index)}"
     return f"s{int(vertex)}"
-
-
-def _state_id_for_deadend_transition(proof: ProofResult, edge: int) -> str:
-    graph = getattr(proof, "graph", None)
-    if graph is None:
-        return str(int(edge))
-    try:
-        return _state_id_for_vertex(proof, int(graph.get_target(int(edge))))
-    except Exception:
-        return str(int(edge))
 
 
 def _state_id_key(value: str) -> tuple[int, str]:
@@ -629,8 +495,6 @@ def _witness_parts(
         return rotate_smallest_state_id_first(
             [_cycle_vertex_part(proof, int(vertex)) for vertex in witness]
         )
-    if category is CounterexampleKind.DEADEND_TRANSITION and not isinstance(witness, list):
-        return (_state_id_for_deadend_transition(proof, int(witness)),)
     if isinstance(witness, list):
         return tuple(_state_id_for_vertex(proof, int(vertex)) for vertex in witness)
     return (_state_id_for_vertex(proof, int(witness)),)
@@ -642,15 +506,12 @@ def _proof_fingerprint(
     status: ValidationStatus,
     problem_file: str | None,
     proof: ProofResult,
-    evidence: StateEvidence | None = None,
 ) -> FailureFingerprint | None:
     if status is ValidationStatus.SUCCESS:
         return None
     items = failure_items(
         proof,
-        max_open_state_counterexamples=1,
-        max_deadend_transition_counterexamples=1,
-        evidence=evidence,
+        max_counterexamples=1,
     )
     if items:
         category, witness = items[0]
@@ -710,48 +571,6 @@ def _classifier_details(
     )
 
 
-def _base_classifier_evidence(
-    task_context: GroundTaskContext,
-    policy: Policy,
-    classifier: Classifier | None,
-) -> StateEvidence | None:
-    if classifier is None:
-        return None
-    features = collect_base_policy_features(policy.value)
-    return classifier_evidence(
-        task_context,
-        state_evidence(
-            task_context,
-            features,
-            include_facts=True,
-            include_hstar=False,
-            include_hlmcut=False,
-        ),
-        classifier.value,
-    )
-
-
-def _ext_classifier_evidence(
-    task_context: GroundTaskContext,
-    module_program: ModuleProgram,
-    classifier: Classifier | None,
-) -> StateEvidence | None:
-    if classifier is None:
-        return None
-    features = collect_ext_program_features(module_program.value)
-    return classifier_evidence(
-        task_context,
-        state_evidence(
-            task_context,
-            features,
-            include_facts=True,
-            include_hstar=False,
-            include_hlmcut=False,
-        ),
-        classifier.value,
-    )
-
-
 def _validation_observation(
     *,
     result_id: str,
@@ -773,251 +592,373 @@ def _validation_observation(
     )
 
 
-def execute_policy(
+def _solution_budget(universal: bool, search_budget: SearchBudget | None) -> SearchBudget:
+    budget = search_budget or (PROVE_SEARCH_BUDGET if universal else EXECUTE_SEARCH_BUDGET)
+    if universal:
+        _required_budget_values(budget, name="universal find_solution search_budget")
+    return budget
+
+
+@overload
+def _search_options(
+    options: GroundSketchSearchOptions,
+    *,
+    random_seed: int,
+    shuffle_labeled_succ_nodes: bool,
+    search_budget: SearchBudget,
+) -> GroundSketchSearchOptions: ...
+
+
+@overload
+def _search_options(
+    options: GroundModuleProgramSearchOptions,
+    *,
+    random_seed: int,
+    shuffle_labeled_succ_nodes: bool,
+    search_budget: SearchBudget,
+) -> GroundModuleProgramSearchOptions: ...
+
+
+def _search_options(
+    options: GroundSketchSearchOptions | GroundModuleProgramSearchOptions,
+    *,
+    random_seed: int,
+    shuffle_labeled_succ_nodes: bool,
+    search_budget: SearchBudget,
+) -> GroundSketchSearchOptions | GroundModuleProgramSearchOptions:
+    options.random_seed = random_seed
+    options.shuffle_labeled_succ_nodes = shuffle_labeled_succ_nodes
+    if search_budget.max_num_states is not None:
+        options.max_num_states = search_budget.max_num_states
+    if search_budget.max_time_seconds is not None:
+        options.max_time = timedelta(seconds=search_budget.max_time_seconds)
+    return options
+
+
+def _solution_seeds(
+    *, num_rollouts: int, universal: bool, random_seed: int, random_seed_start: int
+) -> list[int]:
+    if num_rollouts < 1:
+        raise ValueError("num_rollouts must be at least 1")
+    if universal:
+        return [random_seed]
+    if num_rollouts == 1:
+        return [random_seed]
+    return [random_seed_start + offset for offset in range(num_rollouts)]
+
+
+def _solution_details(
+    results: tuple[tuple[int, ProofResult], ...], *, universal: bool, num_rollouts: int
+) -> FindSolutionObservationDetails:
+    return FindSolutionObservationDetails(
+        proof_statuses=tuple(result.status for _, result in results),
+        successful=all(result.is_successful() for _, result in results),
+        universal=universal,
+        num_rollouts=num_rollouts,
+    )
+
+
+def _first_failed_solution(
+    results: tuple[tuple[int, ProofResult], ...],
+) -> ProofResult | None:
+    return next((result for _, result in results if not result.is_successful()), None)
+
+
+def _find_policy_solution(
     context: TaskContext,
     policy: Policy,
     *,
-    classifier: Classifier | None = None,
-    num_rollouts: int = 1,
-    random_seed: int = 0,
-    random_seed_start: int = 0,
-    shuffle_labeled_succ_nodes: bool = True,
-    max_arity: int = 0,
-    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET,
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
-) -> ExecutePolicyResult:
-    del max_arity
-    classifier_value = (
-        classifier.value
-        if classifier is not None
-        else ClassifierFactory.create_empty(
-            context.domain_context.classifier_context.classifier_repository
-        )
-    )
-    rollout_results: list[tuple[int, RolloutResult]] = []
-    first_failure: RolloutResult | None = None
-    max_steps = search_budget.max_num_states
-    for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
-        rollout = greedy_policy_rollout(
-            context.base_task.task_context,
-            policy.value,
-            classifier_value,
-            max_steps=max_steps if max_steps is not None else 1_000_000,
+    classifier: Classifier | None,
+    universal: bool,
+    num_rollouts: int,
+    random_seed: int,
+    random_seed_start: int,
+    shuffle_labeled_succ_nodes: bool,
+    search_budget: SearchBudget,
+    plan_trace_budget: SearchBudget,
+) -> FindPolicySolutionResult:
+    results: list[tuple[int, GroundSketchProofResults]] = []
+    for seed in _solution_seeds(
+        num_rollouts=num_rollouts,
+        universal=universal,
+        random_seed=random_seed,
+        random_seed_start=random_seed_start,
+    ):
+        options = _search_options(
+            GroundSketchSearchOptions(),
             random_seed=seed,
             shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+            search_budget=search_budget,
         )
-        rollout_results.append((seed, rollout))
-        if rollout.outcome is not RolloutOutcome.GOAL and first_failure is None:
-            first_failure = rollout
-    status = ValidationStatus.SUCCESS if first_failure is None else ValidationStatus.FAILURE
+        options.universal = universal
+        options.classifier = classifier.value if classifier is not None else None
+        results.append(
+            (seed, find_base_solution(context.base_task.task_context, policy.value, options))
+        )
+
+    solution_results = tuple(results)
+    failed = _first_failed_solution(solution_results)
+    status = ValidationStatus.FAILURE if failed is not None else ValidationStatus.SUCCESS
+    kind = ValidationKind.BASE_FIND_SOLUTION
     result_id = _next_result_id(context.domain_context)
-    details = _execute_rollout_details(context, first_failure, num_rollouts)
     observation = _validation_observation(
         result_id=result_id,
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=kind,
         status=status,
         candidate=policy,
         classifier=classifier,
-        details=details,
-        fingerprint=_execute_rollout_fingerprint(
-            kind=ValidationKind.BASE_EXECUTE,
-            status=status,
-            context=context,
-            first_failure=first_failure,
+        details=_solution_details(
+            solution_results, universal=universal, num_rollouts=num_rollouts
+        ),
+        fingerprint=(
+            _proof_fingerprint(
+                kind=kind,
+                status=status,
+                problem_file=context.problem_file.name,
+                proof=failed,
+            )
+            if failed is not None
+            else None
         ),
     )
-    return ExecutePolicyResult(
+    return FindPolicySolutionResult(
         id=result_id,
-        kind=ValidationKind.BASE_EXECUTE,
+        kind=kind,
         status=status,
         context=context,
         candidate=policy,
         observation=observation,
         classifier=classifier,
-        failure=None,
-        successful_results=(),
+        universal=universal,
         num_rollouts=num_rollouts,
-        failure_results=(),
+        results=solution_results,
         search_budget=search_budget,
         plan_trace_budget=plan_trace_budget,
-        rollout_results=tuple(rollout_results),
     )
 
 
-def execute_module_program(
+def _find_module_program_solution(
     context: TaskContext,
     module_program: ModuleProgram,
     *,
+    classifier: Classifier | None,
+    universal: bool,
+    num_rollouts: int,
+    random_seed: int,
+    random_seed_start: int,
+    shuffle_labeled_succ_nodes: bool,
+    shuffle_choice_points: bool,
+    search_budget: SearchBudget,
+    plan_trace_budget: SearchBudget,
+) -> FindModuleProgramSolutionResult:
+    results: list[tuple[int, GroundModuleProgramProofResults]] = []
+    for seed in _solution_seeds(
+        num_rollouts=num_rollouts,
+        universal=universal,
+        random_seed=random_seed,
+        random_seed_start=random_seed_start,
+    ):
+        options = _search_options(
+            GroundModuleProgramSearchOptions(),
+            random_seed=seed,
+            shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+            search_budget=search_budget,
+        )
+        options.universal = universal
+        options.classifier = classifier.value if classifier is not None else None
+        options.shuffle_choice_points = shuffle_choice_points
+        results.append(
+            (
+                seed,
+                find_ext_solution(
+                    context.ext_task.task_context, module_program.value, options
+                ),
+            )
+        )
+
+    solution_results = tuple(results)
+    failed = _first_failed_solution(solution_results)
+    status = ValidationStatus.FAILURE if failed is not None else ValidationStatus.SUCCESS
+    kind = ValidationKind.EXT_FIND_SOLUTION
+    result_id = _next_result_id(context.domain_context)
+    observation = _validation_observation(
+        result_id=result_id,
+        kind=kind,
+        status=status,
+        candidate=module_program,
+        classifier=classifier,
+        details=_solution_details(
+            solution_results, universal=universal, num_rollouts=num_rollouts
+        ),
+        fingerprint=(
+            _proof_fingerprint(
+                kind=kind,
+                status=status,
+                problem_file=context.problem_file.name,
+                proof=failed,
+            )
+            if failed is not None
+            else None
+        ),
+    )
+    return FindModuleProgramSolutionResult(
+        id=result_id,
+        kind=kind,
+        status=status,
+        context=context,
+        candidate=module_program,
+        observation=observation,
+        classifier=classifier,
+        universal=universal,
+        num_rollouts=num_rollouts,
+        results=solution_results,
+        search_budget=search_budget,
+        plan_trace_budget=plan_trace_budget,
+    )
+
+
+@overload
+def find_solution(
+    context: TaskContext,
+    candidate: Policy,
+    *,
     classifier: Classifier | None = None,
+    universal: bool = False,
     num_rollouts: int = 1,
     random_seed: int = 0,
     random_seed_start: int = 0,
     shuffle_labeled_succ_nodes: bool = True,
-    max_arity: int = 0,
-    search_budget: SearchBudget = EXECUTE_SEARCH_BUDGET,
+    shuffle_choice_points: bool = True,
+    search_budget: SearchBudget | None = None,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
-) -> ExecuteModuleProgramResult:
-    classifier_value = (
-        classifier.value
-        if classifier is not None
-        else ClassifierFactory.create_empty(
-            context.domain_context.classifier_context.classifier_repository
-        )
-    )
-    rollout_results: list[tuple[int, ExtRolloutResult]] = []
-    first_failure: ExtRolloutResult | None = None
-    for seed in rollout_seeds(num_rollouts, random_seed, random_seed_start):
-        options = configure_search_options(
-            GroundModuleProgramSearchOptions(),
-            random_seed=seed,
-            shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
-            max_arity=max_arity,
-            max_num_states=search_budget.max_num_states,
-            max_time_seconds=search_budget.max_time_seconds,
-        )
-        rollout = greedy_module_program_rollout(
-            context.ext_task.task_context,
-            module_program.value,
-            classifier_value,
-            options,
-            max_steps=search_budget.max_num_states or 1_000_000,
-        )
-        rollout_results.append((seed, rollout))
-        if ext_rollout_category(rollout) is not None and first_failure is None:
-            first_failure = rollout
-    status = ValidationStatus.SUCCESS if first_failure is None else ValidationStatus.FAILURE
-    result_id = _next_result_id(context.domain_context)
-    details = _execute_ext_rollout_details(context, first_failure, num_rollouts)
-    observation = _validation_observation(
-        result_id=result_id,
-        kind=ValidationKind.EXT_EXECUTE,
-        status=status,
-        candidate=module_program,
-        classifier=classifier,
-        details=details,
-        fingerprint=_execute_ext_rollout_fingerprint(
-            kind=ValidationKind.EXT_EXECUTE,
-            status=status,
-            context=context,
-            first_failure=first_failure,
-        ),
-    )
-    return ExecuteModuleProgramResult(
-        result_id,
-        ValidationKind.EXT_EXECUTE,
-        status,
-        context,
-        module_program,
-        observation,
-        classifier,
-        None,
-        (),
-        num_rollouts,
-        (),
-        search_budget,
-        plan_trace_budget,
-        tuple(rollout_results),
-    )
+) -> FindPolicySolutionResult: ...
 
 
-def prove_policy(
+@overload
+def find_solution(
     context: TaskContext,
+    candidate: ModuleProgram,
+    *,
+    classifier: Classifier | None = None,
+    universal: bool = False,
+    num_rollouts: int = 1,
+    random_seed: int = 0,
+    random_seed_start: int = 0,
+    shuffle_labeled_succ_nodes: bool = True,
+    shuffle_choice_points: bool = True,
+    search_budget: SearchBudget | None = None,
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
+) -> FindModuleProgramSolutionResult: ...
+
+
+def find_solution(
+    context: TaskContext,
+    candidate: Policy | ModuleProgram,
+    *,
+    classifier: Classifier | None = None,
+    universal: bool = False,
+    num_rollouts: int = 1,
+    random_seed: int = 0,
+    random_seed_start: int = 0,
+    shuffle_labeled_succ_nodes: bool = True,
+    shuffle_choice_points: bool = True,
+    search_budget: SearchBudget | None = None,
+    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
+) -> FindPolicySolutionResult | FindModuleProgramSolutionResult:
+    budget = _solution_budget(universal, search_budget)
+    if isinstance(candidate, Policy):
+        return _find_policy_solution(
+            context,
+            candidate,
+            classifier=classifier,
+            universal=universal,
+            num_rollouts=num_rollouts,
+            random_seed=random_seed,
+            random_seed_start=random_seed_start,
+            shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+            search_budget=budget,
+            plan_trace_budget=plan_trace_budget,
+        )
+    return _find_module_program_solution(
+        context,
+        candidate,
+        classifier=classifier,
+        universal=universal,
+        num_rollouts=num_rollouts,
+        random_seed=random_seed,
+        random_seed_start=random_seed_start,
+        shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+        shuffle_choice_points=shuffle_choice_points,
+        search_budget=budget,
+        plan_trace_budget=plan_trace_budget,
+    )
+
+
+
+def _policy_termination_observation_details(
+    policy_result: PolicyStructuralTerminationResult,
+) -> PolicyTerminationObservationDetails:
+    return PolicyTerminationObservationDetails(
+        policy_status=policy_result.status,
+        terminating=bool(policy_result.is_terminating()),
+    )
+
+
+def _policy_termination_fingerprint(
+    *,
+    status: ValidationStatus,
+    policy_result: PolicyStructuralTerminationResult,
+) -> FailureFingerprint | None:
+    if status is ValidationStatus.SUCCESS:
+        return None
+    return FailureFingerprint(
+        kind=ValidationKind.BASE_TERMINATION,
+        status=status,
+        problem_file=None,
+        category="structural_termination",
+        witness=(policy_result.status.name.lower(),),
+    )
+
+
+def prove_policy_termination(
+    domain_context: DomainContext,
     policy: Policy,
     *,
-    evidence_classifier: Classifier | None = None,
-    search_budget: SearchBudget = PROVE_SEARCH_BUDGET,
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
-) -> ProvePolicyResult:
-    max_num_states, max_time_seconds = _required_budget_values(
-        search_budget, name="prove_policy search_budget"
-    )
-    proof = prove_base_solution(
-        context.base_task.task_context,
+    max_features: int,
+    use_incomplete_preprocessing: bool,
+) -> ProvePolicyTerminationResult:
+    policy_result = policy_structural_termination(
         policy.value,
-        make_search_options(GroundSketchSearchOptions(), max_num_states, max_time_seconds),
+        max_features=max_features,
+        use_incomplete_preprocessing=use_incomplete_preprocessing,
     )
-    status = ValidationStatus.SUCCESS if proof.is_successful() else ValidationStatus.FAILURE
-    result_id = _next_result_id(context.domain_context)
+    status = (
+        ValidationStatus.SUCCESS
+        if bool(policy_result.is_terminating())
+        else ValidationStatus.FAILURE
+    )
+    result_id = _next_result_id(domain_context)
     observation = _validation_observation(
         result_id=result_id,
-        kind=ValidationKind.BASE_PROVE,
+        kind=ValidationKind.BASE_TERMINATION,
         status=status,
         candidate=policy,
-        classifier=evidence_classifier,
-        details=_proof_details(proof),
-        fingerprint=_proof_fingerprint(
-            kind=ValidationKind.BASE_PROVE,
+        classifier=None,
+        details=_policy_termination_observation_details(policy_result),
+        fingerprint=_policy_termination_fingerprint(
             status=status,
-            problem_file=context.problem_file.name,
-            proof=proof,
-            evidence=_base_classifier_evidence(
-                context.base_task.task_context, policy, evidence_classifier
-            ),
+            policy_result=policy_result,
         ),
     )
-    return ProvePolicyResult(
+    return ProvePolicyTerminationResult(
         result_id,
-        ValidationKind.BASE_PROVE,
+        ValidationKind.BASE_TERMINATION,
         status,
-        context,
+        domain_context,
         policy,
         observation,
-        evidence_classifier,
-        proof,
-        search_budget,
-        plan_trace_budget,
+        policy_result,
     )
-
-
-def prove_module_program(
-    context: TaskContext,
-    module_program: ModuleProgram,
-    *,
-    evidence_classifier: Classifier | None = None,
-    search_budget: SearchBudget = PROVE_SEARCH_BUDGET,
-    plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
-    max_arity: int = 0,
-) -> ProveModuleProgramResult:
-    max_num_states, max_time_seconds = _required_budget_values(
-        search_budget, name="prove_module_program search_budget"
-    )
-    options = make_search_options(
-        GroundModuleProgramSearchOptions(), max_num_states, max_time_seconds
-    )
-    options.max_arity = max_arity
-    proof = prove_ext_solution(context.ext_task.task_context, module_program.value, options)
-    status = ValidationStatus.SUCCESS if proof.is_successful() else ValidationStatus.FAILURE
-    result_id = _next_result_id(context.domain_context)
-    observation = _validation_observation(
-        result_id=result_id,
-        kind=ValidationKind.EXT_PROVE,
-        status=status,
-        candidate=module_program,
-        classifier=evidence_classifier,
-        details=_proof_details(proof),
-        fingerprint=_proof_fingerprint(
-            kind=ValidationKind.EXT_PROVE,
-            status=status,
-            problem_file=context.problem_file.name,
-            proof=proof,
-            evidence=_ext_classifier_evidence(
-                context.ext_task.task_context, module_program, evidence_classifier
-            ),
-        ),
-    )
-    return ProveModuleProgramResult(
-        result_id,
-        ValidationKind.EXT_PROVE,
-        status,
-        context,
-        module_program,
-        observation,
-        evidence_classifier,
-        proof,
-        search_budget,
-        plan_trace_budget,
-    )
-
 
 
 def _module_names(module_program: ModuleProgram) -> tuple[str, ...]:
@@ -1066,7 +1007,7 @@ def prove_termination(
     max_features: int,
     use_incomplete_preprocessing: bool,
 ) -> ProveTerminationResult:
-    program_result = structural_termination(
+    program_result = module_program_structural_termination(
         module_program.value,
         max_features=max_features,
         use_incomplete_preprocessing=use_incomplete_preprocessing,

@@ -1,6 +1,6 @@
 # Tables: base sketch-policy counterexamples, traces, and successors
 
-Used by [`runir.ps.base.execute_policy`](../runir.ps.base.execute_policy.md) and [`runir.ps.base.prove_policy`](../runir.ps.base.prove_policy.md). Rendering conventions are in [Table Rendering](rendering.md).
+Used by base-policy calls to [`runir.ps.find_solution`](../runir.ps.find_solution.md). Rendering conventions are in [Table Rendering](rendering.md).
 
 ## Dictionary Tables
 
@@ -18,7 +18,7 @@ Run-global dictionary files live under `dicts/`. Every witness, trace, and succe
 - [`[facts]`](sections/runir.ps.base.facts.md)
 - [`[successors]`](sections/runir.ps.base.successors.md)
 
-`hstar` is shortest remaining plan length, `inf` for proven deadends, and empty when inconclusive. `hlmcut` is the LM-cut lower bound for the same state.
+Proof labels do not carry heuristic values. Optional `hstar` and `hlmcut` columns are included only when an explicit state-evidence evaluator supplies them.
 
 Cycle witnesses use `[states]`, `[transitions]`, and `[facts]`; `[states]` is a closed path with the first state row repeated as the final row.
 

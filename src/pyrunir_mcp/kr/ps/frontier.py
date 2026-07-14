@@ -25,10 +25,9 @@ from pyrunir.kr import GroundTaskContext
 from pyrunir.kr.ps.base import GroundSketchProofGraph, Sketch
 from pyrunir.kr.ps.base.dl import GroundEvaluationContext
 from pyrunir.kr.ps.ext import (
+    GroundSuccessorExpander,
     GroundModuleProgramProofGraph,
     ModuleProgram,
-    Registers,
-    SuccessorExpander,
 )
 from pytyr.formalism.planning import GroundAction
 from pytyr.planning.ground import ConjunctiveGoalStrategy, Node, State
@@ -133,12 +132,11 @@ def make_ext_frontier_expander(
     """Module program: every 1-step successor of each trace vertex's state, tagged with the module
     rule (at the vertex's memory state + registers) that selects it (empty = the gap), and — for a
     taken move — the module + resulting memory the rule lands in. The `SuccessorExpander` is the
-    same engine the executor/prover uses, built once with the program's modules so Call rules can
+    same engine native solution search uses, built once with the program's modules so Call rules can
     resolve their callee."""
     generator = task_context.search_context.successor_generator
     is_goal = goal_test(task_context)
-    initial_state = task_context.search_context.state_repository.get_initial_state()
-    expander = SuccessorExpander(task_context, initial_state, program)
+    expander = GroundSuccessorExpander(task_context, program)
 
     def expand(graph: ProofGraph, vertices: list[int]) -> list[Successor]:
         if not isinstance(graph, GroundModuleProgramProofGraph):
@@ -146,26 +144,26 @@ def make_ext_frontier_expander(
         successors: list[Successor] = []
         for vertex in vertices:
             label = graph.get_vertex_property(int(vertex))
-            source_state = label.state
-            memory = label.memory_state.value
-            registers = Registers()
-            registers.concept_registers = label.concept_registers
-            registers.role_registers = label.role_registers
-            module = label.module
-            context = expander.context_at(module, memory, registers, source_state)
+            execution_state = label.execution_state
+            source_state = execution_state.state
             for labeled in generator.get_labeled_successor_nodes(Node(source_state, 0.0)):
                 target_state = labeled.node.get_state()
-                rule_variant = expander.matching_rule(context, labeled.label, target_state)
+                rule_variant = expander.matching_rule(
+                    execution_state, labeled.label, target_state
+                )
                 rule: str | None = None
                 res_module: str | None = None
                 res_memory: str | None = None
                 if rule_variant is not None:
                     rule = str(rule_variant.get_symbol()).strip()
-                    applied = expander.apply(context, rule_variant, labeled.label, target_state)
+                    applied = expander.apply(
+                        execution_state, rule_variant, labeled.label, target_state
+                    )
                     if applied is not None:
-                        _edge, node = applied
-                        res_module = node.module.get_name()
-                        res_memory = node.memory_state.value.get_name()
+                        target_stack = applied.target.call_stack
+                        res_module = target_stack.module.get_name()
+                        res_memory = target_stack.memory_state.get_name()
+                source_stack = execution_state.call_stack
                 successors.append(
                     successor(
                         source_state,
@@ -176,10 +174,12 @@ def make_ext_frontier_expander(
                         is_goal,
                         module=res_module,
                         memory=res_memory,
-                        source_memory=(module.get_name(), memory.get_name()),
+                        source_memory=(
+                            source_stack.module.get_name(),
+                            source_stack.memory_state.get_name(),
+                        ),
                     )
                 )
         return successors
 
     return expand
-

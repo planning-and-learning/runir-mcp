@@ -12,7 +12,7 @@ from pyrunir_mcp.output.policy import (
 from pyrunir_mcp.tables import render_document
 
 HEADER = [
-    ("tool", "execute_policy"),
+    ("tool", "runir.ps.find_solution"),
     ("id", "cycle-001"),
     ("category", "cycle"),
     ("status", "cycle"),
@@ -71,7 +71,7 @@ def test_trace_document_matches_doc():
         ext=False,
     )
     assert render_document(doc, "psv") == (
-        "@tool execute_policy\n@id cycle-001\n@category cycle\n@status cycle\n@task_file p01.pddl\n"
+        "@tool runir.ps.find_solution\n@id cycle-001\n@category cycle\n@status cycle\n@task_file p01.pddl\n"
         "\n[states]\nstate_id|flags|hstar|hlmcut|f0|f1|f2\ns0|init|||3|0|F\ns1||||2|1|F\ns2|cycle|||2|0|F\n"
         "\n[transitions]\nstep|source_state_id|target_state_id|rule_id|action_id|deltas\n0|s0|s1|r0|a0|f1:0>1\n1|s1|s2|r1|a1|f0:3>2 f1:1>0\n"
         "\n[facts]\nstate_id|atom_ids\ns0|p0\ns1|p1"
@@ -122,7 +122,7 @@ def test_cycle_counterexample_matches_doc():
         ext=False,
     )
     assert render_document(doc, "psv") == (
-        "@tool execute_policy\n@id cycle-001\n@category cycle\n@status cycle\n@task_file p01.pddl\n"
+        "@tool runir.ps.find_solution\n@id cycle-001\n@category cycle\n@status cycle\n@task_file p01.pddl\n"
         "\n[states]\nstate_id|flags|hstar|hlmcut|f0|f1|f2\ns1|cycle|||2|1|F\ns2|cycle|||2|0|F\ns1|cycle|||2|1|F\n"
         "\n[transitions]\nstep|source_state_id|target_state_id|rule_id|action_id|deltas\n0|s1|s2|r1|a1|f1:1>0\n1|s2|s1|r0|a0|f1:0>1\n"
         "\n[facts]\nstate_id|atom_ids\ns1|p1\ns2|p0"
