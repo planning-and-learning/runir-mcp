@@ -34,6 +34,7 @@ def _declared_features(module: Module) -> list[Feature]:
     features: list[Feature] = []
     # pyrunir returns family-specific feature lists; Feature is the shared MCP union over them.
     features.extend(cast(list[Feature], module.get_concept_features()))
+    features.extend(cast(list[Feature], module.get_role_features()))
     features.extend(cast(list[Feature], module.get_boolean_features()))
     features.extend(cast(list[Feature], module.get_numerical_features()))
     return features

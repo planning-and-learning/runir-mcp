@@ -96,7 +96,11 @@ def build_run_envelope(
     output_path = output_dir.resolve().as_posix()
     passthrough: JsonObject = {
         key: metadata[key]
-        for key in (Keys.PROGRAM_STATUS, Keys.NONTERMINATING_MODULES)
+        for key in (
+            Keys.PROGRAM_STATUS,
+            Keys.INCOMPLETE_TERMINATION_STATUS,
+            Keys.NONTERMINATING_MODULES,
+        )
         if key in metadata
     }
     primary_doc: JsonObject = {

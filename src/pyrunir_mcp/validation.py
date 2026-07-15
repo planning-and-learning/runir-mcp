@@ -72,6 +72,7 @@ from pyrunir_mcp.enums import (
     AtomKind,
     CandidateSource,
     CounterexampleKind,
+    IncompleteTerminationStatus,
     ValidationKind,
     ValidationStatus,
 )
@@ -155,6 +156,7 @@ class PolicyTerminationObservationDetails:
 class TerminationObservationDetails:
     program_status: StructuralTerminationStatus
     terminating: bool
+    incomplete_termination_status: IncompleteTerminationStatus
     nonterminating_modules: tuple[str, ...] = ()
 
 
@@ -249,6 +251,7 @@ class ProveTerminationResult:
     candidate: ModuleProgram
     observation: ValidationObservation
     program_result: ModuleProgramStructuralTerminationResult
+    incomplete_termination_status: IncompleteTerminationStatus
     nonterminating_modules: tuple[str, ...] = ()
 
 
@@ -677,6 +680,13 @@ def _find_policy_solution(
     search_budget: SearchBudget,
     plan_trace_budget: SearchBudget,
 ) -> FindPolicySolutionResult:
+    planning_domain = context.domain_context.planning_domain
+    task_policy = context.base_task.get_policy(planning_domain, policy)
+    task_classifier = (
+        context.base_task.get_classifier(planning_domain, classifier)
+        if classifier is not None
+        else None
+    )
     results: list[tuple[int, GroundSketchProofResults]] = []
     for seed in _solution_seeds(
         num_rollouts=num_rollouts,
@@ -691,9 +701,9 @@ def _find_policy_solution(
             search_budget=search_budget,
         )
         options.universal = universal
-        options.classifier = classifier.value if classifier is not None else None
+        options.classifier = task_classifier
         results.append(
-            (seed, find_base_solution(context.base_task.task_context, policy.value, options))
+            (seed, find_base_solution(context.base_task.task_context, task_policy, options))
         )
 
     solution_results = tuple(results)
@@ -751,6 +761,13 @@ def _find_module_program_solution(
     search_budget: SearchBudget,
     plan_trace_budget: SearchBudget,
 ) -> FindModuleProgramSolutionResult:
+    planning_domain = context.domain_context.planning_domain
+    task_module_program = context.ext_task.get_module_program(planning_domain, module_program)
+    task_classifier = (
+        context.ext_task.get_classifier(planning_domain, classifier)
+        if classifier is not None
+        else None
+    )
     results: list[tuple[int, GroundModuleProgramProofResults]] = []
     for seed in _solution_seeds(
         num_rollouts=num_rollouts,
@@ -765,13 +782,13 @@ def _find_module_program_solution(
             search_budget=search_budget,
         )
         options.universal = universal
-        options.classifier = classifier.value if classifier is not None else None
+        options.classifier = task_classifier
         options.shuffle_choice_points = shuffle_choice_points
         results.append(
             (
                 seed,
                 find_ext_solution(
-                    context.ext_task.task_context, module_program.value, options
+                    context.ext_task.task_context, task_module_program, options
                 ),
             )
         )
@@ -974,13 +991,31 @@ def _module_names(module_program: ModuleProgram) -> tuple[str, ...]:
 
 def _termination_observation_details(
     program_result: ModuleProgramStructuralTerminationResult,
+    incomplete_termination_status: IncompleteTerminationStatus,
     nonterminating_modules: tuple[str, ...],
 ) -> TerminationObservationDetails:
     return TerminationObservationDetails(
         program_status=program_result.status,
         terminating=bool(program_result.is_terminating()),
+        incomplete_termination_status=incomplete_termination_status,
         nonterminating_modules=nonterminating_modules,
     )
+
+
+def _incomplete_termination_status(
+    program_result: ModuleProgramStructuralTerminationResult,
+    *,
+    use_incomplete_preprocessing: bool,
+) -> IncompleteTerminationStatus:
+    if not use_incomplete_preprocessing:
+        return IncompleteTerminationStatus.DISABLED
+    if program_result.recursive_call_rules:
+        return IncompleteTerminationStatus.INSUFFICIENT
+    for module_result in program_result.module_results:
+        incomplete_result = module_result.incomplete_result
+        if incomplete_result is None or not bool(incomplete_result.is_terminating()):
+            return IncompleteTerminationStatus.INSUFFICIENT
+    return IncompleteTerminationStatus.PROVED
 
 
 def _termination_fingerprint(
@@ -1014,6 +1049,10 @@ def prove_termination(
     )
     module_names = _module_names(module_program)
     module_results = tuple(program_result.module_results)
+    incomplete_termination_status = _incomplete_termination_status(
+        program_result,
+        use_incomplete_preprocessing=use_incomplete_preprocessing,
+    )
     nonterminating_modules = tuple(
         module_names[index] if index < len(module_names) else f"module_{index}"
         for index, module_result in enumerate(module_results)
@@ -1031,7 +1070,11 @@ def prove_termination(
         status=status,
         candidate=module_program,
         classifier=None,
-        details=_termination_observation_details(program_result, nonterminating_modules),
+        details=_termination_observation_details(
+            program_result,
+            incomplete_termination_status,
+            nonterminating_modules,
+        ),
         fingerprint=_termination_fingerprint(
             status=status,
             program_result=program_result,
@@ -1046,6 +1089,7 @@ def prove_termination(
         module_program,
         observation,
         program_result,
+        incomplete_termination_status,
         nonterminating_modules=nonterminating_modules,
     )
 
@@ -1098,6 +1142,9 @@ def prove_classifier(
     graph = annotate_ground_state_graph(
         context.base_task.search_context, graph_result.graph, StateGraphCostMode.UNIT_COST
     ).get_forward_graph()
+    task_classifier = context.base_task.get_classifier(
+        context.domain_context.planning_domain, classifier
+    )
     builder = context.base_task.task_context.dl_builder
     denotations = context.base_task.task_context.dl_denotation_repository
     states = 0
@@ -1117,7 +1164,7 @@ def prove_classifier(
         fluent_atoms.update(state_atoms[AtomKind.FLUENT])
         derived_atoms.update(state_atoms[AtomKind.DERIVED])
         eval_context = GroundEvaluationContext(label.state, builder, denotations)
-        predicted_unsolvable = bool(classify(classifier.value, eval_context))
+        predicted_unsolvable = bool(classify(task_classifier, eval_context))
         if predicted_unsolvable and actually_solvable:
             false_positive += 1
             if false_positive <= max_mistakes_per_category:
@@ -1126,7 +1173,9 @@ def prove_classifier(
                         id=f"false_positive-{false_positive:03d}",
                         category="false_positive",
                         state=int(label.state.get_index()),
-                        features=_classifier_json_features(classifier_feature_values(classifier.value, eval_context)),
+                        features=_classifier_json_features(
+                            classifier_feature_values(task_classifier, eval_context)
+                        ),
                         fluent=state_atoms[AtomKind.FLUENT],
                         derived=state_atoms[AtomKind.DERIVED],
                     )
@@ -1139,7 +1188,9 @@ def prove_classifier(
                         id=f"false_negative-{false_negative:03d}",
                         category="false_negative",
                         state=int(label.state.get_index()),
-                        features=_classifier_json_features(classifier_feature_values(classifier.value, eval_context)),
+                        features=_classifier_json_features(
+                            classifier_feature_values(task_classifier, eval_context)
+                        ),
                         fluent=state_atoms[AtomKind.FLUENT],
                         derived=state_atoms[AtomKind.DERIVED],
                     )

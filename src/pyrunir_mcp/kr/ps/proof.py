@@ -264,7 +264,7 @@ def edge_summary(graph: ProofGraph, edge: int) -> JsonObject:
         return out
     state_transition = prop.state_transition
     if state_transition is not None:
-        out[Keys.ACTION] = _format_ground_action(state_transition)
+        out[Keys.ACTION] = _format_ground_action(state_transition.action)
     out[Keys.RULE] = _format_module_rule(prop.rule)
     return out
 

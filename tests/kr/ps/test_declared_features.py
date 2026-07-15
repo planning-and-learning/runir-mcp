@@ -49,15 +49,20 @@ class Module:
     def __init__(
         self,
         concepts: list[Feature] | None = None,
+        roles: list[Feature] | None = None,
         booleans: list[Feature] | None = None,
         numericals: list[Feature] | None = None,
     ):
         self._concepts = concepts or []
+        self._roles = roles or []
         self._booleans = booleans or []
         self._numericals = numericals or []
 
     def get_concept_features(self) -> list[Feature]:
         return self._concepts
+
+    def get_role_features(self) -> list[Feature]:
+        return self._roles
 
     def get_boolean_features(self) -> list[Feature]:
         return self._booleans
@@ -113,10 +118,18 @@ def test_base_collectors_use_declared_sketch_features_only():
 def test_ext_collectors_use_declared_module_features_only():
     program = ModuleProgram(
         [
-            Module(concepts=[Feature("c")], booleans=[Feature("b")]),
-            Module(concepts=[Feature("c")], numericals=[Feature("n")]),
+            Module(
+                concepts=[Feature("c")],
+                roles=[Feature("r")],
+                booleans=[Feature("b")],
+            ),
+            Module(
+                concepts=[Feature("c")],
+                roles=[Feature("r")],
+                numericals=[Feature("n")],
+            ),
         ]
     )
 
     features = cast(Sequence[SymbolicFeature], collect_ext_features(cast(ExtModuleProgram, program)))
-    assert _symbols(features) == ["c", "b", "n"]
+    assert _symbols(features) == ["c", "r", "b", "n"]

@@ -29,6 +29,9 @@ from pyrunir.kr.ps.ext.dl import (
 from pyrunir.kr.ps.ext.dl import (
     NumericalFeature as ExtNumericalFeature,
 )
+from pyrunir.kr.ps.ext.dl import (
+    RoleFeature as ExtRoleFeature,
+)
 from pytyr.planning.ground import State as GroundState
 
 from pyrunir_mcp.enums import AtomKind, HeuristicSentinel
@@ -42,6 +45,7 @@ Feature: TypeAlias = (
     BaseBooleanFeature
     | BaseNumericalFeature
     | ExtConceptFeature
+    | ExtRoleFeature
     | ExtBooleanFeature
     | ExtNumericalFeature
 )

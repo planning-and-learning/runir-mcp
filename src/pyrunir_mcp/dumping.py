@@ -151,6 +151,7 @@ def _observation_details_json(details: ObservationDetails) -> JsonObject:
         return {
             Keys.PROGRAM_STATUS: details.program_status.name.lower(),
             Keys.SUCCESSFUL: details.terminating,
+            Keys.INCOMPLETE_TERMINATION_STATUS: details.incomplete_termination_status.value,
             Keys.NONTERMINATING_MODULES: list(details.nonterminating_modules),
         }
     return {
@@ -224,6 +225,7 @@ def _result_json(
     elif isinstance(result, ProveTerminationResult):
         base[Keys.TERMINATION] = {
             Keys.PROGRAM_STATUS: result.program_result.status.name.lower(),
+            Keys.INCOMPLETE_TERMINATION_STATUS: result.incomplete_termination_status.value,
             Keys.NONTERMINATING_MODULES: list(result.nonterminating_modules),
         }
     else:
@@ -339,10 +341,18 @@ def _dump_solution_artifacts(
     ext = isinstance(result, FindModuleProgramSolutionResult)
     if ext:
         task = result.context.ext_task
-        features = collect_ext_features(result.candidate.value)
+        features = collect_ext_features(
+            task.get_module_program(
+                result.context.domain_context.planning_domain, result.candidate
+            )
+        )
     else:
         task = result.context.base_task
-        features = collect_base_features(result.candidate.value)
+        features = collect_base_features(
+            task.get_policy(
+                result.context.domain_context.planning_domain, result.candidate
+            )
+        )
 
     task_context = task.task_context
     problem = task.problem_path.name
@@ -357,16 +367,22 @@ def _dump_solution_artifacts(
             include_hstar=False,
             include_hlmcut=False,
         ),
-        result.classifier.value if result.classifier is not None else None,
+        task.get_classifier(result.context.domain_context.planning_domain, result.classifier)
+        if result.classifier is not None
+        else None,
     )
     if isinstance(result, FindModuleProgramSolutionResult):
-        intern_ext_rules(result.candidate.value, dicts)
-        expander = make_ext_frontier_expander(
-            task_context, result.candidate.value, evidence
+        program = task.get_module_program(
+            result.context.domain_context.planning_domain, result.candidate
         )
+        intern_ext_rules(program, dicts)
+        expander = make_ext_frontier_expander(task_context, program, evidence)
     else:
-        intern_base_rules(result.candidate.value, dicts)
-        expander = make_frontier_expander(task_context, result.candidate.value, evidence)
+        policy = task.get_policy(
+            result.context.domain_context.planning_domain, result.candidate
+        )
+        intern_base_rules(policy, dicts)
+        expander = make_frontier_expander(task_context, policy, evidence)
 
     output_path = fresh_output_dir(output_path)
     artifacts: dict[str, Artifact] = {}
@@ -687,18 +703,8 @@ def _termination_vertices_edges(
     module: Module,
 ) -> tuple[list[TerminationVertex], list[TerminationEdge]]:
     counterexample = module_result.counterexample
-    boolean_features = {
-        int(feature.get_index()): feature for feature in module.get_boolean_features()
-    }
-    numerical_features = {
-        int(feature.get_index()): feature for feature in module.get_numerical_features()
-    }
-    boolean_symbols = [
-        feature_key(boolean_features[int(index)]) for index in module_result.booleans
-    ]
-    numerical_symbols = [
-        feature_key(numerical_features[int(index)]) for index in module_result.numericals
-    ]
+    boolean_symbols = [feature_key(feature) for feature in module.get_boolean_features()]
+    numerical_symbols = [feature_key(feature) for feature in module.get_numerical_features()]
 
     vertices: list[TerminationVertex] = []
     for index in counterexample.get_vertex_indices():
@@ -789,6 +795,7 @@ def _dump_prove_termination_artifacts(
         metadata={
             **_candidate_metadata(result),
             Keys.PROGRAM_STATUS: result.program_result.status.name.lower(),
+            Keys.INCOMPLETE_TERMINATION_STATUS: result.incomplete_termination_status.value,
             Keys.NONTERMINATING_MODULES: list(result.nonterminating_modules),
         },
         dictionary_tables=dicts.tables(),

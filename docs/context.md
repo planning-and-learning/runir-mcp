@@ -50,13 +50,12 @@ Returns a `TaskContext`: parent `DomainContext`, parsed problem, lifted/grounded
 | `ext_lifted_task` | `LoadedLiftedSearchContext` | Lifted task view for module-program h*/LM-cut evidence. |
 
 The base and extended ground views share one `LoadedSearchContext`, which owns one native
-`GroundTaskContext`. Its `search_context`, `dl_builder`, and `dl_denotation_repository` are
-reused by solution search, classifier validation, frontier evidence, dumping, and plan-trace evaluation
-for the lifetime of the task context. The dataset `GroundTaskSearchContext` does not own
-description-logic resources. Each module-program search keeps one native `ExecutionRepository`
-for its complete graph, so memory/control-state views reuse the same repository throughout that search.
-These mutable semantic resources are used sequentially within one task context; parallel work
-uses distinct task contexts.
+`GroundTaskContext`. The native context owns the Base, Ext, and UNS repositories together with
+the DL builder, denotation repository, execution builder, and execution repository. Domain-level
+candidates are materialized once into these task repositories and then reused by solution search,
+classifier validation, frontier evidence, dumping, and plan-trace evaluation for the lifetime of the
+task context. The dataset `GroundTaskSearchContext` does not own these knowledge-representation
+resources. Mutable task resources are used sequentially; parallel work uses distinct task contexts.
 
 ```python
 domain = create_domain_context("domain.pddl")

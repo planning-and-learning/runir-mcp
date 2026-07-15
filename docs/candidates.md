@@ -14,6 +14,10 @@ Every candidate has:
 | `source` | `CandidateSource` | `CandidateSource.FILE` or `CandidateSource.EMPTY`. |
 | `source_file` | `Path | None` | Absolute source path when created from a file. |
 
+The wrapper is an immutable domain-level snapshot. Task validation materializes its canonical typed
+value once in the task's matching Runir repository and reuses that value internally; it never rereads
+`source_file`. Results retain the original wrapper passed by the caller.
+
 ## `create_policy`
 
 ```python

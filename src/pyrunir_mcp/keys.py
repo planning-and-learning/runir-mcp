@@ -37,6 +37,7 @@ class Keys(StrEnum):
     PROOF_STATUSES = "proof_statuses"
     TERMINATION = "termination"
     PROGRAM_STATUS = "program_status"
+    INCOMPLETE_TERMINATION_STATUS = "incomplete_termination_status"
     STATE_GRAPH_STATUS = "state_graph_status"
     NONTERMINATING_MODULES = "nonterminating_modules"
 

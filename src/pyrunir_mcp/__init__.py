@@ -19,7 +19,7 @@ from pyrunir_mcp.callsite import (
 from pyrunir_mcp.candidates import Candidate, Classifier, ModuleProgram, Policy
 from pyrunir_mcp.context import DomainContext, TaskContext
 from pyrunir_mcp.dumping import DumpResult
-from pyrunir_mcp.enums import CandidateSource, DumpFormat
+from pyrunir_mcp.enums import CandidateSource, DumpFormat, IncompleteTerminationStatus
 from pyrunir_mcp.history import HistoryFeedback, ValidationHistory
 from pyrunir_mcp.task_generation import (
     GeneratedTask,
@@ -48,7 +48,7 @@ from pyrunir_mcp.validation import (
     ValidationStatus,
 )
 
-__version__ = "0.0.25"
+__version__ = "0.0.26"
 
 __all__ = [
     "__version__",
@@ -66,6 +66,7 @@ __all__ = [
     "FindSolutionObservationDetails",
     "GeneratedTask",
     "HistoryFeedback",
+    "IncompleteTerminationStatus",
     "InvalidTaskGenerationConfig",
     "ModuleProgram",
     "ObservationDetails",

@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, cast
 
 from pypddl.formalism import ParserOptions
 from pyrunir.datasets import GroundTaskSearchContext, LiftedTaskSearchContext
 from pyrunir.kr import GroundTaskContext
-from pytyr.formalism.planning import Parser, PlanningTask
+from pyrunir.kr.ps.base import Sketch
+from pyrunir.kr.ps.base.dl import parse_sketch
+from pyrunir.kr.ps.ext import ModuleProgram as RunirModuleProgram
+from pyrunir.kr.ps.ext.dl import parse_module_program
+from pyrunir.kr.uns import Classifier as RunirClassifier
+from pyrunir.kr.uns.dl import parse_classifier
+from pytyr.formalism.planning import Parser, PlanningDomain, PlanningTask
 from pytyr.planning.lifted import (
     GroundTaskInstantiationOptions,
     GroundTaskInstantiationStatus,
@@ -16,6 +22,8 @@ from pytyr.planning.lifted import (
     Task as LiftedTask,
 )
 from pyyggdrasil.execution import ExecutionContext
+
+from pyrunir_mcp.candidates import Classifier, ModuleProgram, Policy
 
 
 class PathTaskParser(Protocol):
@@ -31,10 +39,62 @@ def parse_task_file(parser: Parser, problem_path: Path, parser_options: ParserOp
 class LoadedSearchContext:
     problem_path: Path
     task_context: GroundTaskContext
+    _policies: dict[str, tuple[Policy, Sketch]] = field(
+        default_factory=lambda: dict[str, tuple[Policy, Sketch]](),
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _module_programs: dict[str, tuple[ModuleProgram, RunirModuleProgram]] = field(
+        default_factory=lambda: dict[str, tuple[ModuleProgram, RunirModuleProgram]](),
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _classifiers: dict[str, tuple[Classifier, RunirClassifier]] = field(
+        default_factory=lambda: dict[str, tuple[Classifier, RunirClassifier]](),
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def search_context(self) -> GroundTaskSearchContext:
         return self.task_context.search_context
+
+    def get_policy(self, planning_domain: PlanningDomain, policy: Policy) -> Sketch:
+        cached = self._policies.get(policy.id)
+        if cached is not None and cached[0] is policy:
+            return cached[1]
+        value = parse_sketch(
+            str(policy.value), planning_domain, self.task_context.base_repository
+        )
+        self._policies[policy.id] = (policy, value)
+        return value
+
+    def get_module_program(
+        self, planning_domain: PlanningDomain, module_program: ModuleProgram
+    ) -> RunirModuleProgram:
+        cached = self._module_programs.get(module_program.id)
+        if cached is not None and cached[0] is module_program:
+            return cached[1]
+        value = parse_module_program(
+            str(module_program.value), planning_domain, self.task_context.ext_repository
+        )
+        self._module_programs[module_program.id] = (module_program, value)
+        return value
+
+    def get_classifier(
+        self, planning_domain: PlanningDomain, classifier: Classifier
+    ) -> RunirClassifier:
+        cached = self._classifiers.get(classifier.id)
+        if cached is not None and cached[0] is classifier:
+            return cached[1]
+        value = parse_classifier(
+            str(classifier.value), planning_domain, self.task_context.uns_repository
+        )
+        self._classifiers[classifier.id] = (classifier, value)
+        return value
 
 
 @dataclass(frozen=True)

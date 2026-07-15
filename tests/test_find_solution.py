@@ -17,7 +17,7 @@ from pyrunir_mcp import (
 )
 from pyrunir_mcp.defaults import EXECUTE_SEARCH_BUDGET, PROVE_SEARCH_BUDGET
 from pyrunir_mcp.keys import Keys
-from pyrunir_mcp.kr.ps.proof import state_summary
+from pyrunir_mcp.kr.ps.proof import edge_summary, state_summary
 
 
 def _inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -86,6 +86,7 @@ def test_find_solution_dispatch_modes_seeds_and_classifier(tmp_path: Path) -> No
 
     policy_result = find_solution(task, policy, num_rollouts=3, random_seed_start=20)
     assert isinstance(policy_result, FindPolicySolutionResult)
+    assert policy_result.candidate is policy
     assert [seed for seed, _ in policy_result.results] == [20, 21, 22]
     assert policy_result.search_budget == EXECUTE_SEARCH_BUDGET
     _assert_hstar_requires_evidence(policy_result)
@@ -95,6 +96,7 @@ def test_find_solution_dispatch_modes_seeds_and_classifier(tmp_path: Path) -> No
 
     program_result = find_solution(task, program, num_rollouts=2, random_seed_start=30)
     assert isinstance(program_result, FindModuleProgramSolutionResult)
+    assert program_result.candidate is program
     assert [seed for seed, _ in program_result.results] == [30, 31]
     _assert_hstar_requires_evidence(program_result)
 
@@ -109,11 +111,86 @@ def test_find_solution_dispatch_modes_seeds_and_classifier(tmp_path: Path) -> No
     assert [seed for seed, _ in universal_result.results] == [7]
     assert universal_result.search_budget == PROVE_SEARCH_BUDGET
 
-    _assert_classifier_terminal(find_solution(task, policy, classifier=classifier))
-    _assert_classifier_terminal(find_solution(task, program, classifier=classifier))
+    policy_classified = find_solution(task, policy, classifier=classifier)
+    program_classified = find_solution(task, program, classifier=classifier)
+    assert policy_classified.candidate is policy
+    assert policy_classified.classifier is classifier
+    assert program_classified.candidate is program
+    assert program_classified.classifier is classifier
+    _assert_classifier_terminal(policy_classified)
+    _assert_classifier_terminal(program_classified)
+
+    planning_domain = domain.planning_domain
+    assert task.base_task.get_policy(planning_domain, policy) is task.base_task.get_policy(
+        planning_domain, policy
+    )
+    assert task.ext_task.get_module_program(
+        planning_domain, program
+    ) is task.ext_task.get_module_program(planning_domain, program)
+    assert task.base_task.get_classifier(
+        planning_domain, classifier
+    ) is task.base_task.get_classifier(planning_domain, classifier)
+
+    second_task = create_task_context(domain, problem_file)
+    assert second_task.base_task.get_policy(
+        planning_domain, policy
+    ) is not task.base_task.get_policy(planning_domain, policy)
+    assert second_task.ext_task.get_module_program(
+        planning_domain, program
+    ) is not task.ext_task.get_module_program(planning_domain, program)
+    assert second_task.base_task.get_classifier(
+        planning_domain, classifier
+    ) is not task.base_task.get_classifier(planning_domain, classifier)
 
     with pytest.raises(ValueError, match="num_rollouts must be at least 1"):
         find_solution(task, policy, num_rollouts=0)
+
+
+def test_ext_solution_edges_report_actions(tmp_path: Path) -> None:
+    domain_file, problem_file, _ = _inputs(tmp_path)
+    program_file = tmp_path / "program.txt"
+    program_file.write_text(
+        """(:program
+    (:entry solve)
+    (:module
+        (:symbol solve)
+        (:arguments)
+        (:registers)
+        (:entry m0)
+        (:memory m0 m1)
+        (:features)
+        (:rules
+            (:rule
+                (:symbol solve)
+                (:expression
+                    (:source-memory m0)
+                    (:target-memory m1)
+                    (:do
+                        (:conditions)
+                        (:action "make-q")
+                        (:arguments)
+                        (:effects)
+                    )
+                )
+            )
+        )
+    )
+)
+""",
+        encoding="utf-8",
+    )
+    domain = create_domain_context(domain_file)
+    task = create_task_context(domain, problem_file)
+    program = create_module_program(domain, program_file)
+
+    result = find_solution(task, program)
+    proof = result.results[0][1]
+    assert proof.graph is not None
+    actions = [
+        edge_summary(proof.graph, int(edge)).get(Keys.ACTION)
+        for edge in proof.graph.get_edge_indices()
+    ]
+    assert "make-q()" in actions
 
 
 def test_universal_dump_fills_unused_failure_capacity_with_successes(

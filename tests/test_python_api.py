@@ -16,7 +16,9 @@ from pyrunir_mcp import (
     FailureFingerprint,
     FindPolicySolutionResult,
     FindSolutionObservationDetails,
+    IncompleteTerminationStatus,
     Policy,
+    ProveTerminationResult,
     SearchBudget,
     TaskContext,
     ValidationHistory,
@@ -33,13 +35,17 @@ from pyrunir_mcp import (
     prove_termination,
 )
 from pyrunir_mcp.dumping import solution_observation_from_manifest
-from pyrunir_mcp.validation import rotate_smallest_state_id_first
+from pyrunir_mcp.validation import (
+    TerminationObservationDetails,
+    rotate_smallest_state_id_first,
+)
 
 
 def test_public_exports_use_typed_names() -> None:
     assert public.Policy is Policy
     assert public.FindSolutionObservationDetails is FindSolutionObservationDetails
     assert public.ClassifierObservationDetails is ClassifierObservationDetails
+    assert public.IncompleteTerminationStatus is IncompleteTerminationStatus
 
 
 def _failed_solution_details(num_rollouts: int = 1) -> FindSolutionObservationDetails:
@@ -73,6 +79,24 @@ def test_task_context_reuses_ground_semantic_resources(tmp_path: Path) -> None:
     assert first_loaded is first.ext_task
     assert first_ground is first_loaded.task_context.search_context
     assert first_loaded.task_context is not second_loaded.task_context
+    assert (
+        first_loaded.task_context.base_repository
+        is first_loaded.task_context.base_repository
+    )
+    assert first_loaded.task_context.ext_repository is first_loaded.task_context.ext_repository
+    assert first_loaded.task_context.uns_repository is first_loaded.task_context.uns_repository
+    assert (
+        first_loaded.task_context.base_repository
+        is not second_loaded.task_context.base_repository
+    )
+    assert (
+        first_loaded.task_context.ext_repository
+        is not second_loaded.task_context.ext_repository
+    )
+    assert (
+        first_loaded.task_context.uns_repository
+        is not second_loaded.task_context.uns_repository
+    )
     assert first_loaded.task_context.dl_builder is not second_loaded.task_context.dl_builder
     assert (
         first_loaded.task_context.dl_denotation_repository
@@ -262,6 +286,27 @@ def test_empty_module_program_find_solution_dumps_open_state_artifacts(
     ).exists()
 
 
+def _assert_incomplete_termination_status(
+    result: ProveTerminationResult,
+    output_dir: Path,
+    expected: IncompleteTerminationStatus,
+) -> None:
+    details = result.observation.details
+    assert isinstance(details, TerminationObservationDetails)
+    assert result.incomplete_termination_status is expected
+    assert details.incomplete_termination_status is expected
+
+    result_json = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert result_json["termination"]["incomplete_termination_status"] == expected.value
+    assert (
+        result_json["observation"]["details"]["incomplete_termination_status"]
+        == expected.value
+    )
+    assert run_json["metadata"]["incomplete_termination_status"] == expected.value
+    assert run_json["primary"]["incomplete_termination_status"] == expected.value
+
+
 def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) -> None:
     domain_file = tmp_path / "domain.pddl"
     domain_file.write_text(
@@ -288,6 +333,11 @@ def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) ->
     run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
 
     assert result.status.value == "success"
+    _assert_incomplete_termination_status(
+        result,
+        output_dir,
+        IncompleteTerminationStatus.PROVED,
+    )
     assert run_json["tool"] == "runir.ps.ext.prove_termination"
     assert (output_dir / "summary.psv").is_file()
     assert (output_dir / "dicts" / "variables.psv").is_file()
@@ -337,6 +387,18 @@ def test_nonterminating_module_program_dumps_native_graph_witness(tmp_path: Path
     )
     program = create_module_program(domain, program_file)
 
+    insufficient_result = prove_termination(domain, program, max_features=1)
+    insufficient_dump = dump_result(
+        insufficient_result,
+        tmp_path / "termination_insufficient",
+        formats=(DumpFormat.JSON,),
+    )
+    _assert_incomplete_termination_status(
+        insufficient_result,
+        insufficient_dump.output_dir,
+        IncompleteTerminationStatus.INSUFFICIENT,
+    )
+
     result = prove_termination(
         domain,
         program,
@@ -357,6 +419,11 @@ def test_nonterminating_module_program_dumps_native_graph_witness(tmp_path: Path
         / "witness.psv"
     )
     assert result.status is ValidationStatus.FAILURE
+    _assert_incomplete_termination_status(
+        result,
+        dumped.output_dir,
+        IncompleteTerminationStatus.DISABLED,
+    )
     assert result.nonterminating_modules == ("nonterm",)
     assert result.observation.fingerprint is not None
     assert result.observation.fingerprint.witness == ("non_terminating", "nonterm")
@@ -366,6 +433,9 @@ def test_nonterminating_module_program_dumps_native_graph_witness(tmp_path: Path
     witness_text = witness.read_text(encoding="utf-8")
     assert "[vertices]" in witness_text
     assert "[edges]" in witness_text
+    assert "fn" in (dumped.output_dir / "dicts" / "variables.psv").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_solution_fingerprint_refresh_promotes_cycle_witness(tmp_path: Path) -> None:

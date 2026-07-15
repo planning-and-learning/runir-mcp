@@ -85,6 +85,12 @@ class ValidationStatus(StrEnum):
     FAILURE = "failure"
 
 
+class IncompleteTerminationStatus(StrEnum):
+    PROVED = "proved"
+    INSUFFICIENT = "insufficient"
+    DISABLED = "disabled"
+
+
 class VariableKind(StrEnum):
     CONCEPT = "concept"
     BOOLEAN = "boolean"
