@@ -75,7 +75,7 @@ See [`runir.task_generation`](runir.task_generation.md) for generator lookup, re
 
 - `find_solution(task, policy, classifier=None, universal=False, ...)` returns `FindPolicySolutionResult`.
 - `find_solution(task, module_program, classifier=None, universal=False, ...)` returns `FindModuleProgramSolutionResult`.
-- `prove_termination(domain, module_program, *, max_features=16, use_incomplete_preprocessing=True)`
+- `prove_termination(domain, policy_or_module_program, *, max_features=16, use_incomplete_preprocessing=True)`
 - `prove_classifier(task, classifier, ...)`
 
 `find_solution(...)` performs seeded greedy rollouts when `universal=False` and one exhaustive search when `universal=True`. In universal mode, `num_rollouts=n` allows at most `n` non-cycle counterexamples, fills unused capacity with successful traces, and permits one additional cycle outside that limit. See [`runir.ps.find_solution`](runir.ps.find_solution.md).

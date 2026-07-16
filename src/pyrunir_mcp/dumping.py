@@ -146,6 +146,7 @@ def _observation_details_json(details: ObservationDetails) -> JsonObject:
         return {
             Keys.PROGRAM_STATUS: details.policy_status.name.lower(),
             Keys.SUCCESSFUL: details.terminating,
+            Keys.INCOMPLETE_TERMINATION_STATUS: details.incomplete_termination_status.value,
         }
     if isinstance(details, TerminationObservationDetails):
         return {
@@ -231,6 +232,7 @@ def _result_json(
     else:
         base[Keys.TERMINATION] = {
             Keys.PROGRAM_STATUS: result.policy_result.status.name.lower(),
+            Keys.INCOMPLETE_TERMINATION_STATUS: result.incomplete_termination_status.value,
         }
     return base
 
@@ -698,6 +700,55 @@ def _dump_prove_classifier_artifacts(
     return RichDumpResult(output_dir=output_dir, primary_file=path)
 
 
+def _policy_termination_vertices_edges(
+    result: ProvePolicyTerminationResult,
+) -> tuple[list[TerminationVertex], list[TerminationEdge]]:
+    counterexample = result.policy_result.counterexample
+    policy = result.candidate.value
+    boolean_symbols = [feature_key(feature) for feature in policy.get_boolean_features()]
+    numerical_symbols = [feature_key(feature) for feature in policy.get_numerical_features()]
+
+    vertices: list[TerminationVertex] = []
+    for index in counterexample.get_vertex_indices():
+        vertex = counterexample.get_vertex_property(index)
+        vertices.append(
+            TerminationVertex(
+                int(index),
+                None,
+                booleans={
+                    symbol: "T" if value else "F"
+                    for symbol, value in zip(
+                        boolean_symbols, vertex.boolean_values, strict=True
+                    )
+                },
+                numericals={
+                    symbol: ">0" if value else "=0"
+                    for symbol, value in zip(
+                        numerical_symbols, vertex.numerical_values, strict=True
+                    )
+                },
+            )
+        )
+
+    edges: list[TerminationEdge] = []
+    for index in counterexample.get_edge_indices():
+        edge = counterexample.get_edge_property(index)
+        edges.append(
+            TerminationEdge(
+                int(index),
+                int(counterexample.get_source(index)),
+                int(counterexample.get_target(index)),
+                edge.rule.get_symbol(),
+                numerical_changes={
+                    symbol: value.name.lower()
+                    for symbol, value in zip(
+                        numerical_symbols, edge.numerical_changes, strict=True
+                    )
+                },
+            )
+        )
+    return vertices, edges
+
 def _termination_vertices_edges(
     module_result: ModuleStructuralTerminationResult,
     module: Module,
@@ -747,6 +798,64 @@ def _termination_vertices_edges(
         )
     return vertices, edges
 
+
+def _dump_prove_base_termination_artifacts(
+    result: ProvePolicyTerminationResult,
+    output_path: Path,
+    formats: tuple[Fmt, ...],
+) -> RichDumpResult | None:
+    if not formats:
+        return None
+    dicts = TerminationDictionaries()
+    artifacts: dict[str, Artifact] = {}
+    items: list[RunItem] = []
+    if not result.policy_result.is_terminating():
+        item_id = "structural_termination-001"
+        vertices, edges = _policy_termination_vertices_edges(result)
+        witness_name = f"failures/{item_id}/witness"
+        artifacts[witness_name] = termination_counterexample_document(
+            header=[
+                (Keys.TOOL, result.kind.value),
+                (Keys.ID, item_id),
+                (Keys.CATEGORY, "structural_termination"),
+                (Keys.CANDIDATE_ID, result.candidate.id),
+            ],
+            vertices=vertices,
+            edges=edges,
+            dicts=dicts,
+            include_memory=False,
+        )
+        items.append(
+            RunItem(
+                id=item_id,
+                category=RunItemCategory.STRUCTURAL_TERMINATION,
+                subject=result.candidate.id,
+                witness=witness_name,
+            )
+        )
+    envelope = build_run_envelope(
+        tool="runir.ps.base.prove_termination",
+        status=RunStatus.SUCCESS
+        if result.status.value == RunStatus.SUCCESS.value
+        else RunStatus.FAILURE,
+        output_dir=output_path,
+        metadata={
+            **_candidate_metadata(result),
+            Keys.PROGRAM_STATUS: result.policy_result.status.name.lower(),
+            Keys.INCOMPLETE_TERMINATION_STATUS: result.incomplete_termination_status.value,
+        },
+        dictionary_tables=dicts.tables(include_memory=False),
+        artifacts=artifacts,
+        items=items,
+        category=RunCategory.SUCCESS
+        if result.status.value == RunStatus.SUCCESS.value
+        else RunCategory.COUNTEREXAMPLE,
+        formats=formats,
+    )
+    output_dir = _output_dir_from_envelope(envelope, output_path)
+    path = output_dir / "run.json"
+    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return RichDumpResult(output_dir=output_dir, primary_file=path)
 
 def _dump_prove_termination_artifacts(
     result: ProveTerminationResult, output_path: Path, formats: tuple[Fmt, ...]
@@ -820,7 +929,7 @@ def _dump_rich_artifacts(
     if isinstance(result, ProveClassifierResult):
         return _dump_prove_classifier_artifacts(result, output_path, formats)
     if isinstance(result, ProvePolicyTerminationResult):
-        return None
+        return _dump_prove_base_termination_artifacts(result, output_path, formats)
     return _dump_prove_termination_artifacts(result, output_path, formats)
 
 

@@ -12,7 +12,6 @@ from pyrunir_mcp.callsite import (
     find_solution,
     generate_tasks,
     prove_classifier,
-    prove_policy_termination,
     prove_termination,
     write_empty_policy,
 )
@@ -48,7 +47,7 @@ from pyrunir_mcp.validation import (
     ValidationStatus,
 )
 
-__version__ = "0.0.26"
+__version__ = "0.0.27"
 
 __all__ = [
     "__version__",
@@ -97,7 +96,6 @@ __all__ = [
     "get_generator_domain_path",
     "get_generator_path",
     "prove_classifier",
-    "prove_policy_termination",
     "prove_termination",
     "write_empty_policy",
 ]

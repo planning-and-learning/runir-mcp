@@ -46,3 +46,36 @@ def test_termination_cycle_document():
     assert "[edges]\nedge_index|source_vertex_index|target_vertex_index|rule_id|deltas\n0|0|1|r0|v2:dec\n1|1|0|r1|v2:inc" in psv
     # variables interned concept, boolean, numerical in that grouping order
     assert dicts.tables()["variables"].rows == [["v0", "concept", "c_undelivered"], ["v1", "boolean", "b_holding"], ["v2", "numerical", "n_count"]]
+
+
+def test_base_termination_cycle_document_omits_memory():
+    dicts = TerminationDictionaries()
+    vertices = [
+        TerminationVertex(
+            0,
+            None,
+            booleans={"b_loaded": "T"},
+            numericals={"n_remaining": ">0"},
+        )
+    ]
+    edges = [
+        TerminationEdge(
+            0,
+            0,
+            0,
+            "loop",
+            numerical_changes={"n_remaining": "unchanged"},
+        )
+    ]
+    doc = counterexample_document(
+        header=[("tool", "runir.ps.base.prove_termination")],
+        vertices=vertices,
+        edges=edges,
+        dicts=dicts,
+        include_memory=False,
+    )
+
+    psv = render_document(doc, "psv")
+    assert "[vertices]\nvertex_index|v0|v1\n0|T|>0" in psv
+    assert "memory_id" not in psv
+    assert set(dicts.tables(include_memory=False)) == {"variables", "rules"}

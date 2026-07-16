@@ -20,6 +20,10 @@ prove_termination(
 component. `use_incomplete_preprocessing` enables the sound incomplete pass before the complete
 structural-termination check.
 
+Each module result exposes `scc_results`: `None` means incomplete preprocessing proved
+termination before complete SIEVE ran, while an empty list means complete SIEVE ran without a
+residual SCC. Nonempty entries contain the Boolean and numerical features projected into each SCC.
+
 ## Current Status
 
 The artifact layout below defines the structural-termination output format.

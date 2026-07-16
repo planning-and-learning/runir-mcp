@@ -150,6 +150,7 @@ class ClassifierObservationDetails:
 class PolicyTerminationObservationDetails:
     policy_status: PolicyStructuralTerminationStatus
     terminating: bool
+    incomplete_termination_status: IncompleteTerminationStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,6 +241,7 @@ class ProvePolicyTerminationResult:
     candidate: Policy
     observation: ValidationObservation
     policy_result: PolicyStructuralTerminationResult
+    incomplete_termination_status: IncompleteTerminationStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -912,12 +914,27 @@ def find_solution(
 
 
 
+def _policy_incomplete_termination_status(
+    policy_result: PolicyStructuralTerminationResult,
+    *,
+    use_incomplete_preprocessing: bool,
+) -> IncompleteTerminationStatus:
+    if not use_incomplete_preprocessing:
+        return IncompleteTerminationStatus.DISABLED
+    incomplete_result = policy_result.incomplete_result
+    if incomplete_result is None or not bool(incomplete_result.is_terminating()):
+        return IncompleteTerminationStatus.INSUFFICIENT
+    return IncompleteTerminationStatus.PROVED
+
+
 def _policy_termination_observation_details(
     policy_result: PolicyStructuralTerminationResult,
+    incomplete_termination_status: IncompleteTerminationStatus,
 ) -> PolicyTerminationObservationDetails:
     return PolicyTerminationObservationDetails(
         policy_status=policy_result.status,
         terminating=bool(policy_result.is_terminating()),
+        incomplete_termination_status=incomplete_termination_status,
     )
 
 
@@ -937,7 +954,7 @@ def _policy_termination_fingerprint(
     )
 
 
-def prove_policy_termination(
+def _prove_policy_termination(
     domain_context: DomainContext,
     policy: Policy,
     *,
@@ -947,6 +964,10 @@ def prove_policy_termination(
     policy_result = policy_structural_termination(
         policy.value,
         max_features=max_features,
+        use_incomplete_preprocessing=use_incomplete_preprocessing,
+    )
+    incomplete_termination_status = _policy_incomplete_termination_status(
+        policy_result,
         use_incomplete_preprocessing=use_incomplete_preprocessing,
     )
     status = (
@@ -961,7 +982,10 @@ def prove_policy_termination(
         status=status,
         candidate=policy,
         classifier=None,
-        details=_policy_termination_observation_details(policy_result),
+        details=_policy_termination_observation_details(
+            policy_result,
+            incomplete_termination_status,
+        ),
         fingerprint=_policy_termination_fingerprint(
             status=status,
             policy_result=policy_result,
@@ -975,6 +999,7 @@ def prove_policy_termination(
         policy,
         observation,
         policy_result,
+        incomplete_termination_status,
     )
 
 
@@ -1035,7 +1060,7 @@ def _termination_fingerprint(
     )
 
 
-def prove_termination(
+def _prove_module_program_termination(
     domain_context: DomainContext,
     module_program: ModuleProgram,
     *,
@@ -1091,6 +1116,48 @@ def prove_termination(
         program_result,
         incomplete_termination_status,
         nonterminating_modules=nonterminating_modules,
+    )
+
+
+@overload
+def prove_termination(
+    domain_context: DomainContext,
+    candidate: Policy,
+    *,
+    max_features: int,
+    use_incomplete_preprocessing: bool,
+) -> ProvePolicyTerminationResult: ...
+
+
+@overload
+def prove_termination(
+    domain_context: DomainContext,
+    candidate: ModuleProgram,
+    *,
+    max_features: int,
+    use_incomplete_preprocessing: bool,
+) -> ProveTerminationResult: ...
+
+
+def prove_termination(
+    domain_context: DomainContext,
+    candidate: Policy | ModuleProgram,
+    *,
+    max_features: int,
+    use_incomplete_preprocessing: bool,
+) -> ProvePolicyTerminationResult | ProveTerminationResult:
+    if isinstance(candidate, Policy):
+        return _prove_policy_termination(
+            domain_context,
+            candidate,
+            max_features=max_features,
+            use_incomplete_preprocessing=use_incomplete_preprocessing,
+        )
+    return _prove_module_program_termination(
+        domain_context,
+        candidate,
+        max_features=max_features,
+        use_incomplete_preprocessing=use_incomplete_preprocessing,
     )
 
 

@@ -145,35 +145,44 @@ def prove_classifier(
     )
 
 
-def prove_policy_termination(
+@overload
+def prove_termination(
     domain_context: DomainContext,
-    policy: Policy,
+    candidate: Policy,
     *,
     max_features: int = STRUCTURAL_TERMINATION_MAX_FEATURES,
     use_incomplete_preprocessing: bool = (
         STRUCTURAL_TERMINATION_USE_INCOMPLETE_PREPROCESSING
     ),
 ) -> ProvePolicyTerminationResult:
-    return _validation.prove_policy_termination(
-        domain_context,
-        policy,
-        max_features=max_features,
-        use_incomplete_preprocessing=use_incomplete_preprocessing,
-    )
+    ...
 
 
+@overload
 def prove_termination(
     domain_context: DomainContext,
-    module_program: ModuleProgram,
+    candidate: ModuleProgram,
     *,
     max_features: int = STRUCTURAL_TERMINATION_MAX_FEATURES,
     use_incomplete_preprocessing: bool = (
         STRUCTURAL_TERMINATION_USE_INCOMPLETE_PREPROCESSING
     ),
 ) -> ProveTerminationResult:
+    ...
+
+
+def prove_termination(
+    domain_context: DomainContext,
+    candidate: Policy | ModuleProgram,
+    *,
+    max_features: int = STRUCTURAL_TERMINATION_MAX_FEATURES,
+    use_incomplete_preprocessing: bool = (
+        STRUCTURAL_TERMINATION_USE_INCOMPLETE_PREPROCESSING
+    ),
+) -> ProvePolicyTerminationResult | ProveTerminationResult:
     return _validation.prove_termination(
         domain_context,
-        module_program,
+        candidate,
         max_features=max_features,
         use_incomplete_preprocessing=use_incomplete_preprocessing,
     )

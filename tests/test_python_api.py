@@ -18,6 +18,8 @@ from pyrunir_mcp import (
     FindSolutionObservationDetails,
     IncompleteTerminationStatus,
     Policy,
+    PolicyTerminationObservationDetails,
+    ProvePolicyTerminationResult,
     ProveTerminationResult,
     SearchBudget,
     TaskContext,
@@ -46,6 +48,10 @@ def test_public_exports_use_typed_names() -> None:
     assert public.FindSolutionObservationDetails is FindSolutionObservationDetails
     assert public.ClassifierObservationDetails is ClassifierObservationDetails
     assert public.IncompleteTerminationStatus is IncompleteTerminationStatus
+    assert public.PolicyTerminationObservationDetails is PolicyTerminationObservationDetails
+    assert public.ProvePolicyTerminationResult is ProvePolicyTerminationResult
+    assert public.prove_termination is prove_termination
+    assert not hasattr(public, "prove_policy_termination")
 
 
 def _failed_solution_details(num_rollouts: int = 1) -> FindSolutionObservationDetails:
@@ -286,6 +292,149 @@ def test_empty_module_program_find_solution_dumps_open_state_artifacts(
     ).exists()
 
 
+
+def _assert_policy_incomplete_termination_status(
+    result: ProvePolicyTerminationResult,
+    output_dir: Path,
+    expected: IncompleteTerminationStatus,
+) -> None:
+    details = result.observation.details
+    assert isinstance(details, PolicyTerminationObservationDetails)
+    assert result.incomplete_termination_status is expected
+    assert details.incomplete_termination_status is expected
+
+    result_json = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert result_json["termination"]["incomplete_termination_status"] == expected.value
+    assert (
+        result_json["observation"]["details"]["incomplete_termination_status"]
+        == expected.value
+    )
+    assert run_json["metadata"]["incomplete_termination_status"] == expected.value
+    assert run_json["primary"]["incomplete_termination_status"] == expected.value
+
+
+def test_empty_policy_termination_dumps_run_artifacts(tmp_path: Path) -> None:
+    domain_file = tmp_path / "domain.pddl"
+    domain_file.write_text(
+        "(define (domain tiny-policy-term) (:requirements :strips) (:predicates (p)))",
+        encoding="utf-8",
+    )
+    domain = create_domain_context(domain_file)
+    policy = public.create_policy(domain, None)
+
+    result = prove_termination(domain, policy)
+    dumped = dump_result(
+        result,
+        tmp_path / "base_termination",
+        formats=(DumpFormat.PSV, DumpFormat.JSON),
+    )
+
+    output_dir = dumped.output_dir
+    run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert result.status is ValidationStatus.SUCCESS
+    assert result.policy_result.scc_results is None
+    complete_result = prove_termination(
+        domain,
+        policy,
+        use_incomplete_preprocessing=False,
+    )
+    assert complete_result.policy_result.scc_results == []
+    _assert_policy_incomplete_termination_status(
+        result,
+        output_dir,
+        IncompleteTerminationStatus.PROVED,
+    )
+    assert run_json["tool"] == "runir.ps.base.prove_termination"
+    assert (output_dir / "summary.psv").is_file()
+    assert (output_dir / "dicts" / "variables.psv").is_file()
+    assert not (output_dir / "dicts" / "memory.psv").exists()
+
+
+def test_nonterminating_policy_dumps_native_graph_witness(tmp_path: Path) -> None:
+    domain = create_domain_context(get_generator_domain_path("gripper"))
+    policy_file = tmp_path / "policy.txt"
+    policy_file.write_text(
+        """(:sketch
+    (:features
+        (:boolean
+            (:symbol b1)
+            (:expression (b_nonempty (c_atomic_state "at-robby")))
+        )
+    )
+    (:rules
+        (:rule
+            (:symbol auto1)
+            (:expression
+                (:conditions (negative b1))
+                (:effects (positive b1))
+            )
+        )
+        (:rule
+            (:symbol auto2)
+            (:expression
+                (:conditions (positive b1))
+                (:effects (negative b1))
+            )
+        )
+    )
+)
+""",
+        encoding="utf-8",
+    )
+    policy = public.create_policy(domain, policy_file)
+
+    insufficient_result = prove_termination(domain, policy, max_features=1)
+    insufficient_dump = dump_result(
+        insufficient_result,
+        tmp_path / "base_termination_insufficient",
+        formats=(DumpFormat.JSON,),
+    )
+    _assert_policy_incomplete_termination_status(
+        insufficient_result,
+        insufficient_dump.output_dir,
+        IncompleteTerminationStatus.INSUFFICIENT,
+    )
+
+    result = prove_termination(
+        domain,
+        policy,
+        max_features=1,
+        use_incomplete_preprocessing=False,
+    )
+    dumped = dump_result(
+        result,
+        tmp_path / "base_termination_failure",
+        formats=(DumpFormat.PSV, DumpFormat.JSON),
+    )
+
+    run_json = json.loads((dumped.output_dir / "run.json").read_text(encoding="utf-8"))
+    witness = (
+        dumped.output_dir
+        / "failures"
+        / "structural_termination-001"
+        / "witness.psv"
+    )
+    assert result.status is ValidationStatus.FAILURE
+    _assert_policy_incomplete_termination_status(
+        result,
+        dumped.output_dir,
+        IncompleteTerminationStatus.DISABLED,
+    )
+    assert result.observation.fingerprint is not None
+    assert result.observation.fingerprint.witness == ("non_terminating",)
+    assert run_json["status"] == "failure"
+    assert run_json["metadata"]["program_status"] == "non_terminating"
+    assert witness.is_file()
+    witness_text = witness.read_text(encoding="utf-8")
+    assert "[vertices]" in witness_text
+    assert "[edges]" in witness_text
+    assert "memory_id" not in witness_text
+    assert "b1" in (dumped.output_dir / "dicts" / "variables.psv").read_text(
+        encoding="utf-8"
+    )
+    assert not (dumped.output_dir / "dicts" / "memory.psv").exists()
+
 def _assert_incomplete_termination_status(
     result: ProveTerminationResult,
     output_dir: Path,
@@ -333,6 +482,19 @@ def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) ->
     run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
 
     assert result.status.value == "success"
+    assert all(
+        module_result.scc_results is None
+        for module_result in result.program_result.module_results
+    )
+    complete_result = prove_termination(
+        domain,
+        program,
+        use_incomplete_preprocessing=False,
+    )
+    assert all(
+        module_result.scc_results == []
+        for module_result in complete_result.program_result.module_results
+    )
     _assert_incomplete_termination_status(
         result,
         output_dir,

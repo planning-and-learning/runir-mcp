@@ -45,6 +45,7 @@ Validation returns typed result objects. Dump only when another process needs fi
 
 - [`runir.ps.base.create_empty_policy`](runir.ps.base.create_empty_policy.md): `create_policy(domain, None)` or `write_empty_policy(domain, path)`
 - [`runir.ps.base.reformat_policy`](runir.ps.base.reformat_policy.md): formatting workflow/table notes
+- [`runir.ps.base.prove_termination`](runir.ps.base.prove_termination.md): structural-termination result and counterexample tables
 
 ### Extended Module Programs
 
@@ -67,6 +68,7 @@ Validation returns typed result objects. Dump only when another process needs fi
 - Base sketch-policy counterexamples: [tables](tables/runir.ps.base.counterexamples.md)
 - Module-program counterexamples: [tables](tables/runir.ps.ext.counterexamples.md)
 - Open-state FF plan trace: [tables](tables/runir.ps.open_state.plan_trace.md)
+- Base structural termination: [tables](tables/runir.ps.base.prove_termination.md)
 - Structural termination: [tables](tables/runir.ps.ext.prove_termination.md)
 - Unsolvability classifier: [tables](tables/runir.uns.prove_classifier.md)
 

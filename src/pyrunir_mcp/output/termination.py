@@ -29,7 +29,7 @@ VARIABLE_KINDS = (VariableKind.CONCEPT, VariableKind.BOOLEAN, VariableKind.NUMER
 @dataclass(frozen=True)
 class TerminationVertex:
     index: int
-    memory_state: str
+    memory_state: str | None
     concepts: dict[str, str] = field(default_factory=_str_dict)
     booleans: dict[str, str] = field(default_factory=_str_dict)
     numericals: dict[str, str] = field(default_factory=_str_dict)
@@ -66,8 +66,10 @@ class TerminationDictionaries:
     def rule(self, symbol: str) -> str:
         return self.rules.intern(symbol, [symbol])
 
-    def tables(self) -> dict[str, Table]:
-        named = {Keys.VARIABLES: self.variables, Keys.MEMORY: self.memories, Keys.RULES: self.rules}
+    def tables(self, *, include_memory: bool = True) -> dict[str, Table]:
+        named = {Keys.VARIABLES: self.variables, Keys.RULES: self.rules}
+        if include_memory:
+            named[Keys.MEMORY] = self.memories
         tables: dict[str, Table] = {}
         for name, dictionary in named.items():
             table = dictionary.table(name, include_empty=True)
@@ -100,6 +102,7 @@ def counterexample_document(
     vertices: list[TerminationVertex],
     edges: list[TerminationEdge],
     dicts: TerminationDictionaries,
+    include_memory: bool = True,
 ) -> Document:
     variables = _ordered_variables(vertices[0]) if vertices else []
     aliases = [dicts.variable(kind, name) for kind, name in variables]
@@ -108,7 +111,12 @@ def counterexample_document(
     for vertex in vertices:
         values = vertex.values()
         cells = [values[kind].get(name, "") for kind, name in variables]
-        vertex_rows.append([vertex.index, dicts.memory(vertex.memory_state), *cells])
+        if include_memory:
+            if vertex.memory_state is None:
+                raise ValueError("termination vertex is missing its memory state")
+            vertex_rows.append([vertex.index, dicts.memory(vertex.memory_state), *cells])
+        else:
+            vertex_rows.append([vertex.index, *cells])
 
     edge_rows: list[list[JsonValue]] = []
     for edge in edges:
@@ -122,7 +130,15 @@ def counterexample_document(
         header=header,
         sections=[
             _cycle_table(edges),
-            Table(name=Keys.VERTICES, columns=[TableColumns.VERTEX_INDEX, TableColumns.MEMORY_ID, *aliases], rows=vertex_rows),
+            Table(
+                name=Keys.VERTICES,
+                columns=[
+                    TableColumns.VERTEX_INDEX,
+                    *([TableColumns.MEMORY_ID] if include_memory else []),
+                    *aliases,
+                ],
+                rows=vertex_rows,
+            ),
             Table(name=Keys.EDGES, columns=[TableColumns.EDGE_INDEX, TableColumns.SOURCE_VERTEX_INDEX, TableColumns.TARGET_VERTEX_INDEX, TableColumns.RULE_ID, TableColumns.DELTAS], rows=edge_rows),
         ],
     )

@@ -47,6 +47,7 @@ Context/candidates:
 Validation:
 
 - `find_solution(task_context, policy_or_module_program, classifier=None, universal=False, ...)`
+- `prove_termination(domain_context, policy_or_module_program, ...)`
 - `prove_classifier(task_context, classifier, ...)`
 
 Dumping:
