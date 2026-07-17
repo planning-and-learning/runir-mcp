@@ -41,5 +41,7 @@ output_dir/
     rules.{psv,md,json}                  # dictionary: r0,r1,… -> module rule
   failures/
     <id>/                                # <id> = structural_termination-001, …
-      witness.{psv,md,json}              # non-termination cycle
+      witness.{psv,md,json}              # non-termination cycle, when enabled
 ```
+
+Passing `include_witness=False` to `dump_result(...)` skips witness construction but keeps each counterexample row with `witness_path: null`; `run.json` records `evidence.termination_witness`.

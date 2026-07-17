@@ -30,7 +30,8 @@ output_dir/
     rules.{psv,md,json}                  # r0,r1,... -> policy rule
   failures/
     structural_termination-001/
-      witness.{psv,md,json}              # nontermination cycle
+      witness.{psv,md,json}              # nontermination cycle, when enabled
 ```
 
 Base-policy witnesses intentionally have no memory dictionary or `memory_id` column.
+Passing `include_witness=False` to `dump_result(...)` skips witness construction but keeps the counterexample row with `witness_path: null`; `run.json` records `evidence.termination_witness`.

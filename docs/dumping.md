@@ -17,6 +17,7 @@ dumped = dump_result(
     result,
     output_dir,
     formats=(DumpFormat.JSON,),
+    include_witness=True,
     include_witness_trace=True,
     include_plan_trace=True,
     include_successors=True,
@@ -28,11 +29,12 @@ dumped = dump_result(
 | `result` | `ValidationResult` | required | Result from `find_solution`, `prove_classifier`, or a termination proof. |
 | `output_dir` | `str | Path` | required | Directory to create and write into. |
 | `formats` | `tuple[DumpFormat, ...]` | `(DumpFormat.JSON,)` | Requested output formats. |
+| `include_witness` | `bool` | `True` | Emit standalone classifier, solution, and structural-termination witnesses. |
 | `include_witness_trace` | `bool` | `True` | Emit failure-path and successful witness traces. |
 | `include_plan_trace` | `bool` | `True` | Run FF and emit plan traces for open-state witnesses. |
 | `include_successors` | `bool` | `True` | Expand and emit one-step successor frontiers. |
 
-Always writes compact machine metadata and mandatory failure witnesses. The three evidence flags apply only to policy/module-program solution results and independently prevent both construction and output of the disabled evidence. Disabling witness traces omits failure `witness_trace.*` files and all successful witness-trace entries. Disabling plan traces avoids the separate FF search. Disabling successors avoids frontier-expander construction and successor generation.
+Always writes compact machine metadata. `include_witness` independently prevents construction and output of standalone classifier, solution, and structural-termination witnesses. The other three evidence flags apply only to policy/module-program solution results. Disabling witness traces omits failure `witness_trace.*` files and all successful witness-trace entries. Disabling plan traces avoids the separate FF search. Disabling successors avoids frontier-expander construction and successor generation.
 
 For reported open-state failures, enabled plan-trace generation uses `result.plan_trace_budget`, not `result.search_budget`. The default is 1,000,000 states and 10 seconds.
 
@@ -41,7 +43,7 @@ For reported open-state failures, enabled plan-trace generation uses `result.pla
 | `output_dir` | `Path` | Absolute output directory. |
 | `files` | `tuple[Path, ...]` | Files or rich artifact entry points written by the dump call. |
 
-Rich `run.json` envelopes and base/ext solution `manifest.json` files use schema version 2. Solution manifests contain an `evidence` object with the three booleans `witness_trace`, `plan_trace`, and `successors`; nullable artifact paths therefore distinguish disabled evidence from evidence that was enabled but unavailable.
+Rich `run.json` envelopes and base/ext solution `manifest.json` files use schema version 2. Classifier envelopes contain `evidence.classifier_witness`; solution manifests contain `evidence.solution_witness`, `evidence.witness_trace`, `evidence.plan_trace`, and `evidence.successors`; structural-termination envelopes contain `evidence.termination_witness`. Disabled standalone witnesses retain their result rows with `witness_path: null`.
 
 ## `dump_validation_history`
 

@@ -27,7 +27,7 @@ class RunItem:
     id: str
     category: RunItemCategory
     subject: str | None
-    witness: str  # artifact name (e.g. "failures/cycle-001/witness")
+    witness: str | None = None  # artifact name, when the standalone witness was dumped
     witness_trace: str | None = None  # artifact name, when a path witness trace exists
     successors: str | None = None  # artifact name, when successors were dumped
     plan_trace: str | None = None  # artifact name, when an open-state FF plan was dumped
@@ -46,7 +46,7 @@ def _result_item(item: RunItem, paths: dict[str, str]) -> JsonObject:
         Keys.ID: item.id,
         Keys.CATEGORY: item.category.value,
         Keys.SUBJECT: item.subject,
-        Keys.WITNESS_PATH: paths[item.witness],
+        Keys.WITNESS_PATH: paths[item.witness] if item.witness else None,
         Keys.WITNESS_TRACE_PATH: paths[item.witness_trace] if item.witness_trace else None,
         Keys.SUCCESSORS_PATH: paths[item.successors] if item.successors else None,
         Keys.PLAN_TRACE_PATH: paths[item.plan_trace] if item.plan_trace else None,
@@ -79,6 +79,7 @@ def build_run_envelope(
     items: list[RunItem],
     category: RunCategory | None = None,
     formats: tuple[Fmt, ...] | None = None,
+    evidence: JsonObject | None = None,
 ) -> JsonObject:
     output_dir = fresh_output_dir(output_dir)
     # Dictionaries under dicts/; each failure's artifacts under failures/<id>/ (set by the caller).
@@ -111,7 +112,7 @@ def build_run_envelope(
         ).value,
         **passthrough,
     }
-    return {
+    envelope: JsonObject = {
         Keys.SCHEMA_VERSION: 2,
         Keys.TOOL: tool,
         Keys.STATUS: status.value,
@@ -121,3 +122,6 @@ def build_run_envelope(
         Keys.COUNTEREXAMPLES: result_items,
         Keys.OUTPUT_DIR: output_path,
     }
+    if evidence is not None:
+        envelope[Keys.EVIDENCE] = evidence
+    return envelope

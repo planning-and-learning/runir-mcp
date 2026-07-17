@@ -251,8 +251,6 @@ def _populate_feature_dictionary(dicts: Dictionaries, features: Sequence[Feature
     return dicts.feature_symbols()
 
 
-
-
 _FIND_SOLUTION_TOOL = "runir.ps.find_solution"
 _FIND_SOLUTION_ORIGIN = "find_solution"
 SolutionResult: TypeAlias = FindPolicySolutionResult | FindModuleProgramSolutionResult
@@ -273,7 +271,7 @@ class _SolutionFailureRow:
     status: str
     seed: int | None
     problem: str
-    witness: str
+    witness: str | None
     witness_trace: str | None
     successors: str | None
     plan_trace: str | None
@@ -339,6 +337,7 @@ def _dump_solution_artifacts(
     output_path: Path,
     formats: tuple[Fmt, ...],
     *,
+    include_witness: bool,
     include_witness_trace: bool,
     include_plan_trace: bool,
     include_successors: bool,
@@ -350,16 +349,12 @@ def _dump_solution_artifacts(
     if ext:
         task = result.context.ext_task
         features = collect_ext_features(
-            task.get_module_program(
-                result.context.domain_context.planning_domain, result.candidate
-            )
+            task.get_module_program(result.context.domain_context.planning_domain, result.candidate)
         )
     else:
         task = result.context.base_task
         features = collect_base_features(
-            task.get_policy(
-                result.context.domain_context.planning_domain, result.candidate
-            )
+            task.get_policy(result.context.domain_context.planning_domain, result.candidate)
         )
 
     task_context = task.task_context
@@ -390,14 +385,10 @@ def _dump_solution_artifacts(
             else None
         )
     else:
-        policy = task.get_policy(
-            result.context.domain_context.planning_domain, result.candidate
-        )
+        policy = task.get_policy(result.context.domain_context.planning_domain, result.candidate)
         intern_base_rules(policy, dicts)
         expander = (
-            make_frontier_expander(task_context, policy, evidence)
-            if include_successors
-            else None
+            make_frontier_expander(task_context, policy, evidence) if include_successors else None
         )
 
     output_path = fresh_output_dir(output_path)
@@ -429,18 +420,20 @@ def _dump_solution_artifacts(
             ext=ext,
             header=header,
             expander=expander,
+            include_witness=include_witness,
             include_witness_trace=include_witness_trace,
             include_successors=include_successors,
             include_hstar=False,
             include_hlmcut=False,
         )
-        witness_name = f"failures/{item_id}/witness"
-        witness_trace_name = f"failures/{item_id}/witness_trace" if witness_trace is not None else None
-        successors_name = (
-            f"failures/{item_id}/successors" if successors is not None else None
+        witness_name = f"failures/{item_id}/witness" if witness is not None else None
+        witness_trace_name = (
+            f"failures/{item_id}/witness_trace" if witness_trace is not None else None
         )
+        successors_name = f"failures/{item_id}/successors" if successors is not None else None
         plan_trace_name: str | None = None
-        artifacts[witness_name] = witness
+        if witness is not None and witness_name is not None:
+            artifacts[witness_name] = witness
         if witness_trace is not None and witness_trace_name is not None:
             artifacts[witness_trace_name] = witness_trace
         if successors is not None and successors_name is not None:
@@ -563,13 +556,12 @@ def _dump_solution_artifacts(
             for row in success_rows
         ],
     )
+
     def summary_row(
         row: _SolutionFailureRow | _SolutionSuccessRow,
     ) -> list[JsonValue]:
         category = (
-            row.category
-            if isinstance(row, _SolutionFailureRow)
-            else RunItemCategory.SUCCESS.value
+            row.category if isinstance(row, _SolutionFailureRow) else RunItemCategory.SUCCESS.value
         )
         return [row.id, category, row.status, row.seed, row.problem]
 
@@ -602,6 +594,7 @@ def _dump_solution_artifacts(
         Keys.SEARCH_BUDGET: _budget_json(result.search_budget),
         Keys.PLAN_TRACE_BUDGET: _budget_json(result.plan_trace_budget),
         Keys.EVIDENCE: {
+            Keys.SOLUTION_WITNESS: include_witness,
             Keys.WITNESS_TRACE: include_witness_trace,
             Keys.PLAN_TRACE: include_plan_trace,
             Keys.SUCCESSORS: include_successors,
@@ -626,14 +619,12 @@ def _dump_solution_artifacts(
                 Keys.STATUS: row.status,
                 Keys.TASK_FILE: row.problem,
                 Keys.SEED: row.seed,
-                Keys.WITNESS_PATH: paths[row.witness],
-                Keys.WITNESS_TRACE_PATH: paths[row.witness_trace] if row.witness_trace is not None else None,
-                Keys.SUCCESSORS_PATH: paths[row.successors]
-                if row.successors is not None
+                Keys.WITNESS_PATH: paths[row.witness] if row.witness is not None else None,
+                Keys.WITNESS_TRACE_PATH: paths[row.witness_trace]
+                if row.witness_trace is not None
                 else None,
-                Keys.PLAN_TRACE_PATH: paths[row.plan_trace]
-                if row.plan_trace is not None
-                else None,
+                Keys.SUCCESSORS_PATH: paths[row.successors] if row.successors is not None else None,
+                Keys.PLAN_TRACE_PATH: paths[row.plan_trace] if row.plan_trace is not None else None,
             }
             for row in failure_rows
         ],
@@ -658,41 +649,55 @@ def _dump_solution_artifacts(
 
 
 def _dump_prove_classifier_artifacts(
-    result: ProveClassifierResult, output_path: Path, formats: tuple[Fmt, ...]
+    result: ProveClassifierResult,
+    output_path: Path,
+    formats: tuple[Fmt, ...],
+    *,
+    include_witness: bool,
 ) -> RichDumpResult | None:
     if not formats or not result.mistakes:
         return None
-    dicts = Dictionaries(task=result.context.base_task.task_context.search_context.task, ext=False)
-    feature_symbols = classifier_feature_symbols(result.candidate.value)
-    for symbol in feature_symbols:
-        dicts.feature(symbol)
-    for kind, atom in result.atoms:
-        dicts.atom(AtomKind(kind), atom)
 
     artifacts: dict[str, Artifact] = {}
     items: list[RunItem] = []
+    dictionary_tables: dict[str, Table] = {}
+    dicts: Dictionaries | None = None
+    feature_symbols: list[str] = []
+    if include_witness:
+        dicts = Dictionaries(
+            task=result.context.base_task.task_context.search_context.task, ext=False
+        )
+        feature_symbols = classifier_feature_symbols(result.candidate.value)
+        for symbol in feature_symbols:
+            dicts.feature(symbol)
+        for kind, atom in result.atoms:
+            dicts.atom(AtomKind(kind), atom)
+        dictionary_tables = dicts.tables()
+
     for mistake in result.mistakes:
         category = RunItemCategory(mistake.category)
-        row = ClassifierRow(
-            id=mistake.id,
-            category=category,
-            state=mistake.state,
-            features=mistake.features,
-            fluent=mistake.fluent,
-            derived=mistake.derived,
-        )
-        witness_name = f"failures/{mistake.id}/witness"
-        artifacts[witness_name] = classifier_witness(
-            row,
-            feature_symbols,
-            dicts,
-            header=[
-                (Keys.TOOL, result.kind.value),
-                (Keys.ID, mistake.id),
-                (Keys.CATEGORY, mistake.category),
-                (Keys.SUBJECT, result.context.problem_file.name),
-            ],
-        )
+        witness_name = f"failures/{mistake.id}/witness" if include_witness else None
+        if witness_name is not None:
+            assert dicts is not None
+            row = ClassifierRow(
+                id=mistake.id,
+                category=category,
+                state=mistake.state,
+                features=mistake.features,
+                fluent=mistake.fluent,
+                derived=mistake.derived,
+            )
+            artifacts[witness_name] = classifier_witness(
+                row,
+                feature_symbols,
+                dicts,
+                header=[
+                    (Keys.TOOL, result.kind.value),
+                    (Keys.ID, mistake.id),
+                    (Keys.CATEGORY, mistake.category),
+                    (Keys.SUBJECT, result.context.problem_file.name),
+                ],
+            )
         items.append(
             RunItem(
                 id=mistake.id,
@@ -709,11 +714,12 @@ def _dump_prove_classifier_artifacts(
         else RunStatus.SUCCESS,
         output_dir=output_path,
         metadata={**_candidate_metadata(result), Keys.COUNTS: _counts_json(result.counts)},
-        dictionary_tables=dicts.tables(),
+        dictionary_tables=dictionary_tables,
         artifacts=artifacts,
         items=items,
         category=RunCategory.COUNTEREXAMPLE,
         formats=formats,
+        evidence={Keys.CLASSIFIER_WITNESS: include_witness},
     )
     output_dir = _output_dir_from_envelope(envelope, output_path)
     path = output_dir / "run.json"
@@ -738,9 +744,7 @@ def _policy_termination_vertices_edges(
                 None,
                 booleans={
                     symbol: "T" if value else "F"
-                    for symbol, value in zip(
-                        boolean_symbols, vertex.boolean_values, strict=True
-                    )
+                    for symbol, value in zip(boolean_symbols, vertex.boolean_values, strict=True)
                 },
                 numericals={
                     symbol: ">0" if value else "=0"
@@ -762,13 +766,12 @@ def _policy_termination_vertices_edges(
                 edge.rule.get_symbol(),
                 numerical_changes={
                     symbol: value.name.lower()
-                    for symbol, value in zip(
-                        numerical_symbols, edge.numerical_changes, strict=True
-                    )
+                    for symbol, value in zip(numerical_symbols, edge.numerical_changes, strict=True)
                 },
             )
         )
     return vertices, edges
+
 
 def _termination_vertices_edges(
     module_result: ModuleStructuralTerminationResult,
@@ -787,9 +790,7 @@ def _termination_vertices_edges(
                 vertex.memory_state.get_name(),
                 booleans={
                     symbol: str(value)
-                    for symbol, value in zip(
-                        boolean_symbols, vertex.boolean_values, strict=True
-                    )
+                    for symbol, value in zip(boolean_symbols, vertex.boolean_values, strict=True)
                 },
                 numericals={
                     symbol: str(value)
@@ -811,9 +812,7 @@ def _termination_vertices_edges(
                 edge.rule.get_symbol(),
                 numerical_changes={
                     symbol: str(value)
-                    for symbol, value in zip(
-                        numerical_symbols, edge.numerical_changes, strict=True
-                    )
+                    for symbol, value in zip(numerical_symbols, edge.numerical_changes, strict=True)
                 },
             )
         )
@@ -824,6 +823,8 @@ def _dump_prove_base_termination_artifacts(
     result: ProvePolicyTerminationResult,
     output_path: Path,
     formats: tuple[Fmt, ...],
+    *,
+    include_witness: bool,
 ) -> RichDumpResult | None:
     if not formats:
         return None
@@ -832,20 +833,21 @@ def _dump_prove_base_termination_artifacts(
     items: list[RunItem] = []
     if not result.policy_result.is_terminating():
         item_id = "structural_termination-001"
-        vertices, edges = _policy_termination_vertices_edges(result)
-        witness_name = f"failures/{item_id}/witness"
-        artifacts[witness_name] = termination_counterexample_document(
-            header=[
-                (Keys.TOOL, result.kind.value),
-                (Keys.ID, item_id),
-                (Keys.CATEGORY, "structural_termination"),
-                (Keys.CANDIDATE_ID, result.candidate.id),
-            ],
-            vertices=vertices,
-            edges=edges,
-            dicts=dicts,
-            include_memory=False,
-        )
+        witness_name = f"failures/{item_id}/witness" if include_witness else None
+        if witness_name is not None:
+            vertices, edges = _policy_termination_vertices_edges(result)
+            artifacts[witness_name] = termination_counterexample_document(
+                header=[
+                    (Keys.TOOL, result.kind.value),
+                    (Keys.ID, item_id),
+                    (Keys.CATEGORY, "structural_termination"),
+                    (Keys.CANDIDATE_ID, result.candidate.id),
+                ],
+                vertices=vertices,
+                edges=edges,
+                dicts=dicts,
+                include_memory=False,
+            )
         items.append(
             RunItem(
                 id=item_id,
@@ -872,14 +874,20 @@ def _dump_prove_base_termination_artifacts(
         if result.status.value == RunStatus.SUCCESS.value
         else RunCategory.COUNTEREXAMPLE,
         formats=formats,
+        evidence={Keys.TERMINATION_WITNESS: include_witness},
     )
     output_dir = _output_dir_from_envelope(envelope, output_path)
     path = output_dir / "run.json"
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return RichDumpResult(output_dir=output_dir, primary_file=path)
 
+
 def _dump_prove_termination_artifacts(
-    result: ProveTerminationResult, output_path: Path, formats: tuple[Fmt, ...]
+    result: ProveTerminationResult,
+    output_path: Path,
+    formats: tuple[Fmt, ...],
+    *,
+    include_witness: bool,
 ) -> RichDumpResult | None:
     if not formats:
         return None
@@ -895,19 +903,20 @@ def _dump_prove_termination_artifacts(
         module = modules[index]
         module_name = module.get_name()
         item_id = f"structural_termination-{len(items) + 1:03d}"
-        vertices, edges = _termination_vertices_edges(module_result, module)
-        witness_name = f"failures/{item_id}/witness"
-        artifacts[witness_name] = termination_counterexample_document(
-            header=[
-                (Keys.TOOL, result.kind.value),
-                (Keys.ID, item_id),
-                (Keys.CATEGORY, "structural_termination"),
-                (Keys.MODULE, module_name),
-            ],
-            vertices=vertices,
-            edges=edges,
-            dicts=dicts,
-        )
+        witness_name = f"failures/{item_id}/witness" if include_witness else None
+        if witness_name is not None:
+            vertices, edges = _termination_vertices_edges(module_result, module)
+            artifacts[witness_name] = termination_counterexample_document(
+                header=[
+                    (Keys.TOOL, result.kind.value),
+                    (Keys.ID, item_id),
+                    (Keys.CATEGORY, "structural_termination"),
+                    (Keys.MODULE, module_name),
+                ],
+                vertices=vertices,
+                edges=edges,
+                dicts=dicts,
+            )
         items.append(
             RunItem(
                 id=item_id,
@@ -935,6 +944,7 @@ def _dump_prove_termination_artifacts(
         if result.status.value == RunStatus.SUCCESS.value
         else RunCategory.COUNTEREXAMPLE,
         formats=formats,
+        evidence={Keys.TERMINATION_WITNESS: include_witness},
     )
     output_dir = _output_dir_from_envelope(envelope, output_path)
     path = output_dir / "run.json"
@@ -947,6 +957,7 @@ def _dump_rich_artifacts(
     output_path: Path,
     formats: tuple[Fmt, ...],
     *,
+    include_witness: bool,
     include_witness_trace: bool,
     include_plan_trace: bool,
     include_successors: bool,
@@ -956,15 +967,22 @@ def _dump_rich_artifacts(
             result,
             output_path,
             formats,
+            include_witness=include_witness,
             include_witness_trace=include_witness_trace,
             include_plan_trace=include_plan_trace,
             include_successors=include_successors,
         )
     if isinstance(result, ProveClassifierResult):
-        return _dump_prove_classifier_artifacts(result, output_path, formats)
+        return _dump_prove_classifier_artifacts(
+            result, output_path, formats, include_witness=include_witness
+        )
     if isinstance(result, ProvePolicyTerminationResult):
-        return _dump_prove_base_termination_artifacts(result, output_path, formats)
-    return _dump_prove_termination_artifacts(result, output_path, formats)
+        return _dump_prove_base_termination_artifacts(
+            result, output_path, formats, include_witness=include_witness
+        )
+    return _dump_prove_termination_artifacts(
+        result, output_path, formats, include_witness=include_witness
+    )
 
 
 def _state_id_sort_key(value: str) -> tuple[int, str]:
@@ -1056,12 +1074,13 @@ def solution_observation_from_manifest(
         return result.observation
     witness_ids: tuple[str, ...] = ()
     witness_path = failure.get(Keys.WITNESS_PATH)
-    if isinstance(witness_path, str):
-        category_override, witness_ids = _witness_info_from_file(Path(witness_path))
-        if category_override is not None:
-            category = category_override
-        if category == CounterexampleKind.CYCLE:
-            witness_ids = rotate_smallest_state_id_first(witness_ids)
+    if not isinstance(witness_path, str):
+        return result.observation
+    category_override, witness_ids = _witness_info_from_file(Path(witness_path))
+    if category_override is not None:
+        category = category_override
+    if category == CounterexampleKind.CYCLE:
+        witness_ids = rotate_smallest_state_id_first(witness_ids)
     fingerprint = FailureFingerprint(
         kind=result.kind,
         status=result.status,
@@ -1100,6 +1119,7 @@ def dump_result(
     output_dir: str | Path,
     *,
     formats: tuple[DumpFormat, ...] = (DumpFormat.JSON,),
+    include_witness: bool = True,
     include_witness_trace: bool = True,
     include_plan_trace: bool = True,
     include_successors: bool = True,
@@ -1116,6 +1136,7 @@ def dump_result(
         result,
         output_path,
         rich_formats,
+        include_witness=include_witness,
         include_witness_trace=include_witness_trace,
         include_plan_trace=include_plan_trace,
         include_successors=include_successors,

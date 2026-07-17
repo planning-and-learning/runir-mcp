@@ -23,7 +23,7 @@ result = find_solution(
 )
 ```
 
-Passing a `Policy` returns `FindPolicySolutionResult`; passing a `ModuleProgram` returns `FindModuleProgramSolutionResult`. Dump either result with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`. The dump-only `include_witness_trace`, `include_plan_trace`, and `include_successors` flags independently disable those evidence builders without changing validation.
+Passing a `Policy` returns `FindPolicySolutionResult`; passing a `ModuleProgram` returns `FindModuleProgramSolutionResult`. Dump either result with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`. The dump-only `include_witness`, `include_witness_trace`, `include_plan_trace`, and `include_successors` flags independently disable those evidence builders without changing validation.
 
 ## Arguments
 
@@ -82,7 +82,7 @@ output_dir/
     memory.{psv,md,json}                 # module programs only
   failures/
     <id>/
-      witness.{psv,md,json}
+      witness.{psv,md,json}              # present when enabled
       witness_trace.{psv,md,json}        # present when enabled and a path exists
       successors.{psv,md,json}           # present when successors exist
       plan_trace.{psv,md,json}           # open states when FF finds a plan
@@ -91,4 +91,4 @@ output_dir/
       witness_trace.{psv,md,json}
 ```
 
-The sectioned artifact header uses `@tool runir.ps.find_solution`; the validation kind distinguishes base from extended results. Success entries contain only a complete witness trace. Failure directories always keep their witness and may also contain its witness trace, successor frontier, and planner trace. Schema-v2 `manifest.json` records the three evidence flags explicitly.
+The sectioned artifact header uses `@tool runir.ps.find_solution`; the validation kind distinguishes base from extended results. Success entries contain only a complete witness trace. Failure rows remain present when standalone witnesses are disabled, with a null witness path. Schema-v2 `manifest.json` records all four evidence flags explicitly, including `solution_witness`.

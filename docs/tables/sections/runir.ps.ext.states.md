@@ -2,7 +2,7 @@
 
 Used by: [`../runir.ps.ext.counterexamples.md`](../runir.ps.ext.counterexamples.md).
 
-Control-state annotations and feature vectors for module-program witnesses, traces, and cycles. A non-cycle witness contains one row; cycle witnesses repeat the first row as the final row to close the cycle.
+Control-state annotations and feature vectors for module-program witnesses, witness traces, and cycles. A non-cycle witness contains one row; cycle witnesses repeat the first row as the final row to close the cycle.
 
 | Column | Meaning |
 |---|---|

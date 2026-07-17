@@ -82,6 +82,9 @@ class Keys(StrEnum):
     # Artifact references and filesystem locations.
     FAILURES = "failures"
     SUCCESSES = "successes"
+    CLASSIFIER_WITNESS = "classifier_witness"
+    SOLUTION_WITNESS = "solution_witness"
+    TERMINATION_WITNESS = "termination_witness"
     WITNESS_TRACE = "witness_trace"
     WITNESS = "witness"
     SUCCESSORS = "successors"

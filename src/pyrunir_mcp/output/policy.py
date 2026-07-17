@@ -1,4 +1,4 @@
-"""Build policy/module-program witness documents (counterexamples, traces, successors).
+"""Build policy/module-program witness documents (counterexamples, witness traces, successors).
 
 Consumes a normalized witness (raw symbols + resolved flags) and the run-global
 `Dictionaries`, interning symbols as it builds. Base policy and module-program (ext) share

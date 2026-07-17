@@ -96,7 +96,7 @@ disable it with `use_incomplete_preprocessing=False` when the complete check mus
 
 Validation is in-memory. Dump explicitly:
 
-- `dump_result(result, output_dir, *, include_witness_trace=True, include_plan_trace=True, include_successors=True)` writes result JSON and requested artifacts; disabling evidence also skips its construction.
+- `dump_result(result, output_dir, *, include_witness=True, include_witness_trace=True, include_plan_trace=True, include_successors=True)` writes result JSON and requested artifacts; disabling evidence also skips its construction. `include_witness` applies to classifier, solution, and structural-termination witnesses.
 - `dump_validation_history(history, output_dir)` writes history JSON.
 
 Typed detail objects stay in memory; strings/files are produced at dump/output boundaries.

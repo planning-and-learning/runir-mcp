@@ -27,6 +27,8 @@ Dump with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.J
 
 When classifier mistakes are found, `dump_result(...)` also writes rich counterexample artifacts using the [unsolvability-classifier table schema](tables/runir.uns.prove_classifier.md). Representative mistakes are written under `failures/<id>/`; counts in `result.json` remain aggregate counts for the full checked graph.
 
+Passing `include_witness=False` to `dump_result(...)` skips classifier witness and dictionary construction while retaining mistake rows with `witness_path: null`; `run.json` records `evidence.classifier_witness`.
+
 Categories:
 
 - `false_positive`: classifier predicts unsolvable on a solvable state.

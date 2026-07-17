@@ -257,6 +257,7 @@ def test_universal_dump_fills_unused_failure_capacity_with_successes(
     assert not (without_witness_traces.output_dir / "successes").exists()
 
 
+@pytest.mark.parametrize("include_witness", [False, True])
 @pytest.mark.parametrize(
     ("include_witness_trace", "include_plan_trace", "include_successors"),
     [
@@ -272,6 +273,7 @@ def test_universal_dump_fills_unused_failure_capacity_with_successes(
 )
 def test_dump_solution_evidence_options_are_independent(
     tmp_path: Path,
+    include_witness: bool,
     include_witness_trace: bool,
     include_plan_trace: bool,
     include_successors: bool,
@@ -286,6 +288,7 @@ def test_dump_solution_evidence_options_are_independent(
         result,
         tmp_path / "solution",
         formats=(DumpFormat.PSV,),
+        include_witness=include_witness,
         include_witness_trace=include_witness_trace,
         include_plan_trace=include_plan_trace,
         include_successors=include_successors,
@@ -298,14 +301,16 @@ def test_dump_solution_evidence_options_are_independent(
 
     assert manifest["schema_version"] == 2
     assert manifest["evidence"] == {
+        "solution_witness": include_witness,
         "witness_trace": include_witness_trace,
         "plan_trace": include_plan_trace,
         "successors": include_successors,
     }
-    assert (failure_dir / "witness.psv").is_file()
+    assert (failure["witness_path"] is not None) is include_witness
     assert (failure["witness_trace_path"] is not None) is include_witness_trace
     assert (failure["plan_trace_path"] is not None) is include_plan_trace
     assert (failure["successors_path"] is not None) is include_successors
+    assert (failure_dir / "witness.psv").exists() is include_witness
     assert (failure_dir / "witness_trace.psv").exists() is include_witness_trace
     assert (failure_dir / "plan_trace.psv").exists() is include_plan_trace
     assert (failure_dir / "successors.psv").exists() is include_successors
@@ -330,14 +335,23 @@ def test_disabled_solution_evidence_skips_expensive_builders(
 
     monkeypatch.setattr(dumping, "make_frontier_expander", unexpected)
     monkeypatch.setattr(dumping, "plan_open_state_trace", unexpected)
+    monkeypatch.setattr(proof, "counterexample_document", unexpected)
     monkeypatch.setattr(proof, "_witness_trace_document", unexpected)
 
     dumped = dump_result(
         result,
         tmp_path / "solution",
         formats=(DumpFormat.PSV,),
+        include_witness=False,
         include_witness_trace=False,
         include_plan_trace=False,
         include_successors=False,
     )
-    assert (dumped.output_dir / "failures" / "open_state-001" / "witness.psv").is_file()
+    manifest = json.loads((dumped.output_dir / "manifest.json").read_text(encoding="utf-8"))
+    result_json = json.loads((dumped.output_dir / "result.json").read_text(encoding="utf-8"))
+    assert manifest["failures"][0]["witness_path"] is None
+    assert manifest["status"] == "failure"
+    assert "open_state-001" in (dumped.output_dir / "summary.psv").read_text(encoding="utf-8")
+    assert not (dumped.output_dir / "failures" / "open_state-001" / "witness.psv").exists()
+    assert result.observation.fingerprint is not None
+    assert result_json["observation"]["witness"] == list(result.observation.fingerprint.witness)

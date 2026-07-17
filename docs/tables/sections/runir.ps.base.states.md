@@ -2,7 +2,7 @@
 
 Used by: [`../runir.ps.base.counterexamples.md`](../runir.ps.base.counterexamples.md).
 
-State annotations and feature vectors for witnesses, traces, cycles, and successor-frontier targets. A non-cycle witness contains one row; cycle witnesses repeat the first row as the final row to close the cycle.
+State annotations and feature vectors for witnesses, witness traces, cycles, and successor-frontier targets. A non-cycle witness contains one row; cycle witnesses repeat the first row as the final row to close the cycle.
 
 | Column | Meaning |
 |---|---|

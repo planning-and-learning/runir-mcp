@@ -414,28 +414,32 @@ def witness_artifacts(
     ext: bool,
     header: list[tuple[str, str]],
     expander: FrontierExpander | None = None,
+    include_witness: bool = True,
     include_witness_trace: bool = True,
     include_successors: bool = True,
     include_hstar: bool = True,
     include_hlmcut: bool = True,
-) -> tuple[Document, Document | None, Document | None]:
+) -> tuple[Document | None, Document | None, Document | None]:
     """Return witness, witness-trace, and successor documents for one failure."""
     if kind == CounterexampleKind.CYCLE:
         vertices = _witness_vertices(witness)
-        cycle_states = [
-            witness_state(state_summary(graph, vertex, evidence), cycle=True) for vertex in vertices
-        ]
-        cycle_edges = _cycle_edges(graph, vertices)
-        counterexample = counterexample_document(
-            header=header,
-            feature_symbols=feature_symbols,
-            states=cycle_states,
-            transitions=_transitions(graph, cycle_edges, evidence, ext=ext),
-            cycle=True,
-            dicts=dicts,
-            ext=ext,
-            include_hstar=include_hstar,
-            include_hlmcut=include_hlmcut,
+        counterexample = (
+            counterexample_document(
+                header=header,
+                feature_symbols=feature_symbols,
+                states=[
+                    witness_state(state_summary(graph, vertex, evidence), cycle=True)
+                    for vertex in vertices
+                ],
+                transitions=_transitions(graph, _cycle_edges(graph, vertices), evidence, ext=ext),
+                cycle=True,
+                dicts=dicts,
+                ext=ext,
+                include_hstar=include_hstar,
+                include_hlmcut=include_hlmcut,
+            )
+            if include_witness
+            else None
         )
         path_edges = (
             _path_edges_to(graph, vertices[0])
@@ -472,16 +476,20 @@ def witness_artifacts(
         )
     elif kind == CounterexampleKind.DEADEND:
         vertex = _witness_vertex(witness)
-        counterexample = counterexample_document(
-            header=header,
-            feature_symbols=feature_symbols,
-            states=[witness_state(state_summary(graph, vertex, evidence), witness=True)],
-            transitions=[],
-            cycle=False,
-            dicts=dicts,
-            ext=ext,
-            include_hstar=include_hstar,
-            include_hlmcut=include_hlmcut,
+        counterexample = (
+            counterexample_document(
+                header=header,
+                feature_symbols=feature_symbols,
+                states=[witness_state(state_summary(graph, vertex, evidence), witness=True)],
+                transitions=[],
+                cycle=False,
+                dicts=dicts,
+                ext=ext,
+                include_hstar=include_hstar,
+                include_hlmcut=include_hlmcut,
+            )
+            if include_witness
+            else None
         )
         path_edges = _path_edges_to(graph, vertex) if include_witness_trace else None
         witness_trace = (
@@ -503,18 +511,24 @@ def witness_artifacts(
         successors = []
     else:  # CounterexampleKind.OPEN_STATE
         vertex = _witness_vertex(witness)
-        counterexample = counterexample_document(
-            header=header,
-            feature_symbols=feature_symbols,
-            states=[
-                witness_state(state_summary(graph, vertex, evidence), witness=True, open_state=True)
-            ],
-            transitions=[],
-            cycle=False,
-            dicts=dicts,
-            ext=ext,
-            include_hstar=include_hstar,
-            include_hlmcut=include_hlmcut,
+        counterexample = (
+            counterexample_document(
+                header=header,
+                feature_symbols=feature_symbols,
+                states=[
+                    witness_state(
+                        state_summary(graph, vertex, evidence), witness=True, open_state=True
+                    )
+                ],
+                transitions=[],
+                cycle=False,
+                dicts=dicts,
+                ext=ext,
+                include_hstar=include_hstar,
+                include_hlmcut=include_hlmcut,
+            )
+            if include_witness
+            else None
         )
         path_edges = (
             _path_edges_to(graph, vertex) if include_witness_trace or include_successors else None

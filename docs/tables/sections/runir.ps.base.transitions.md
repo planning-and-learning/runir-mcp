@@ -2,7 +2,7 @@
 
 Used by: [`../runir.ps.base.counterexamples.md`](../runir.ps.base.counterexamples.md).
 
-Trace or cycle edges between base planning states.
+Edges in witness traces or cycles between base planning states.
 
 | Column | Meaning |
 |---|---|

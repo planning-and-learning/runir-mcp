@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
+from typing import NoReturn, cast
 
+import pytest
 from pyrunir.kr.ps.base import Sketch
 from pytyr.planning import SearchStatus
 
@@ -85,24 +86,14 @@ def test_task_context_reuses_ground_semantic_resources(tmp_path: Path) -> None:
     assert first_loaded is first.ext_task
     assert first_ground is first_loaded.task_context.search_context
     assert first_loaded.task_context is not second_loaded.task_context
-    assert (
-        first_loaded.task_context.base_repository
-        is first_loaded.task_context.base_repository
-    )
+    assert first_loaded.task_context.base_repository is first_loaded.task_context.base_repository
     assert first_loaded.task_context.ext_repository is first_loaded.task_context.ext_repository
     assert first_loaded.task_context.uns_repository is first_loaded.task_context.uns_repository
     assert (
-        first_loaded.task_context.base_repository
-        is not second_loaded.task_context.base_repository
+        first_loaded.task_context.base_repository is not second_loaded.task_context.base_repository
     )
-    assert (
-        first_loaded.task_context.ext_repository
-        is not second_loaded.task_context.ext_repository
-    )
-    assert (
-        first_loaded.task_context.uns_repository
-        is not second_loaded.task_context.uns_repository
-    )
+    assert first_loaded.task_context.ext_repository is not second_loaded.task_context.ext_repository
+    assert first_loaded.task_context.uns_repository is not second_loaded.task_context.uns_repository
     assert first_loaded.task_context.dl_builder is not second_loaded.task_context.dl_builder
     assert (
         first_loaded.task_context.dl_denotation_repository
@@ -126,9 +117,7 @@ def test_cycle_fingerprint_rotates_smallest_state_id_first() -> None:
 
 
 def test_ext_cycle_fingerprint_rotates_by_module_memory_state_triple() -> None:
-    assert rotate_smallest_state_id_first(
-        ["M1|m0|s1", "M0|m2|s0", "M0|m1|s2", "M1|m0|s1"]
-    ) == (
+    assert rotate_smallest_state_id_first(["M1|m0|s1", "M0|m2|s0", "M0|m1|s2", "M1|m0|s1"]) == (
         "M0|m1|s2",
         "M1|m0|s1",
         "M0|m2|s0",
@@ -183,12 +172,35 @@ def test_empty_classifier_dumps_false_negative_witness_artifacts(tmp_path: Path)
     assert result.status.value == "failure"
     assert result.counts.false_negative == 1
     assert (output_dir / "run.json").is_file()
+    assert json.loads((output_dir / "run.json").read_text(encoding="utf-8"))["evidence"] == {
+        "classifier_witness": True
+    }
     assert (output_dir / "summary.psv").is_file()
     assert witness.is_file()
     assert atoms.is_file()
     assert "[states]" in witness.read_text(encoding="utf-8")
     assert "[facts]" in witness.read_text(encoding="utf-8")
     assert "p0|fluent_atoms|" in atoms.read_text(encoding="utf-8")
+
+    without_witnesses = dump_result(
+        result,
+        tmp_path / "uns_prove_without_witnesses",
+        formats=(DumpFormat.PSV,),
+        include_witness=False,
+    )
+    without_output_dir = without_witnesses.output_dir
+    without_run = json.loads((without_output_dir / "run.json").read_text(encoding="utf-8"))
+    without_result = json.loads((without_output_dir / "result.json").read_text(encoding="utf-8"))
+    assert without_run["evidence"] == {"classifier_witness": False}
+    assert without_run["counterexamples"][0]["category"] == "false_negative"
+    assert without_run["counterexamples"][0]["witness_path"] is None
+    assert without_run["metadata"]["counts"]["false_negative_count"] == 1
+    assert (
+        without_result["observation"]
+        == json.loads((output_dir / "result.json").read_text(encoding="utf-8"))["observation"]
+    )
+    assert not (without_output_dir / "failures").exists()
+    assert not (without_output_dir / "dicts").exists()
 
 
 def test_empty_module_program_find_solution_dumps_open_state_artifacts(
@@ -276,9 +288,7 @@ def test_empty_module_program_find_solution_dumps_open_state_artifacts(
         tmp_path / "ext_find_solution_classified",
         formats=(DumpFormat.PSV,),
     )
-    classified_witness = (
-        classified_dump.output_dir / "failures" / "deadend-001" / "witness.psv"
-    )
+    classified_witness = classified_dump.output_dir / "failures" / "deadend-001" / "witness.psv"
 
     classified_proof = classified.results[0][1]
     classified_label = classified_proof.graph.get_vertex_property(
@@ -287,10 +297,7 @@ def test_empty_module_program_find_solution_dumps_open_state_artifacts(
     assert classified_label.is_unsolvable
     assert classified_witness.is_file()
     assert "witness,deadend" in classified_witness.read_text(encoding="utf-8")
-    assert not (
-        classified_dump.output_dir / "failures" / "deadend-001" / "successors.psv"
-    ).exists()
-
+    assert not (classified_dump.output_dir / "failures" / "deadend-001" / "successors.psv").exists()
 
 
 def _assert_policy_incomplete_termination_status(
@@ -306,10 +313,7 @@ def _assert_policy_incomplete_termination_status(
     result_json = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
     assert result_json["termination"]["incomplete_termination_status"] == expected.value
-    assert (
-        result_json["observation"]["details"]["incomplete_termination_status"]
-        == expected.value
-    )
+    assert result_json["observation"]["details"]["incomplete_termination_status"] == expected.value
     assert run_json["metadata"]["incomplete_termination_status"] == expected.value
     assert run_json["primary"]["incomplete_termination_status"] == expected.value
 
@@ -351,7 +355,9 @@ def test_empty_policy_termination_dumps_run_artifacts(tmp_path: Path) -> None:
     assert not (output_dir / "dicts" / "memory.psv").exists()
 
 
-def test_nonterminating_policy_dumps_native_graph_witness(tmp_path: Path) -> None:
+def test_nonterminating_policy_dumps_native_graph_witness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     domain = create_domain_context(get_generator_domain_path("gripper"))
     policy_file = tmp_path / "policy.txt"
     policy_file.write_text(
@@ -409,12 +415,7 @@ def test_nonterminating_policy_dumps_native_graph_witness(tmp_path: Path) -> Non
     )
 
     run_json = json.loads((dumped.output_dir / "run.json").read_text(encoding="utf-8"))
-    witness = (
-        dumped.output_dir
-        / "failures"
-        / "structural_termination-001"
-        / "witness.psv"
-    )
+    witness = dumped.output_dir / "failures" / "structural_termination-001" / "witness.psv"
     assert result.status is ValidationStatus.FAILURE
     _assert_policy_incomplete_termination_status(
         result,
@@ -430,10 +431,35 @@ def test_nonterminating_policy_dumps_native_graph_witness(tmp_path: Path) -> Non
     assert "[vertices]" in witness_text
     assert "[edges]" in witness_text
     assert "memory_id" not in witness_text
-    assert "b1" in (dumped.output_dir / "dicts" / "variables.psv").read_text(
+    assert "b1" in (dumped.output_dir / "dicts" / "variables.psv").read_text(encoding="utf-8")
+    assert not (dumped.output_dir / "dicts" / "memory.psv").exists()
+
+    import pyrunir_mcp.dumping as dumping
+
+    def unexpected(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("termination witness builder was called")
+
+    monkeypatch.setattr(dumping, "_policy_termination_vertices_edges", unexpected)
+    without_witness = dump_result(
+        result,
+        tmp_path / "base_termination_without_witness",
+        formats=(DumpFormat.PSV,),
+        include_witness=False,
+    )
+    without_run = json.loads((without_witness.output_dir / "run.json").read_text(encoding="utf-8"))
+    assert without_run["evidence"] == {"termination_witness": False}
+    assert without_run["counterexamples"][0]["witness_path"] is None
+    assert without_run["status"] == "failure"
+    assert "structural_termination-001" in (without_witness.output_dir / "summary.psv").read_text(
         encoding="utf-8"
     )
-    assert not (dumped.output_dir / "dicts" / "memory.psv").exists()
+    assert not (without_witness.output_dir / "failures").exists()
+    assert result.observation.fingerprint is not None
+    without_result = json.loads(
+        (without_witness.output_dir / "result.json").read_text(encoding="utf-8")
+    )
+    assert without_result["observation"]["witness"] == list(result.observation.fingerprint.witness)
+
 
 def _assert_incomplete_termination_status(
     result: ProveTerminationResult,
@@ -448,10 +474,7 @@ def _assert_incomplete_termination_status(
     result_json = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     run_json = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
     assert result_json["termination"]["incomplete_termination_status"] == expected.value
-    assert (
-        result_json["observation"]["details"]["incomplete_termination_status"]
-        == expected.value
-    )
+    assert result_json["observation"]["details"]["incomplete_termination_status"] == expected.value
     assert run_json["metadata"]["incomplete_termination_status"] == expected.value
     assert run_json["primary"]["incomplete_termination_status"] == expected.value
 
@@ -475,7 +498,9 @@ def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) ->
     program = create_module_program(domain, None)
 
     result = prove_termination(domain, program)
-    dumped = dump_result(result, tmp_path / "ext_termination", formats=(DumpFormat.PSV, DumpFormat.JSON))
+    dumped = dump_result(
+        result, tmp_path / "ext_termination", formats=(DumpFormat.PSV, DumpFormat.JSON)
+    )
 
     output_dir = dumped.output_dir
     assert (output_dir / "result.json").is_file()
@@ -483,8 +508,7 @@ def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) ->
 
     assert result.status.value == "success"
     assert all(
-        module_result.scc_results is None
-        for module_result in result.program_result.module_results
+        module_result.scc_results is None for module_result in result.program_result.module_results
     )
     complete_result = prove_termination(
         domain,
@@ -505,10 +529,10 @@ def test_empty_module_program_termination_dumps_run_artifacts(tmp_path: Path) ->
     assert (output_dir / "dicts" / "variables.psv").is_file()
 
 
-def test_nonterminating_module_program_dumps_native_graph_witness(tmp_path: Path) -> None:
-    domain = create_domain_context(
-        get_generator_domain_path("gripper")
-    )
+def test_nonterminating_module_program_dumps_native_graph_witness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    domain = create_domain_context(get_generator_domain_path("gripper"))
     program_file = tmp_path / "program.txt"
     program_file.write_text(
         """(:program
@@ -574,12 +598,7 @@ def test_nonterminating_module_program_dumps_native_graph_witness(tmp_path: Path
     )
 
     run_json = json.loads((dumped.output_dir / "run.json").read_text(encoding="utf-8"))
-    witness = (
-        dumped.output_dir
-        / "failures"
-        / "structural_termination-001"
-        / "witness.psv"
-    )
+    witness = dumped.output_dir / "failures" / "structural_termination-001" / "witness.psv"
     assert result.status is ValidationStatus.FAILURE
     _assert_incomplete_termination_status(
         result,
@@ -595,9 +614,33 @@ def test_nonterminating_module_program_dumps_native_graph_witness(tmp_path: Path
     witness_text = witness.read_text(encoding="utf-8")
     assert "[vertices]" in witness_text
     assert "[edges]" in witness_text
-    assert "fn" in (dumped.output_dir / "dicts" / "variables.psv").read_text(
+    assert "fn" in (dumped.output_dir / "dicts" / "variables.psv").read_text(encoding="utf-8")
+
+    import pyrunir_mcp.dumping as dumping
+
+    def unexpected(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("termination witness builder was called")
+
+    monkeypatch.setattr(dumping, "_termination_vertices_edges", unexpected)
+    without_witness = dump_result(
+        result,
+        tmp_path / "termination_without_witness",
+        formats=(DumpFormat.PSV,),
+        include_witness=False,
+    )
+    without_run = json.loads((without_witness.output_dir / "run.json").read_text(encoding="utf-8"))
+    assert without_run["evidence"] == {"termination_witness": False}
+    assert without_run["counterexamples"][0]["witness_path"] is None
+    assert without_run["status"] == "failure"
+    assert "structural_termination-001" in (without_witness.output_dir / "summary.psv").read_text(
         encoding="utf-8"
     )
+    assert not (without_witness.output_dir / "failures").exists()
+    assert result.observation.fingerprint is not None
+    without_result = json.loads(
+        (without_witness.output_dir / "result.json").read_text(encoding="utf-8")
+    )
+    assert without_result["observation"]["witness"] == list(result.observation.fingerprint.witness)
 
 
 def test_solution_fingerprint_refresh_promotes_cycle_witness(tmp_path: Path) -> None:
@@ -755,15 +798,22 @@ s339|p0
 
 def test_dump_result_reports_reserved_rich_output_dir(tmp_path: Path) -> None:
     domain_file = tmp_path / "domain.pddl"
-    domain_file.write_text("""(define (domain seq)
+    domain_file.write_text(
+        """(define (domain seq)
   (:requirements :strips)
   (:predicates (a))
   (:action setA :parameters () :precondition () :effect (a)))
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     domain = create_domain_context(domain_file)
     program = create_module_program(domain, None)
-    first = dump_result(prove_termination(domain, program), tmp_path / "termination", formats=(DumpFormat.PSV,))
-    second = dump_result(prove_termination(domain, program), tmp_path / "termination", formats=(DumpFormat.PSV,))
+    first = dump_result(
+        prove_termination(domain, program), tmp_path / "termination", formats=(DumpFormat.PSV,)
+    )
+    second = dump_result(
+        prove_termination(domain, program), tmp_path / "termination", formats=(DumpFormat.PSV,)
+    )
 
     assert first.output_dir == (tmp_path / "termination").resolve()
     assert second.output_dir == (tmp_path / "termination" / "run-002").resolve()
@@ -915,11 +965,14 @@ def test_policy_candidate_source_uses_enum() -> None:
 
 def test_write_empty_policy_uses_canonical_runir_text(tmp_path: Path) -> None:
     domain_path = tmp_path / "domain.pddl"
-    domain_path.write_text("""(define (domain seq)
+    domain_path.write_text(
+        """(define (domain seq)
   (:requirements :strips)
   (:predicates (a))
   (:action setA :parameters () :precondition () :effect (a)))
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     domain = public.create_domain_context(domain_path)
     policy_path = tmp_path / "empty_policy.formatted.txt"
 

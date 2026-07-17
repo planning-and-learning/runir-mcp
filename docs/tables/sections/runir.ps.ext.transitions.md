@@ -2,7 +2,7 @@
 
 Used by: [`../runir.ps.ext.counterexamples.md`](../runir.ps.ext.counterexamples.md).
 
-Trace or cycle edges between module-program control states.
+Edges in witness traces or cycles between module-program control states.
 
 | Column | Meaning |
 |---|---|
