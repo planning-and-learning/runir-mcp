@@ -10,7 +10,7 @@ One row per selected failure, each pointing into `failures/<id>/`. Universal mod
 | `seed` | Search or rollout seed. |
 | `task_file` | Task filename. |
 | `origin` | Evidence source, `find_solution`. |
-| `trace` | Relative path to the trace file, or empty if none. |
+| `witness_trace` | Relative path to the witness-trace file, or empty if none. |
 | `witness` | Relative path to the witness file. |
 | `successors` | Relative path to the successors file, or empty if none. |
 | `plan_trace` | Relative path to the FF plan trace from the open-state witness, or empty if none. |

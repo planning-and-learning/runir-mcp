@@ -1,10 +1,10 @@
-# Tables: base sketch-policy counterexamples, traces, and successors
+# Tables: base sketch-policy counterexamples, witness traces, and successors
 
 Used by base-policy calls to [`runir.ps.find_solution`](../runir.ps.find_solution.md). Rendering conventions are in [Table Rendering](rendering.md).
 
 ## Dictionary Tables
 
-Run-global dictionary files live under `dicts/`. Every witness, trace, and successor file references these aliases.
+Run-global dictionary files live under `dicts/`. Every witness, witness-trace, and successor file references these aliases.
 
 - [`features.*`](dictionaries/runir.ps.base.features.md)
 - [`rules.*`](dictionaries/runir.ps.base.rules.md)

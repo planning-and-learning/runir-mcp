@@ -28,7 +28,7 @@ class RunItem:
     category: RunItemCategory
     subject: str | None
     witness: str  # artifact name (e.g. "failures/cycle-001/witness")
-    trace: str | None = None  # artifact name, when a path trace exists
+    witness_trace: str | None = None  # artifact name, when a path witness trace exists
     successors: str | None = None  # artifact name, when successors were dumped
     plan_trace: str | None = None  # artifact name, when an open-state FF plan was dumped
 
@@ -47,7 +47,7 @@ def _result_item(item: RunItem, paths: dict[str, str]) -> JsonObject:
         Keys.CATEGORY: item.category.value,
         Keys.SUBJECT: item.subject,
         Keys.WITNESS_PATH: paths[item.witness],
-        Keys.TRACE_PATH: paths[item.trace] if item.trace else None,
+        Keys.WITNESS_TRACE_PATH: paths[item.witness_trace] if item.witness_trace else None,
         Keys.SUCCESSORS_PATH: paths[item.successors] if item.successors else None,
         Keys.PLAN_TRACE_PATH: paths[item.plan_trace] if item.plan_trace else None,
     }
@@ -112,7 +112,7 @@ def build_run_envelope(
         **passthrough,
     }
     return {
-        Keys.SCHEMA_VERSION: 1,
+        Keys.SCHEMA_VERSION: 2,
         Keys.TOOL: tool,
         Keys.STATUS: status.value,
         Keys.PRIMARY: primary_doc,

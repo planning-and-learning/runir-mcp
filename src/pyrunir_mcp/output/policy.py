@@ -432,7 +432,7 @@ def counterexample_document(
     return _document(header, [*sections, _facts_table(states, dicts)])
 
 
-def trace_document(
+def witness_trace_document(
     *,
     header: list[tuple[str, str]],
     feature_symbols: list[str],

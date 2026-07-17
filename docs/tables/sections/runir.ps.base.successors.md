@@ -2,7 +2,7 @@
 
 Used by: [`../runir.ps.base.counterexamples.md`](../runir.ps.base.counterexamples.md).
 
-One-step successor frontier from states along a trace or cycle.
+One-step successor frontier from states along a witness trace or cycle.
 
 | Column | Meaning |
 |---|---|

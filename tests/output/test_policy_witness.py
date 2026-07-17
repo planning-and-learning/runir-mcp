@@ -7,7 +7,7 @@ from pyrunir_mcp.output.policy import (
     counterexample_document,
     resolve_flags,
     successors_document,
-    trace_document,
+    witness_trace_document,
 )
 from pyrunir_mcp.tables import render_document
 
@@ -28,7 +28,7 @@ def test_resolve_flags():
     assert resolve_flags() == ()
 
 
-def test_trace_document_matches_doc():
+def test_witness_trace_document_matches_doc():
     dicts = Dictionaries()
     dicts.rule("pickup_r1")
     dicts.rule("deliver_r2")
@@ -62,7 +62,7 @@ def test_trace_document_matches_doc():
             delta={"n_undeliv": (3, 2), "n_held": (1, 0)},
         ),
     ]
-    doc = trace_document(
+    doc = witness_trace_document(
         header=HEADER,
         feature_symbols=FEATURES,
         states=states,
@@ -358,7 +358,7 @@ def test_ext_successors_carry_module_and_memory():
 
 def test_uint32_max_feature_values_render_as_inf_in_witness_and_delta():
     dicts = Dictionaries()
-    doc = trace_document(
+    doc = witness_trace_document(
         header=[],
         feature_symbols=["n"],
         states=[

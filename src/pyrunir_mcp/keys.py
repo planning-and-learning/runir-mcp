@@ -17,6 +17,7 @@ class Keys(StrEnum):
     SUMMARY = "summary"
     PRIMARY = "primary"
     ARTIFACTS = "artifacts"
+    EVIDENCE = "evidence"
     METADATA = "metadata"
 
     # Record identity and classification.
@@ -81,7 +82,7 @@ class Keys(StrEnum):
     # Artifact references and filesystem locations.
     FAILURES = "failures"
     SUCCESSES = "successes"
-    TRACE = "trace"
+    WITNESS_TRACE = "witness_trace"
     WITNESS = "witness"
     SUCCESSORS = "successors"
     PLAN_TRACE = "plan_trace"
@@ -94,7 +95,7 @@ class Keys(StrEnum):
     SUCCESSORS_PATH = "successors_path"
     TASK_DIR = "task_dir"
     TASK_PATH = "task_path"
-    TRACE_PATH = "trace_path"
+    WITNESS_TRACE_PATH = "witness_trace_path"
     WITNESS_PATH = "witness_path"
 
     # Task generation.

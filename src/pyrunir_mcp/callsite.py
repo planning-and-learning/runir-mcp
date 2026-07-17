@@ -193,8 +193,18 @@ def dump_result(
     output_dir: str | Path,
     *,
     formats: tuple[DumpFormat, ...] = (DumpFormat.JSON,),
+    include_witness_trace: bool = True,
+    include_plan_trace: bool = True,
+    include_successors: bool = True,
 ) -> DumpResult:
-    return _dumping.dump_result(result, output_dir, formats=formats)
+    return _dumping.dump_result(
+        result,
+        output_dir,
+        formats=formats,
+        include_witness_trace=include_witness_trace,
+        include_plan_trace=include_plan_trace,
+        include_successors=include_successors,
+    )
 
 
 def dump_validation_history(

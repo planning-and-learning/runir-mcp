@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
@@ -195,6 +196,7 @@ def test_ext_solution_edges_report_actions(tmp_path: Path) -> None:
 
 def test_universal_dump_fills_unused_failure_capacity_with_successes(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     domain_file, problem_file, _ = _inputs(tmp_path)
     policy_file = tmp_path / "policy.txt"
@@ -230,7 +232,112 @@ def test_universal_dump_fills_unused_failure_capacity_with_successes(
     assert len(manifest["successes"]) == 1
     assert manifest["failures"][0]["seed"] is None
     assert manifest["successes"][0]["seed"] is None
-    assert (dumped.output_dir / "successes" / "success-001" / "trace.psv").is_file()
+    assert (dumped.output_dir / "successes" / "success-001" / "witness_trace.psv").is_file()
     assert "@tool runir.ps.find_solution" in (
-        dumped.output_dir / "successes" / "success-001" / "trace.psv"
+        dumped.output_dir / "successes" / "success-001" / "witness_trace.psv"
     ).read_text(encoding="utf-8")
+
+    import pyrunir_mcp.dumping as dumping
+
+    def unexpected(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("successful witness traces must not be constructed")
+
+    monkeypatch.setattr(dumping, "successful_witness_trace_artifacts", unexpected)
+    without_witness_traces = dump_result(
+        result,
+        tmp_path / "solution_without_witness_traces",
+        formats=(DumpFormat.PSV,),
+        include_witness_trace=False,
+    )
+    without_manifest = json.loads(
+        (without_witness_traces.output_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert without_manifest["successes"] == []
+    assert without_manifest["evidence"]["witness_trace"] is False
+    assert not (without_witness_traces.output_dir / "successes").exists()
+
+
+@pytest.mark.parametrize(
+    ("include_witness_trace", "include_plan_trace", "include_successors"),
+    [
+        (False, False, False),
+        (False, False, True),
+        (False, True, False),
+        (False, True, True),
+        (True, False, False),
+        (True, False, True),
+        (True, True, False),
+        (True, True, True),
+    ],
+)
+def test_dump_solution_evidence_options_are_independent(
+    tmp_path: Path,
+    include_witness_trace: bool,
+    include_plan_trace: bool,
+    include_successors: bool,
+) -> None:
+    domain_file, problem_file, _ = _inputs(tmp_path)
+    domain = create_domain_context(domain_file)
+    task = create_task_context(domain, problem_file)
+    policy = create_policy(domain, None)
+    result = find_solution(task, policy)
+
+    dumped = dump_result(
+        result,
+        tmp_path / "solution",
+        formats=(DumpFormat.PSV,),
+        include_witness_trace=include_witness_trace,
+        include_plan_trace=include_plan_trace,
+        include_successors=include_successors,
+    )
+    manifest = json.loads(
+        (dumped.output_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    failure = manifest["failures"][0]
+    failure_dir = dumped.output_dir / "failures" / "open_state-001"
+
+    assert manifest["schema_version"] == 2
+    assert manifest["evidence"] == {
+        "witness_trace": include_witness_trace,
+        "plan_trace": include_plan_trace,
+        "successors": include_successors,
+    }
+    assert (failure_dir / "witness.psv").is_file()
+    assert (failure["witness_trace_path"] is not None) is include_witness_trace
+    assert (failure["plan_trace_path"] is not None) is include_plan_trace
+    assert (failure["successors_path"] is not None) is include_successors
+    assert (failure_dir / "witness_trace.psv").exists() is include_witness_trace
+    assert (failure_dir / "plan_trace.psv").exists() is include_plan_trace
+    assert (failure_dir / "successors.psv").exists() is include_successors
+    assert not (failure_dir / "trace.psv").exists()
+    assert "trace_path" not in failure
+
+
+def test_disabled_solution_evidence_skips_expensive_builders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyrunir_mcp.dumping as dumping
+    import pyrunir_mcp.kr.ps.proof as proof
+
+    domain_file, problem_file, _ = _inputs(tmp_path)
+    domain = create_domain_context(domain_file)
+    task = create_task_context(domain, problem_file)
+    result = find_solution(task, create_policy(domain, None))
+
+    def unexpected(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("disabled evidence builder was called")
+
+    monkeypatch.setattr(dumping, "make_frontier_expander", unexpected)
+    monkeypatch.setattr(dumping, "plan_open_state_trace", unexpected)
+    monkeypatch.setattr(proof, "_witness_trace_document", unexpected)
+
+    dumped = dump_result(
+        result,
+        tmp_path / "solution",
+        formats=(DumpFormat.PSV,),
+        include_witness_trace=False,
+        include_plan_trace=False,
+        include_successors=False,
+    )
+    assert (dumped.output_dir / "failures" / "open_state-001" / "witness.psv").is_file()

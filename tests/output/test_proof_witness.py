@@ -1,7 +1,7 @@
 from pyrunir_mcp.enums import HeuristicSentinel
 from pyrunir_mcp.json_types import JsonObject
 from pyrunir_mcp.output.dictionaries import Dictionaries
-from pyrunir_mcp.output.policy import counterexample_document, successors_document, trace_document
+from pyrunir_mcp.output.policy import counterexample_document, successors_document, witness_trace_document
 from pyrunir_mcp.output.proof_witness import successor, witness_state, witness_transition
 from pyrunir_mcp.tables import render_document
 
@@ -60,7 +60,7 @@ def test_trace_transitions_alias_and_delta():
     dicts.rule("deliver")
     edge: JsonObject = {"action": "(deliver ball1)", "rule": "deliver"}
     transition = witness_transition(edge, step=0, source=BASE_STATE, target={**OPEN_STATE, "feature_values": {"n_undeliv": 2, "b_goal": False}}, ext=False)
-    doc = trace_document(
+    doc = witness_trace_document(
         header=[("tool", "runir.ps.find_solution")],
         feature_symbols=["n_undeliv", "b_goal"],
         states=[witness_state(BASE_STATE)],

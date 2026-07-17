@@ -50,7 +50,7 @@ from pyrunir_mcp.kr.ps.proof import (
     ProofResult,
     failure_items,
     status_name,
-    successful_trace_artifacts,
+    successful_witness_trace_artifacts,
     witness_artifacts,
     witness_ground_state,
 )
@@ -274,7 +274,7 @@ class _SolutionFailureRow:
     seed: int | None
     problem: str
     witness: str
-    trace: str | None
+    witness_trace: str | None
     successors: str | None
     plan_trace: str | None
 
@@ -285,7 +285,7 @@ class _SolutionSuccessRow:
     status: str
     seed: int | None
     problem: str
-    trace: str
+    witness_trace: str
 
 
 def _artifact_relative(name: str | None, fmt: Fmt) -> str | None:
@@ -335,7 +335,13 @@ def select_failure_evidence(result: SolutionResult) -> tuple[list[_FailureEviden
 
 
 def _dump_solution_artifacts(
-    result: SolutionResult, output_path: Path, formats: tuple[Fmt, ...]
+    result: SolutionResult,
+    output_path: Path,
+    formats: tuple[Fmt, ...],
+    *,
+    include_witness_trace: bool,
+    include_plan_trace: bool,
+    include_successors: bool,
 ) -> RichDumpResult | None:
     if not formats:
         return None
@@ -378,13 +384,21 @@ def _dump_solution_artifacts(
             result.context.domain_context.planning_domain, result.candidate
         )
         intern_ext_rules(program, dicts)
-        expander = make_ext_frontier_expander(task_context, program, evidence)
+        expander = (
+            make_ext_frontier_expander(task_context, program, evidence)
+            if include_successors
+            else None
+        )
     else:
         policy = task.get_policy(
             result.context.domain_context.planning_domain, result.candidate
         )
         intern_base_rules(policy, dicts)
-        expander = make_frontier_expander(task_context, policy, evidence)
+        expander = (
+            make_frontier_expander(task_context, policy, evidence)
+            if include_successors
+            else None
+        )
 
     output_path = fresh_output_dir(output_path)
     artifacts: dict[str, Artifact] = {}
@@ -405,7 +419,7 @@ def _dump_solution_artifacts(
             problem=problem,
             seed=selected.seed,
         )
-        witness, trace, successors = witness_artifacts(
+        witness, witness_trace, successors = witness_artifacts(
             selected.proof.graph,
             selected.kind,
             selected.witness,
@@ -415,21 +429,23 @@ def _dump_solution_artifacts(
             ext=ext,
             header=header,
             expander=expander,
+            include_witness_trace=include_witness_trace,
+            include_successors=include_successors,
             include_hstar=False,
             include_hlmcut=False,
         )
         witness_name = f"failures/{item_id}/witness"
-        trace_name = f"failures/{item_id}/trace" if trace is not None else None
+        witness_trace_name = f"failures/{item_id}/witness_trace" if witness_trace is not None else None
         successors_name = (
             f"failures/{item_id}/successors" if successors is not None else None
         )
         plan_trace_name: str | None = None
         artifacts[witness_name] = witness
-        if trace is not None and trace_name is not None:
-            artifacts[trace_name] = trace
+        if witness_trace is not None and witness_trace_name is not None:
+            artifacts[witness_trace_name] = witness_trace
         if successors is not None and successors_name is not None:
             artifacts[successors_name] = successors
-        if selected.kind is CounterexampleKind.OPEN_STATE:
+        if include_plan_trace and selected.kind is CounterexampleKind.OPEN_STATE:
             plan_trace = plan_open_state_trace(
                 task_context=task_context,
                 state=witness_ground_state(selected.proof.graph, selected.witness),
@@ -451,21 +467,21 @@ def _dump_solution_artifacts(
                 selected.seed,
                 problem,
                 witness_name,
-                trace_name,
+                witness_trace_name,
                 successors_name,
                 plan_trace_name,
             )
         )
 
-    remaining = result.num_rollouts - regular_failure_count
+    remaining = result.num_rollouts - regular_failure_count if include_witness_trace else 0
     for raw_seed, proof in result.results:
         if remaining == 0:
             break
         seed = None if result.universal else raw_seed
-        traces = successful_trace_artifacts(
+        witness_traces = successful_witness_trace_artifacts(
             proof.graph,
             evidence,
-            max_traces=remaining,
+            max_witness_traces=remaining,
             feature_symbols=feature_symbols,
             dicts=dicts,
             ext=ext,
@@ -473,11 +489,11 @@ def _dump_solution_artifacts(
             include_hstar=False,
             include_hlmcut=False,
         )
-        for trace in traces:
+        for witness_trace in witness_traces:
             item_id = f"success-{len(success_rows) + 1:03d}"
             native_status = status_name(proof.status)
-            trace_name = f"successes/{item_id}/trace"
-            artifacts[trace_name] = Document(
+            witness_trace_name = f"successes/{item_id}/witness_trace"
+            artifacts[witness_trace_name] = Document(
                 header=_solution_header(
                     item_id=item_id,
                     category=RunItemCategory.SUCCESS.value,
@@ -485,10 +501,10 @@ def _dump_solution_artifacts(
                     problem=problem,
                     seed=seed,
                 ),
-                sections=trace.sections,
+                sections=witness_trace.sections,
             )
             success_rows.append(
-                _SolutionSuccessRow(item_id, native_status, seed, problem, trace_name)
+                _SolutionSuccessRow(item_id, native_status, seed, problem, witness_trace_name)
             )
             remaining -= 1
 
@@ -502,7 +518,7 @@ def _dump_solution_artifacts(
             Keys.SEED,
             Keys.TASK_FILE,
             Keys.ORIGIN,
-            Keys.TRACE,
+            Keys.WITNESS_TRACE,
             Keys.WITNESS,
             Keys.SUCCESSORS,
             Keys.PLAN_TRACE,
@@ -515,7 +531,7 @@ def _dump_solution_artifacts(
                 row.seed,
                 row.problem,
                 _FIND_SOLUTION_ORIGIN,
-                _artifact_relative(row.trace, primary_format),
+                _artifact_relative(row.witness_trace, primary_format),
                 _artifact_relative(row.witness, primary_format),
                 _artifact_relative(row.successors, primary_format),
                 _artifact_relative(row.plan_trace, primary_format),
@@ -532,7 +548,7 @@ def _dump_solution_artifacts(
             Keys.SEED,
             Keys.TASK_FILE,
             Keys.ORIGIN,
-            Keys.TRACE,
+            Keys.WITNESS_TRACE,
         ],
         rows=[
             [
@@ -542,7 +558,7 @@ def _dump_solution_artifacts(
                 row.seed,
                 row.problem,
                 _FIND_SOLUTION_ORIGIN,
-                _artifact_relative(row.trace, primary_format),
+                _artifact_relative(row.witness_trace, primary_format),
             ]
             for row in success_rows
         ],
@@ -575,7 +591,7 @@ def _dump_solution_artifacts(
         formats,
     )
     manifest: JsonObject = {
-        Keys.SCHEMA_VERSION: 1,
+        Keys.SCHEMA_VERSION: 2,
         Keys.TOOL: _FIND_SOLUTION_TOOL,
         Keys.STATUS: result.status.value,
         Keys.CONTEXT: {Keys.ID: result.context.id, Keys.INDEX: result.context.index},
@@ -585,6 +601,11 @@ def _dump_solution_artifacts(
         Keys.ROLLOUT_COUNT: result.num_rollouts,
         Keys.SEARCH_BUDGET: _budget_json(result.search_budget),
         Keys.PLAN_TRACE_BUDGET: _budget_json(result.plan_trace_budget),
+        Keys.EVIDENCE: {
+            Keys.WITNESS_TRACE: include_witness_trace,
+            Keys.PLAN_TRACE: include_plan_trace,
+            Keys.SUCCESSORS: include_successors,
+        },
         Keys.ROLLOUTS: [
             {
                 Keys.SEED: None if result.universal else seed,
@@ -606,7 +627,7 @@ def _dump_solution_artifacts(
                 Keys.TASK_FILE: row.problem,
                 Keys.SEED: row.seed,
                 Keys.WITNESS_PATH: paths[row.witness],
-                Keys.TRACE_PATH: paths[row.trace] if row.trace is not None else None,
+                Keys.WITNESS_TRACE_PATH: paths[row.witness_trace] if row.witness_trace is not None else None,
                 Keys.SUCCESSORS_PATH: paths[row.successors]
                 if row.successors is not None
                 else None,
@@ -623,7 +644,7 @@ def _dump_solution_artifacts(
                 Keys.STATUS: row.status,
                 Keys.TASK_FILE: row.problem,
                 Keys.SEED: row.seed,
-                Keys.TRACE_PATH: paths[row.trace],
+                Keys.WITNESS_TRACE_PATH: paths[row.witness_trace],
             }
             for row in success_rows
         ],
@@ -922,10 +943,23 @@ def _dump_prove_termination_artifacts(
 
 
 def _dump_rich_artifacts(
-    result: ValidationResult, output_path: Path, formats: tuple[Fmt, ...]
+    result: ValidationResult,
+    output_path: Path,
+    formats: tuple[Fmt, ...],
+    *,
+    include_witness_trace: bool,
+    include_plan_trace: bool,
+    include_successors: bool,
 ) -> RichDumpResult | None:
     if isinstance(result, (FindPolicySolutionResult, FindModuleProgramSolutionResult)):
-        return _dump_solution_artifacts(result, output_path, formats)
+        return _dump_solution_artifacts(
+            result,
+            output_path,
+            formats,
+            include_witness_trace=include_witness_trace,
+            include_plan_trace=include_plan_trace,
+            include_successors=include_successors,
+        )
     if isinstance(result, ProveClassifierResult):
         return _dump_prove_classifier_artifacts(result, output_path, formats)
     if isinstance(result, ProvePolicyTerminationResult):
@@ -1066,6 +1100,9 @@ def dump_result(
     output_dir: str | Path,
     *,
     formats: tuple[DumpFormat, ...] = (DumpFormat.JSON,),
+    include_witness_trace: bool = True,
+    include_plan_trace: bool = True,
+    include_successors: bool = True,
 ) -> DumpResult:
     if isinstance(result, TaskGenerationResult):
         return _dump_task_generation_result(result, output_dir, formats=formats)
@@ -1075,7 +1112,14 @@ def dump_result(
     files: list[Path] = []
 
     rich_formats = _render_formats(formats)
-    rich_dump = _dump_rich_artifacts(result, output_path, rich_formats)
+    rich_dump = _dump_rich_artifacts(
+        result,
+        output_path,
+        rich_formats,
+        include_witness_trace=include_witness_trace,
+        include_plan_trace=include_plan_trace,
+        include_successors=include_successors,
+    )
     actual_output_dir = rich_dump.output_dir if rich_dump is not None else output_path
     if rich_dump is not None:
         files.append(rich_dump.primary_file)

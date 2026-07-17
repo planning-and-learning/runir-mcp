@@ -41,7 +41,9 @@ def _primary(envelope: JsonObject) -> JsonObject:
 def test_primary_carries_category_and_status(tmp_path: Path) -> None:
     # A successful run must report category "success" so consumers (e.g. lgp) accept the proof
     # instead of misreading the absence of a category as a counterexample.
-    success = _primary(_envelope(tmp_path, "ok", status=RunStatus.SUCCESS))
+    envelope = _envelope(tmp_path, "ok", status=RunStatus.SUCCESS)
+    assert envelope["schema_version"] == 2
+    success = _primary(envelope)
     assert success["category"] == "success"
     assert success["status"] == "success"
 

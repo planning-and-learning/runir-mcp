@@ -2,7 +2,7 @@
 
 Used by: [`../runir.ps.ext.counterexamples.md`](../runir.ps.ext.counterexamples.md).
 
-Off-graph one-step successor frontier from module-program source control locations along a trace or cycle.
+Off-graph one-step successor frontier from module-program source control locations along a witness trace or cycle.
 
 | Column | Meaning |
 |---|---|

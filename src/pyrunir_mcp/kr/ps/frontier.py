@@ -3,7 +3,7 @@
 The proof/execution graph holds only policy-compatible transitions, so a stuck (open) state
 has no out-edges there and the graph cannot surface the moves a policy *failed* to take. To
 expose the full 1-step frontier — every applicable move and which rule (if any) selects it —
-we expand each state on the trace with the pytyr successor generator and mark compatibility
+we expand each state on the witness trace with the pytyr successor generator and mark compatibility
 with the policy:
 
 - base: `Sketch.is_compatible_with(GroundEvaluationContext(source, target))`;
@@ -40,7 +40,7 @@ from pyrunir_mcp.kr.ps.feature_evidence import FeatureEvidence
 from pyrunir_mcp.output.policy import Successor
 from pyrunir_mcp.output.proof_witness import successor as build_successor
 
-# Expand the deduped trace/cycle vertices of a proof graph into their 1-step successor frontier.
+# Expand the deduped witness-trace/cycle vertices of a proof graph into their 1-step successor frontier.
 ProofGraph: TypeAlias = GroundSketchProofGraph | GroundModuleProgramProofGraph
 FrontierExpander: TypeAlias = Callable[[ProofGraph, list[int]], list[Successor]]
 
@@ -92,7 +92,7 @@ def make_frontier_expander(
     sketch: Sketch,
     evidence: FeatureEvidence,
 ) -> FrontierExpander:
-    """Base sketch: every 1-step successor of each trace vertex's state, tagged with the sketch
+    """Base sketch: every 1-step successor of each witness-trace vertex's state, tagged with the sketch
     rule that selects it (empty = the gap)."""
     generator = task_context.search_context.successor_generator
     rules = list(sketch.get_rules())
@@ -129,7 +129,7 @@ def make_ext_frontier_expander(
     program: ModuleProgram,
     evidence: FeatureEvidence,
 ) -> FrontierExpander:
-    """Module program: every 1-step successor of each trace vertex's state, tagged with the module
+    """Module program: every 1-step successor of each witness-trace vertex's state, tagged with the module
     rule (at the vertex's memory state + registers) that selects it (empty = the gap), and — for a
     taken move — the module + resulting memory the rule lands in. The `SuccessorExpander` is the
     same engine native solution search uses, built once with the program's modules so Call rules can

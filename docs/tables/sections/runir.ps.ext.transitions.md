@@ -6,7 +6,7 @@ Trace or cycle edges between module-program control states.
 
 | Column | Meaning |
 |---|---|
-| `step` | Transition index within the trace or cycle. |
+| `step` | Transition index within the witness trace or cycle. |
 | `source_state_id` | Source planning-state id (`sK`). |
 | `source_module_id` | Source module alias (`MK`). |
 | `source_memory_id` | Source memory-location alias (`mK`). |

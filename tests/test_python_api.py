@@ -243,17 +243,17 @@ def test_empty_module_program_find_solution_dumps_open_state_artifacts(
 
     output_dir = dumped.output_dir
     witness = output_dir / "failures" / "open_state-001" / "witness.psv"
-    trace = output_dir / "failures" / "open_state-001" / "trace.psv"
+    witness_trace = output_dir / "failures" / "open_state-001" / "witness_trace.psv"
     successors = output_dir / "failures" / "open_state-001" / "successors.psv"
 
     assert result.status.value == "failure"
     assert witness.is_file()
-    assert trace.is_file()
+    assert witness_trace.is_file()
     assert successors.is_file()
     witness_text = witness.read_text(encoding="utf-8")
     assert "@category open_state" in witness_text
     assert "[states]" in witness_text
-    assert "[transitions]" in trace.read_text(encoding="utf-8")
+    assert "[transitions]" in witness_trace.read_text(encoding="utf-8")
 
     classifier_file.write_text(
         """(:classifier

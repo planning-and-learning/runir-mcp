@@ -6,7 +6,7 @@ Trace or cycle edges between base planning states.
 
 | Column | Meaning |
 |---|---|
-| `step` | Transition index within the trace or cycle. |
+| `step` | Transition index within the witness trace or cycle. |
 | `source_state_id` | Source planning-state id (`sK`). |
 | `target_state_id` | Target planning-state id (`sK`). |
 | `rule_id` | Sketch-rule alias (`rK`) from [`rules.*`](../dictionaries/runir.ps.base.rules.md). |

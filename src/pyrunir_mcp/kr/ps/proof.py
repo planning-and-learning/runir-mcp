@@ -38,7 +38,7 @@ from pyrunir_mcp.output.policy import (
     WitnessTransition,
     counterexample_document,
     successors_document,
-    trace_document,
+    witness_trace_document,
 )
 from pyrunir_mcp.output.proof_witness import (
     successor as build_successor,
@@ -299,7 +299,7 @@ def _successors(
     return successors
 
 
-def _trace_document(
+def _witness_trace_document(
     graph: ProofGraph,
     path_edges: list[int] | None,
     evidence: StateEvidence | None,
@@ -312,8 +312,9 @@ def _trace_document(
     include_hstar: bool = True,
     include_hlmcut: bool = True,
 ) -> Document | None:
-    # `path_edges == []` means the witness IS an initial vertex: emit a singleton trace (one
-    # state, no transitions). Only `None` (no path / not applicable) suppresses the trace.
+    # `path_edges == []` means the witness IS an initial vertex: emit a singleton witness trace
+    # (one state, no transitions). Only `None` (no path / not applicable) suppresses the witness
+    # trace.
     if path_edges is None:
         return None
     vertices = _vertices_for_edges(graph, path_edges)
@@ -324,7 +325,7 @@ def _trace_document(
         )
         for vertex in vertices
     ]
-    return trace_document(
+    return witness_trace_document(
         header=header,
         feature_symbols=feature_symbols,
         states=states,
@@ -341,31 +342,31 @@ def _expand_frontier(
     expander: FrontierExpander | None,
     evidence: StateEvidence | None,
     *,
-    trace_vertices: list[int],
+    witness_trace_vertices: list[int],
     graph_vertices: list[int],
     exclude: set[int],
 ) -> list[Successor]:
     """The 1-step frontier of the witness. With an `expander` (base sketch / ext module program)
-    it expands every state on the trace via the successor generator + policy compatibility;
+    it expands every witness-trace state via the successor generator + policy compatibility;
     without one it falls back to the graph's compatible out-edges of the witness vertices. The
-    expander receives the graph and the deduped trace vertices so it can read each vertex's
+    expander receives the graph and the deduped witness-trace vertices so it can read each vertex's
     state (and, for ext, memory state + registers)."""
     if expander is None:
         return _successors(graph, graph_vertices, evidence, exclude=exclude)
     seen: set[int] = set()
     vertices: list[int] = []
-    for vertex in trace_vertices:
+    for vertex in witness_trace_vertices:
         if int(vertex) not in seen:
             seen.add(int(vertex))
             vertices.append(int(vertex))
     return expander(graph, vertices)
 
 
-def successful_trace_artifacts(
+def successful_witness_trace_artifacts(
     graph: ProofGraph,
     evidence: StateEvidence | None,
     *,
-    max_traces: int,
+    max_witness_traces: int,
     feature_symbols: list[str],
     dicts: Dictionaries,
     ext: bool,
@@ -373,17 +374,17 @@ def successful_trace_artifacts(
     include_hstar: bool = True,
     include_hlmcut: bool = True,
 ) -> list[Document]:
-    """Return traces to at most ``max_traces`` distinct reachable goal vertices."""
-    traces: list[Document] = []
-    if max_traces <= 0:
-        return traces
+    """Return witness traces to at most ``max_witness_traces`` reachable goal vertices."""
+    witness_traces: list[Document] = []
+    if max_witness_traces <= 0:
+        return witness_traces
     for vertex in _vertex_indices(graph):
         if not _label_is_goal(graph.get_vertex_property(vertex)):
             continue
         path_edges = _path_edges_to(graph, vertex)
         if path_edges is None:
             continue
-        trace = _trace_document(
+        witness_trace = _witness_trace_document(
             graph,
             path_edges,
             evidence,
@@ -395,11 +396,11 @@ def successful_trace_artifacts(
             include_hstar=include_hstar,
             include_hlmcut=include_hlmcut,
         )
-        if trace is not None:
-            traces.append(trace)
-            if len(traces) == max_traces:
+        if witness_trace is not None:
+            witness_traces.append(witness_trace)
+            if len(witness_traces) == max_witness_traces:
                 break
-    return traces
+    return witness_traces
 
 
 def witness_artifacts(
@@ -413,10 +414,12 @@ def witness_artifacts(
     ext: bool,
     header: list[tuple[str, str]],
     expander: FrontierExpander | None = None,
+    include_witness_trace: bool = True,
+    include_successors: bool = True,
     include_hstar: bool = True,
     include_hlmcut: bool = True,
 ) -> tuple[Document, Document | None, Document | None]:
-    """Return (counterexample, trace | None, successors | None) documents for one witness."""
+    """Return witness, witness-trace, and successor documents for one failure."""
     if kind == CounterexampleKind.CYCLE:
         vertices = _witness_vertices(witness)
         cycle_states = [
@@ -434,26 +437,38 @@ def witness_artifacts(
             include_hstar=include_hstar,
             include_hlmcut=include_hlmcut,
         )
-        path_edges = _path_edges_to(graph, vertices[0]) if vertices else None
-        trace = _trace_document(
-            graph,
-            path_edges,
-            evidence,
-            feature_symbols=feature_symbols,
-            dicts=dicts,
-            ext=ext,
-            header=header,
-            witness_vertices=set(),
-            include_hstar=include_hstar,
-            include_hlmcut=include_hlmcut,
+        path_edges = (
+            _path_edges_to(graph, vertices[0])
+            if vertices and (include_witness_trace or include_successors)
+            else None
         )
-        successors = _expand_frontier(
-            graph,
-            expander,
-            evidence,
-            trace_vertices=_vertices_for_edges(graph, path_edges) + vertices,
-            graph_vertices=vertices,
-            exclude=set(vertices),
+        witness_trace = (
+            _witness_trace_document(
+                graph,
+                path_edges,
+                evidence,
+                feature_symbols=feature_symbols,
+                dicts=dicts,
+                ext=ext,
+                header=header,
+                witness_vertices=set(),
+                include_hstar=include_hstar,
+                include_hlmcut=include_hlmcut,
+            )
+            if include_witness_trace
+            else None
+        )
+        successors = (
+            _expand_frontier(
+                graph,
+                expander,
+                evidence,
+                witness_trace_vertices=_vertices_for_edges(graph, path_edges) + vertices,
+                graph_vertices=vertices,
+                exclude=set(vertices),
+            )
+            if include_successors
+            else []
         )
     elif kind == CounterexampleKind.DEADEND:
         vertex = _witness_vertex(witness)
@@ -468,18 +483,22 @@ def witness_artifacts(
             include_hstar=include_hstar,
             include_hlmcut=include_hlmcut,
         )
-        path_edges = _path_edges_to(graph, vertex)
-        trace = _trace_document(
-            graph,
-            path_edges,
-            evidence,
-            feature_symbols=feature_symbols,
-            dicts=dicts,
-            ext=ext,
-            header=header,
-            witness_vertices={vertex},
-            include_hstar=include_hstar,
-            include_hlmcut=include_hlmcut,
+        path_edges = _path_edges_to(graph, vertex) if include_witness_trace else None
+        witness_trace = (
+            _witness_trace_document(
+                graph,
+                path_edges,
+                evidence,
+                feature_symbols=feature_symbols,
+                dicts=dicts,
+                ext=ext,
+                header=header,
+                witness_vertices={vertex},
+                include_hstar=include_hstar,
+                include_hlmcut=include_hlmcut,
+            )
+            if include_witness_trace
+            else None
         )
         successors = []
     else:  # CounterexampleKind.OPEN_STATE
@@ -497,26 +516,36 @@ def witness_artifacts(
             include_hstar=include_hstar,
             include_hlmcut=include_hlmcut,
         )
-        path_edges = _path_edges_to(graph, vertex)
-        trace = _trace_document(
-            graph,
-            path_edges,
-            evidence,
-            feature_symbols=feature_symbols,
-            dicts=dicts,
-            ext=ext,
-            header=header,
-            witness_vertices={vertex},
-            include_hstar=include_hstar,
-            include_hlmcut=include_hlmcut,
+        path_edges = (
+            _path_edges_to(graph, vertex) if include_witness_trace or include_successors else None
         )
-        successors = _expand_frontier(
-            graph,
-            expander,
-            evidence,
-            trace_vertices=_vertices_for_edges(graph, path_edges),
-            graph_vertices=[vertex],
-            exclude=set(),
+        witness_trace = (
+            _witness_trace_document(
+                graph,
+                path_edges,
+                evidence,
+                feature_symbols=feature_symbols,
+                dicts=dicts,
+                ext=ext,
+                header=header,
+                witness_vertices={vertex},
+                include_hstar=include_hstar,
+                include_hlmcut=include_hlmcut,
+            )
+            if include_witness_trace
+            else None
+        )
+        successors = (
+            _expand_frontier(
+                graph,
+                expander,
+                evidence,
+                witness_trace_vertices=_vertices_for_edges(graph, path_edges),
+                graph_vertices=[vertex],
+                exclude=set(),
+            )
+            if include_successors
+            else []
         )
 
     # Successors are generator-expanded 1-step planning moves; they are off-graph (no proof
@@ -536,4 +565,4 @@ def witness_artifacts(
         if successors
         else None
     )
-    return counterexample, trace, successor_doc
+    return counterexample, witness_trace, successor_doc

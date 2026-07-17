@@ -52,7 +52,7 @@ Validation:
 
 Dumping:
 
-- `dump_result(result, output_dir, formats=(DumpFormat.JSON,))`
+- `dump_result(result, output_dir, formats=(DumpFormat.JSON,), include_witness_trace=True, include_plan_trace=True, include_successors=True)`
 - `dump_validation_history(history, output_dir, formats=(DumpFormat.JSON,))`
 
 `DumpFormat.PSV`, `DumpFormat.MD`, and `DumpFormat.JSON` request LLM-readable PSV, human-readable Markdown, and machine-readable JSON. Validation calls do not write files.

@@ -78,7 +78,7 @@ See [`runir.task_generation`](runir.task_generation.md) for generator lookup, re
 - `prove_termination(domain, policy_or_module_program, *, max_features=16, use_incomplete_preprocessing=True)`
 - `prove_classifier(task, classifier, ...)`
 
-`find_solution(...)` performs seeded greedy rollouts when `universal=False` and one exhaustive search when `universal=True`. In universal mode, `num_rollouts=n` allows at most `n` non-cycle counterexamples, fills unused capacity with successful traces, and permits one additional cycle outside that limit. See [`runir.ps.find_solution`](runir.ps.find_solution.md).
+`find_solution(...)` performs seeded greedy rollouts when `universal=False` and one exhaustive search when `universal=True`. In universal mode, `num_rollouts=n` allows at most `n` non-cycle counterexamples, fills unused capacity with successful witness traces, and permits one additional cycle outside that limit. See [`runir.ps.find_solution`](runir.ps.find_solution.md).
 
 Every result includes `kind`, `status`, candidate, `observation`, optional `FailureFingerprint`, and validation-specific payload such as solution evidence, termination proof, or classifier counts.
 
@@ -96,7 +96,7 @@ disable it with `use_incomplete_preprocessing=False` when the complete check mus
 
 Validation is in-memory. Dump explicitly:
 
-- `dump_result(result, output_dir)` writes result JSON and requested artifacts.
+- `dump_result(result, output_dir, *, include_witness_trace=True, include_plan_trace=True, include_successors=True)` writes result JSON and requested artifacts; disabling evidence also skips its construction.
 - `dump_validation_history(history, output_dir)` writes history JSON.
 
 Typed detail objects stay in memory; strings/files are produced at dump/output boundaries.

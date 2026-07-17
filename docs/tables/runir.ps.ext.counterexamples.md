@@ -1,4 +1,4 @@
-# Tables: module-program counterexamples, traces, and successors
+# Tables: module-program counterexamples, witness traces, and successors
 
 Used by module-program calls to [`runir.ps.find_solution`](../runir.ps.find_solution.md). Rendering conventions are in [Table Rendering](rendering.md).
 
@@ -30,10 +30,10 @@ As in the base tables, optional `hstar` and `hlmcut` columns require an explicit
 
 `witness.*` contains a single witness control state or a cycle. State witnesses use `[states]` plus `[facts]`; cycle witnesses use `[states]`, `[transitions]`, and `[facts]`. In cycle witnesses, `[states]` is a closed path: the first control-state row is repeated as the final row.
 
-`trace.*` uses tuple-indexed `[states]` and `[transitions]`, plus planning-state `[facts]`.
+`witness_trace.*` uses tuple-indexed `[states]` and `[transitions]`, plus planning-state `[facts]`.
 
-`successors.*` contains the one-step frontier from each source control location on the trace/cycle. Generated successors are off-graph, so both source and target are represented as planning state plus control location: `source_state_id`/`source_module_id`/`source_memory_id` and `target_state_id`/`target_module_id`/`target_memory_id`. For a gap, `rule_id`, `target_module_id`, and `target_memory_id` are blank.
+`successors.*` contains the one-step frontier from each source control location on the witness trace or cycle. Generated successors are off-graph, so both source and target are represented as planning state plus control location: `source_state_id`/`source_module_id`/`source_memory_id` and `target_state_id`/`target_module_id`/`target_memory_id`. For a gap, `rule_id`, `target_module_id`, and `target_memory_id` are blank.
 
 `plan_trace.*` uses the shared [open-state FF plan trace](runir.ps.open_state.plan_trace.md) schema. It is planner evidence from an open-state witness, not module-program execution.
 
-Successful traces use the module-program trace schema and contain no witness or successor frontier.
+Successful witness traces use the module-program witness-trace schema and contain no witness or successor frontier.

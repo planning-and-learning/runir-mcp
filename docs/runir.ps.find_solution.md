@@ -23,7 +23,7 @@ result = find_solution(
 )
 ```
 
-Passing a `Policy` returns `FindPolicySolutionResult`; passing a `ModuleProgram` returns `FindModuleProgramSolutionResult`. Dump either result with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`.
+Passing a `Policy` returns `FindPolicySolutionResult`; passing a `ModuleProgram` returns `FindModuleProgramSolutionResult`. Dump either result with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`. The dump-only `include_witness_trace`, `include_plan_trace`, and `include_successors` flags independently disable those evidence builders without changing validation.
 
 ## Arguments
 
@@ -48,16 +48,16 @@ With `universal=False`, Runir performs `num_rollouts` native greedy searches. On
 With `universal=True`, Runir performs one exhaustive search. The default search budget is 100,000 states and 5 seconds. `num_rollouts = n` limits regular evidence, not searches:
 
 - report at most `n` non-cycle counterexamples;
-- if only `i < n` non-cycle counterexamples exist, fill the remaining `n-i` slots with successful traces;
+- if only `i < n` non-cycle counterexamples exist, fill the remaining `n-i` slots with successful witness traces;
 - report at most one cycle as additional evidence, outside the `n`-item limit.
 
-Thus a universal result contains at most `n` regular evidence items plus one cycle. Counterexamples are selected before successful traces.
+Thus a universal result contains at most `n` regular evidence items plus one cycle. Counterexamples are selected before successful witness traces.
 
 Native terminal vertices, whether intrinsically dead or stopped by the optional classifier, are reported as `deadend`. Ordinary unfinished frontier vertices are reported as `open_state`. Resource exhaustion remains in the native `status`; it is not an evidence category.
 
 ## Output
 
-State rows contain feature values and `fluent`/`derived` facts for witness and cycle states. Transition rows contain action labels and matched rule symbols. Proof labels do not carry heuristic values; `hstar` and `hlmcut` appear only in artifacts backed by an explicit state-evidence evaluator, such as open-state FF plan traces.
+State rows contain feature values and `fluent`/`derived` facts for witness and cycle states. A witness trace follows the Runir proof/execution graph to a failure witness or goal; an open-state plan trace is separate FF evidence from the witness state. Transition rows contain action labels and matched rule symbols. Proof labels do not carry heuristic values; `hstar` and `hlmcut` appear only in artifacts backed by an explicit state-evidence evaluator, such as open-state FF plan traces.
 
 - Policies use the [base sketch-policy tables](tables/runir.ps.base.counterexamples.md).
 - Module programs use the [module-program tables](tables/runir.ps.ext.counterexamples.md), including module and memory control state.
@@ -72,7 +72,7 @@ output_dir/
   manifest.json                          # metadata and artifact paths; JSON only
   summary.{psv,md,json}                  # selected evidence index
   failures.{psv,md,json}                 # non-cycle failures and optional extra cycle
-  successes.{psv,md,json}                # selected successful traces
+  successes.{psv,md,json}                # selected successful witness traces
   dicts/
     features.{psv,md,json}
     rules.{psv,md,json}
@@ -83,12 +83,12 @@ output_dir/
   failures/
     <id>/
       witness.{psv,md,json}
-      trace.{psv,md,json}                # present when a path exists
+      witness_trace.{psv,md,json}        # present when enabled and a path exists
       successors.{psv,md,json}           # present when successors exist
-      plan_trace.{psv,md,json}            # open states when FF finds a plan
+      plan_trace.{psv,md,json}           # open states when FF finds a plan
   successes/
     <id>/
-      trace.{psv,md,json}
+      witness_trace.{psv,md,json}
 ```
 
-The sectioned artifact header uses `@tool runir.ps.find_solution`; the validation kind distinguishes base from extended results. Success entries contain only a complete trace. Failure directories keep their witness, path, successor frontier, and optional planner trace together.
+The sectioned artifact header uses `@tool runir.ps.find_solution`; the validation kind distinguishes base from extended results. Success entries contain only a complete witness trace. Failure directories always keep their witness and may also contain its witness trace, successor frontier, and planner trace. Schema-v2 `manifest.json` records the three evidence flags explicitly.

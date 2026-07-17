@@ -1,6 +1,6 @@
 # Index Table: solution `successes.*`
 
-One row per selected successful trace. Success artifacts contain only `successes/<id>/trace.*`.
+One row per selected successful witness trace. Success artifacts contain only `successes/<id>/witness_trace.*`.
 
 | Column | Meaning |
 |---|---|
@@ -9,5 +9,5 @@ One row per selected successful trace. Success artifacts contain only `successes
 | `status` | Native search status, normally `success`. |
 | `seed` | Search or rollout seed. |
 | `task_file` | Task filename. |
-| `origin` | Trace source, `find_solution`. |
-| `trace` | Relative path to the successful trace file. |
+| `origin` | Witness-trace source, `find_solution`. |
+| `witness_trace` | Relative path to the successful witness-trace file. |

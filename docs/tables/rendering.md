@@ -25,7 +25,7 @@ The emitted renderings are selected by `dump_result(..., formats=...)`.
 
 ## Sectioned Documents
 
-Witness, trace, and successor artifacts are sectioned documents:
+Witness, witness-trace, and successor artifacts are sectioned documents:
 
 ```text
 @tool runir.ps.find_solution
@@ -45,6 +45,6 @@ In JSON, a sectioned document is one object with headers and sections separated:
 
 ## Interned Aliases
 
-Recurring symbols are interned in run-global dictionary tables under `dicts/` and referenced from witness, trace, successor, and index tables by short aliases such as `fK`, `rK`, `aK`, `pK`, `MK`, `mK`, or `vK`.
+Recurring symbols are interned in run-global dictionary tables under `dicts/` and referenced from witness, witness-trace, successor, and index tables by short aliases such as `fK`, `rK`, `aK`, `pK`, `MK`, `mK`, or `vK`.
 
 The alias is always the dictionary row's `id` value.
