@@ -2,6 +2,8 @@
 
 Used by base-policy and module-program `find_solution(...)` runs.
 
+When all solution-evidence flags are disabled, a failed validation has one task-only row: `task_file` is populated and every other column is null.
+
 | Column | Meaning |
 |---|---|
 | `id` | Stable evidence id, e.g. `cycle-001` or `success-001`. |

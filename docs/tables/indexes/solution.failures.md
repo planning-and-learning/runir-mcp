@@ -2,6 +2,8 @@
 
 One row per selected failure, each pointing into `failures/<id>/`. Universal mode includes at most `n` non-cycle failures and may include one additional cycle.
 
+When all solution-evidence flags are disabled, this instead contains one task-only row for a failed validation: `task_file` is populated and every other column is null. No `failures/<id>/` directory is created.
+
 | Column | Meaning |
 |---|---|
 | `id` | Stable failure id, e.g. `cycle-001`, also the `failures/<id>/` directory name. |

@@ -297,6 +297,9 @@ def test_dump_solution_evidence_options_are_independent(
         (dumped.output_dir / "manifest.json").read_text(encoding="utf-8")
     )
     failure = manifest["failures"][0]
+    task_only = not any(
+        (include_witness, include_witness_trace, include_plan_trace, include_successors)
+    )
     failure_dir = dumped.output_dir / "failures" / "open_state-001"
 
     assert manifest["schema_version"] == 2
@@ -306,6 +309,26 @@ def test_dump_solution_evidence_options_are_independent(
         "plan_trace": include_plan_trace,
         "successors": include_successors,
     }
+    if task_only:
+        assert failure == {
+            "id": None,
+            "category": None,
+            "status": None,
+            "task_file": "problem.pddl",
+            "seed": None,
+            "witness_path": None,
+            "witness_trace_path": None,
+            "successors_path": None,
+            "plan_trace_path": None,
+        }
+        assert (dumped.output_dir / "summary.psv").read_text(encoding="utf-8") == (
+            "id|category|status|seed|task_file\n||||problem.pddl\n"
+        )
+        assert not (dumped.output_dir / "dicts").exists()
+        assert not (dumped.output_dir / "failures").exists()
+        assert not (dumped.output_dir / "successes").exists()
+        return
+
     assert (failure["witness_path"] is not None) is include_witness
     assert (failure["witness_trace_path"] is not None) is include_witness_trace
     assert (failure["plan_trace_path"] is not None) is include_plan_trace
@@ -318,9 +341,11 @@ def test_dump_solution_evidence_options_are_independent(
     assert "trace_path" not in failure
 
 
+@pytest.mark.parametrize("candidate_kind", ["policy", "program"])
 def test_disabled_solution_evidence_skips_expensive_builders(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    candidate_kind: str,
 ) -> None:
     import pyrunir_mcp.dumping as dumping
     import pyrunir_mcp.kr.ps.proof as proof
@@ -328,13 +353,31 @@ def test_disabled_solution_evidence_skips_expensive_builders(
     domain_file, problem_file, _ = _inputs(tmp_path)
     domain = create_domain_context(domain_file)
     task = create_task_context(domain, problem_file)
-    result = find_solution(task, create_policy(domain, None))
+    candidate = (
+        create_policy(domain, None)
+        if candidate_kind == "policy"
+        else create_module_program(domain, None)
+    )
+    result = find_solution(task, candidate)
 
     def unexpected(*_args: object, **_kwargs: object) -> NoReturn:
         raise AssertionError("disabled evidence builder was called")
 
-    monkeypatch.setattr(dumping, "make_frontier_expander", unexpected)
-    monkeypatch.setattr(dumping, "plan_open_state_trace", unexpected)
+    for name in (
+        "Dictionaries",
+        "classifier_evidence",
+        "collect_base_features",
+        "collect_ext_features",
+        "intern_base_rules",
+        "intern_ext_rules",
+        "make_ext_frontier_expander",
+        "make_frontier_expander",
+        "plan_open_state_trace",
+        "state_evidence",
+        "successful_witness_trace_artifacts",
+        "witness_artifacts",
+    ):
+        monkeypatch.setattr(dumping, name, unexpected)
     monkeypatch.setattr(proof, "counterexample_document", unexpected)
     monkeypatch.setattr(proof, "_witness_trace_document", unexpected)
 
@@ -349,9 +392,26 @@ def test_disabled_solution_evidence_skips_expensive_builders(
     )
     manifest = json.loads((dumped.output_dir / "manifest.json").read_text(encoding="utf-8"))
     result_json = json.loads((dumped.output_dir / "result.json").read_text(encoding="utf-8"))
-    assert manifest["failures"][0]["witness_path"] is None
+    assert manifest["failures"] == [
+        {
+            "id": None,
+            "category": None,
+            "status": None,
+            "task_file": "problem.pddl",
+            "seed": None,
+            "witness_path": None,
+            "witness_trace_path": None,
+            "successors_path": None,
+            "plan_trace_path": None,
+        }
+    ]
     assert manifest["status"] == "failure"
-    assert "open_state-001" in (dumped.output_dir / "summary.psv").read_text(encoding="utf-8")
-    assert not (dumped.output_dir / "failures" / "open_state-001" / "witness.psv").exists()
+    assert (dumped.output_dir / "summary.psv").read_text(encoding="utf-8") == (
+        "id|category|status|seed|task_file\n||||problem.pddl\n"
+    )
+    assert not (dumped.output_dir / "dicts").exists()
+    assert not (dumped.output_dir / "failures").exists()
+    assert not (dumped.output_dir / "successes").exists()
     assert result.observation.fingerprint is not None
+    assert result_json["status"] == result.status.value
     assert result_json["observation"]["witness"] == list(result.observation.fingerprint.witness)

@@ -332,6 +332,115 @@ def select_failure_evidence(result: SolutionResult) -> tuple[list[_FailureEviden
     return ([cycle] if cycle is not None else []) + regular, len(regular)
 
 
+def _dump_task_only_solution_artifacts(
+    result: SolutionResult,
+    output_path: Path,
+    formats: tuple[Fmt, ...],
+) -> RichDumpResult:
+    task = (
+        result.context.ext_task
+        if isinstance(result, FindModuleProgramSolutionResult)
+        else result.context.base_task
+    )
+    problem = task.problem_path.name
+    failed = result.status.value == RunStatus.FAILURE.value
+    output_path = fresh_output_dir(output_path)
+
+    artifacts: dict[str, Artifact] = {
+        Keys.FAILURES: Table(
+            name=Keys.FAILURES,
+            columns=[
+                Keys.ID,
+                Keys.CATEGORY,
+                Keys.STATUS,
+                Keys.SEED,
+                Keys.TASK_FILE,
+                Keys.ORIGIN,
+                Keys.WITNESS_TRACE,
+                Keys.WITNESS,
+                Keys.SUCCESSORS,
+                Keys.PLAN_TRACE,
+            ],
+            rows=[[None, None, None, None, problem, None, None, None, None, None]]
+            if failed
+            else [],
+        ),
+        Keys.SUCCESSES: Table(
+            name=Keys.SUCCESSES,
+            columns=[
+                Keys.ID,
+                Keys.CATEGORY,
+                Keys.STATUS,
+                Keys.SEED,
+                Keys.TASK_FILE,
+                Keys.ORIGIN,
+                Keys.WITNESS_TRACE,
+            ],
+            rows=[],
+        ),
+        Keys.SUMMARY: Table(
+            name=Keys.SUMMARY,
+            columns=[Keys.ID, Keys.CATEGORY, Keys.STATUS, Keys.SEED, Keys.TASK_FILE],
+            rows=[[None, None, None, None, problem]] if failed else [],
+        ),
+    }
+    paths = write_run(output_path, artifacts, formats)
+    failures: list[JsonValue] = []
+    if failed:
+        failures.append(
+            {
+                Keys.ID: None,
+                Keys.CATEGORY: None,
+                Keys.STATUS: None,
+                Keys.TASK_FILE: problem,
+                Keys.SEED: None,
+                Keys.WITNESS_PATH: None,
+                Keys.WITNESS_TRACE_PATH: None,
+                Keys.SUCCESSORS_PATH: None,
+                Keys.PLAN_TRACE_PATH: None,
+            }
+        )
+    manifest: JsonObject = {
+        Keys.SCHEMA_VERSION: 2,
+        Keys.TOOL: _FIND_SOLUTION_TOOL,
+        Keys.STATUS: result.status.value,
+        Keys.CONTEXT: {Keys.ID: result.context.id, Keys.INDEX: result.context.index},
+        **_candidate_metadata(result),
+        Keys.CLASSIFIER_ID: result.classifier.id if result.classifier is not None else None,
+        Keys.UNIVERSAL: result.universal,
+        Keys.ROLLOUT_COUNT: result.num_rollouts,
+        Keys.SEARCH_BUDGET: _budget_json(result.search_budget),
+        Keys.PLAN_TRACE_BUDGET: _budget_json(result.plan_trace_budget),
+        Keys.EVIDENCE: {
+            Keys.SOLUTION_WITNESS: False,
+            Keys.WITNESS_TRACE: False,
+            Keys.PLAN_TRACE: False,
+            Keys.SUCCESSORS: False,
+        },
+        Keys.ROLLOUTS: [
+            {
+                Keys.SEED: None if result.universal else seed,
+                Keys.STATUS: status_name(proof.status),
+                Keys.SUCCESSFUL: bool(proof.is_successful()),
+            }
+            for seed, proof in result.results
+        ],
+        Keys.ARTIFACTS: {
+            Keys.SUMMARY: paths[Keys.SUMMARY],
+            Keys.FAILURES: paths[Keys.FAILURES],
+            Keys.SUCCESSES: paths[Keys.SUCCESSES],
+        },
+        Keys.FAILURES: failures,
+        Keys.SUCCESSES: [],
+        Keys.OUTPUT_DIR: output_path.resolve().as_posix(),
+    }
+    manifest_path = output_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return RichDumpResult(output_dir=output_path, primary_file=manifest_path)
+
+
 def _dump_solution_artifacts(
     result: SolutionResult,
     output_path: Path,
@@ -344,6 +453,9 @@ def _dump_solution_artifacts(
 ) -> RichDumpResult | None:
     if not formats:
         return None
+
+    if not any((include_witness, include_witness_trace, include_plan_trace, include_successors)):
+        return _dump_task_only_solution_artifacts(result, output_path, formats)
 
     ext = isinstance(result, FindModuleProgramSolutionResult)
     if ext:

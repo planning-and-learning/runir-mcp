@@ -34,7 +34,7 @@ dumped = dump_result(
 | `include_plan_trace` | `bool` | `True` | Run FF and emit plan traces for open-state witnesses. |
 | `include_successors` | `bool` | `True` | Expand and emit one-step successor frontiers. |
 
-Always writes compact machine metadata. `include_witness` independently prevents construction and output of standalone classifier, solution, and structural-termination witnesses. The other three evidence flags apply only to policy/module-program solution results. Disabling witness traces omits failure `witness_trace.*` files and all successful witness-trace entries. Disabling plan traces avoids the separate FF search. Disabling successors avoids frontier-expander construction and successor generation.
+Always writes compact machine metadata. `include_witness` independently prevents construction and output of standalone classifier, solution, and structural-termination witnesses. The other three evidence flags apply only to policy/module-program solution results. Disabling witness traces omits failure `witness_trace.*` files and all successful witness-trace entries. Disabling plan traces avoids the separate FF search. Disabling successors avoids frontier-expander construction and successor generation. When all four flags are false for `find_solution`, the rich dump is task-only: one failure row contains only `task_file`, all other failure cells are null, and no dictionaries or evidence directories are constructed or written. `result.json` keeps the complete validation observation for routing and history.
 
 For reported open-state failures, enabled plan-trace generation uses `result.plan_trace_budget`, not `result.search_budget`. The default is 1,000,000 states and 10 seconds.
 
@@ -43,7 +43,7 @@ For reported open-state failures, enabled plan-trace generation uses `result.pla
 | `output_dir` | `Path` | Absolute output directory. |
 | `files` | `tuple[Path, ...]` | Files or rich artifact entry points written by the dump call. |
 
-Rich `run.json` envelopes and base/ext solution `manifest.json` files use schema version 2. Classifier envelopes contain `evidence.classifier_witness`; solution manifests contain `evidence.solution_witness`, `evidence.witness_trace`, `evidence.plan_trace`, and `evidence.successors`; structural-termination envelopes contain `evidence.termination_witness`. Disabled standalone witnesses retain their result rows with `witness_path: null`.
+Rich `run.json` envelopes and base/ext solution `manifest.json` files use schema version 2. Classifier envelopes contain `evidence.classifier_witness`; solution manifests contain `evidence.solution_witness`, `evidence.witness_trace`, `evidence.plan_trace`, and `evidence.successors`; structural-termination envelopes contain `evidence.termination_witness`. Disabled standalone witnesses retain their result rows with `witness_path: null`; disabling all solution evidence instead produces the task-only row described above.
 
 ## `dump_validation_history`
 

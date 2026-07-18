@@ -23,7 +23,7 @@ result = find_solution(
 )
 ```
 
-Passing a `Policy` returns `FindPolicySolutionResult`; passing a `ModuleProgram` returns `FindModuleProgramSolutionResult`. Dump either result with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`. The dump-only `include_witness`, `include_witness_trace`, `include_plan_trace`, and `include_successors` flags independently disable those evidence builders without changing validation.
+Passing a `Policy` returns `FindPolicySolutionResult`; passing a `ModuleProgram` returns `FindModuleProgramSolutionResult`. Dump either result with `dump_result(result, output_dir, formats=(DumpFormat.PSV, DumpFormat.MD, DumpFormat.JSON))`. The dump-only `include_witness`, `include_witness_trace`, `include_plan_trace`, and `include_successors` flags independently disable those evidence builders without changing validation. If all four are false, the dump contains a task-only failure row and constructs no evidence dictionaries or artifacts.
 
 ## Arguments
 
@@ -91,4 +91,4 @@ output_dir/
       witness_trace.{psv,md,json}
 ```
 
-The sectioned artifact header uses `@tool runir.ps.find_solution`; the validation kind distinguishes base from extended results. Success entries contain only a complete witness trace. Failure rows remain present when standalone witnesses are disabled, with a null witness path. Schema-v2 `manifest.json` records all four evidence flags explicitly, including `solution_witness`.
+The sectioned artifact header uses `@tool runir.ps.find_solution`; the validation kind distinguishes base from extended results. Success entries contain only a complete witness trace. Failure rows remain present when standalone witnesses are disabled, with a null witness path. With all evidence disabled, `summary.*` and `failures.*` contain one row whose only non-null value is `task_file`; `dicts/`, `failures/`, and `successes/` are absent. Schema-v2 `manifest.json` records all four evidence flags explicitly, including `solution_witness`, while `result.json` retains machine routing metadata.
