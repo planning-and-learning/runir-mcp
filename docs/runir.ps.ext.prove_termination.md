@@ -11,7 +11,7 @@ prove_termination(
     domain_context,
     module_program,
     *,
-    max_features=16,
+    max_features=10,
     use_incomplete_preprocessing=True,
 )
 ```
