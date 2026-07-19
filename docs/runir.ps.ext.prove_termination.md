@@ -23,6 +23,7 @@ structural-termination check.
 Each module result exposes `scc_results`: `None` means incomplete preprocessing proved
 termination before complete SIEVE ran, while an empty list means complete SIEVE ran without a
 residual SCC. Nonempty entries contain the Boolean and numerical features projected into each SCC.
+On failure, each module witness contains only the first directed cycle found in its residual graph.
 
 ## Current Status
 

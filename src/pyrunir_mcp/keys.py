@@ -115,7 +115,6 @@ class Keys(StrEnum):
     # Named sections and dictionary leaf values.
     FACTS = "facts"
     TRANSITIONS = "transitions"
-    CYCLE = "cycle"
     PLAN = "plan"
     VERTICES = "vertices"
     EDGES = "edges"
@@ -138,6 +137,7 @@ class TableColumns(StrEnum):
     MEMORY_ID = "memory_id"
     FLAGS = "flags"
     ATOM_IDS = "atom_ids"
+    VALUATION = "valuation"
 
     # Transition and successor tables.
     STEP = "step"
@@ -150,10 +150,6 @@ class TableColumns(StrEnum):
     RULE_ID = "rule_id"
     ACTION_ID = "action_id"
     DELTAS = "deltas"
-
-    # Cycle descriptors.
-    VERTEX_INDICES = "vertex_indices"
-    EDGE_INDICES = "edge_indices"
 
     # Structural graph tables.
     VERTEX_INDEX = "vertex_index"

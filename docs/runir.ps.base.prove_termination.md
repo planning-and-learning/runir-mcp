@@ -12,7 +12,7 @@ prove_termination(
 )
 ```
 
-`max_features` caps the relevant Boolean and numerical features in the residual policy component. `use_incomplete_preprocessing` enables the sound incomplete pass before the complete structural-termination check.
+`max_features` caps the relevant Boolean and numerical features in the residual policy component. `use_incomplete_preprocessing` enables the sound incomplete pass before the complete structural-termination check. On failure, the witness contains only the first directed cycle found in the residual graph.
 
 The result and its observation report `incomplete_termination_status` as `proved`, `insufficient`, or `disabled`. A nonterminating result retains Runir's typed counterexample graph. The native result exposes `scc_results`: `None` means incomplete preprocessing proved termination before complete SIEVE ran, while an empty list means complete SIEVE ran without a residual SCC.
 

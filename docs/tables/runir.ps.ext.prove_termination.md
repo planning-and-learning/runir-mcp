@@ -2,7 +2,7 @@
 
 Used by [`runir.ps.ext.prove_termination`](../runir.ps.ext.prove_termination.md). Rendering conventions are in [Table Rendering](rendering.md).
 
-A termination counterexample is a cycle in the structural termination graph. There are no planning states, ground actions, atoms, traces, or successors.
+A termination counterexample is the first directed cycle found in the residual structural-termination graph. Only that cycle's vertices and edges are emitted; unrelated outgoing edges are omitted. A self-loop is a valid one-edge cycle.
 
 The files report the cycle and how variables change along it; they do not decide which measure ought to decrease.
 
@@ -16,10 +16,8 @@ Run-global dictionary files live under `dicts/`.
 
 ## Section Tables
 
-- [`[cycle]`](sections/runir.ps.ext.termination.cycle.md)
 - [`[vertices]`](sections/runir.ps.ext.termination.vertices.md)
 - [`[edges]`](sections/runir.ps.ext.termination.edges.md)
 
-Vertex values follow the variable kind: concept values render as denotations, booleans as `T`/`F`, and numerical values as integers.
-
+The rows of both tables are ordered along the cycle. The final edge targets the first vertex.
 

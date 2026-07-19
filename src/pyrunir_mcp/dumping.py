@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal, TypeAlias, cast
+from typing import Literal, Protocol, TypeAlias, cast
 
+from pyrunir.kr.ps.base.dl import NumericalChange
 from pyrunir.kr.ps.ext import Module
 from pyrunir.kr.ps.ext.dl import ModuleStructuralTerminationResult
 
@@ -102,6 +103,66 @@ class DumpResult:
 class RichDumpResult:
     output_dir: Path
     primary_file: Path
+
+
+class _DirectedGraph(Protocol):
+    def get_vertex_indices(self) -> Iterator[int]: ...
+
+    def get_out_edge_indices(self, vertex: int) -> Iterator[int]: ...
+
+    def get_target(self, edge: int) -> int: ...
+
+
+def first_directed_cycle(graph: _DirectedGraph) -> tuple[list[int], list[int]]:
+    finished: set[int] = set()
+    for raw_root in graph.get_vertex_indices():
+        root = int(raw_root)
+        if root in finished:
+            continue
+
+        path = [root]
+        path_edges: list[int] = []
+        positions = {root: 0}
+        edge_iterators = [iter(map(int, graph.get_out_edge_indices(root)))]
+        while path:
+            try:
+                edge = next(edge_iterators[-1])
+            except StopIteration:
+                vertex = path.pop()
+                positions.pop(vertex)
+                finished.add(vertex)
+                edge_iterators.pop()
+                if path_edges:
+                    path_edges.pop()
+                continue
+
+            target = int(graph.get_target(edge))
+            cycle_start = positions.get(target)
+            if cycle_start is not None:
+                return path[cycle_start:], [*path_edges[cycle_start:], edge]
+            if target in finished:
+                continue
+
+            positions[target] = len(path)
+            path.append(target)
+            path_edges.append(edge)
+            edge_iterators.append(iter(map(int, graph.get_out_edge_indices(target))))
+
+    raise ValueError("structural termination counterexample contains no directed cycle")
+
+
+_NUMERICAL_CHANGE_SYMBOLS = {
+    NumericalChange.UNCONSTRAINED: "?",
+    NumericalChange.INCREASES: "↑",
+    NumericalChange.DECREASES: "↓",
+    NumericalChange.UNCHANGED: "=",
+}
+
+
+def _boolean_change(source: bool, target: bool) -> str:
+    if source == target:
+        return "="
+    return "↑" if target else "↓"
 
 
 def _format_value(fmt: DumpFormat) -> Fmt:
@@ -843,41 +904,44 @@ def _policy_termination_vertices_edges(
     result: ProvePolicyTerminationResult,
 ) -> tuple[list[TerminationVertex], list[TerminationEdge]]:
     counterexample = result.policy_result.counterexample
+    vertex_indices, edge_indices = first_directed_cycle(counterexample)
     policy = result.candidate.value
     boolean_symbols = [feature_key(feature) for feature in policy.get_boolean_features()]
     numerical_symbols = [feature_key(feature) for feature in policy.get_numerical_features()]
 
     vertices: list[TerminationVertex] = []
-    for index in counterexample.get_vertex_indices():
+    for index in vertex_indices:
         vertex = counterexample.get_vertex_property(index)
         vertices.append(
             TerminationVertex(
                 int(index),
                 None,
-                booleans={
-                    symbol: "T" if value else "F"
-                    for symbol, value in zip(boolean_symbols, vertex.boolean_values, strict=True)
-                },
-                numericals={
-                    symbol: ">0" if value else "=0"
-                    for symbol, value in zip(
-                        numerical_symbols, vertex.numerical_values, strict=True
-                    )
-                },
+                booleans=dict(zip(boolean_symbols, vertex.boolean_values, strict=True)),
+                numericals=dict(zip(numerical_symbols, vertex.numerical_values, strict=True)),
             )
         )
 
     edges: list[TerminationEdge] = []
-    for index in counterexample.get_edge_indices():
+    vertices_by_index = {vertex.index: vertex for vertex in vertices}
+    for index in edge_indices:
         edge = counterexample.get_edge_property(index)
+        source = int(counterexample.get_source(index))
+        target = int(counterexample.get_target(index))
         edges.append(
             TerminationEdge(
                 int(index),
-                int(counterexample.get_source(index)),
-                int(counterexample.get_target(index)),
+                source,
+                target,
                 edge.rule.get_symbol(),
+                boolean_changes={
+                    symbol: _boolean_change(
+                        vertices_by_index[source].booleans[symbol],
+                        vertices_by_index[target].booleans[symbol],
+                    )
+                    for symbol in boolean_symbols
+                },
                 numerical_changes={
-                    symbol: value.name.lower()
+                    symbol: _NUMERICAL_CHANGE_SYMBOLS[value]
                     for symbol, value in zip(numerical_symbols, edge.numerical_changes, strict=True)
                 },
             )
@@ -890,40 +954,43 @@ def _termination_vertices_edges(
     module: Module,
 ) -> tuple[list[TerminationVertex], list[TerminationEdge]]:
     counterexample = module_result.counterexample
+    vertex_indices, edge_indices = first_directed_cycle(counterexample)
     boolean_symbols = [feature_key(feature) for feature in module.get_boolean_features()]
     numerical_symbols = [feature_key(feature) for feature in module.get_numerical_features()]
 
     vertices: list[TerminationVertex] = []
-    for index in counterexample.get_vertex_indices():
+    for index in vertex_indices:
         vertex = counterexample.get_vertex_property(index)
         vertices.append(
             TerminationVertex(
                 int(index),
                 vertex.memory_state.get_name(),
-                booleans={
-                    symbol: str(value)
-                    for symbol, value in zip(boolean_symbols, vertex.boolean_values, strict=True)
-                },
-                numericals={
-                    symbol: str(value)
-                    for symbol, value in zip(
-                        numerical_symbols, vertex.numerical_values, strict=True
-                    )
-                },
+                booleans=dict(zip(boolean_symbols, vertex.boolean_values, strict=True)),
+                numericals=dict(zip(numerical_symbols, vertex.numerical_values, strict=True)),
             )
         )
 
     edges: list[TerminationEdge] = []
-    for index in counterexample.get_edge_indices():
+    vertices_by_index = {vertex.index: vertex for vertex in vertices}
+    for index in edge_indices:
         edge = counterexample.get_edge_property(index)
+        source = int(counterexample.get_source(index))
+        target = int(counterexample.get_target(index))
         edges.append(
             TerminationEdge(
                 int(index),
-                int(counterexample.get_source(index)),
-                int(counterexample.get_target(index)),
+                source,
+                target,
                 edge.rule.get_symbol(),
+                boolean_changes={
+                    symbol: _boolean_change(
+                        vertices_by_index[source].booleans[symbol],
+                        vertices_by_index[target].booleans[symbol],
+                    )
+                    for symbol in boolean_symbols
+                },
                 numerical_changes={
-                    symbol: str(value)
+                    symbol: _NUMERICAL_CHANGE_SYMBOLS[value]
                     for symbol, value in zip(numerical_symbols, edge.numerical_changes, strict=True)
                 },
             )

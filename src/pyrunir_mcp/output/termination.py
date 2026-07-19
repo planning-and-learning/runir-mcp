@@ -1,6 +1,6 @@
 """Build the structural-termination non-termination witness (a cycle in the termination graph).
 
-Abstract vertices carry concept/boolean/numerical variables; edges carry the numerical
+Abstract vertices carry Boolean/numerical variables; edges carry the numerical
 changes they cause. We report the cycle and the changes as-is, without judging which measure
 ought to decrease.
 """
@@ -23,20 +23,22 @@ def _str_dict() -> dict[str, str]:
     return {}
 
 
-VARIABLE_KINDS = (VariableKind.CONCEPT, VariableKind.BOOLEAN, VariableKind.NUMERICAL)
+def _bool_dict() -> dict[str, bool]:
+    return {}
+
+
+VARIABLE_KINDS = (VariableKind.BOOLEAN, VariableKind.NUMERICAL)
 
 
 @dataclass(frozen=True)
 class TerminationVertex:
     index: int
     memory_state: str | None
-    concepts: dict[str, str] = field(default_factory=_str_dict)
-    booleans: dict[str, str] = field(default_factory=_str_dict)
-    numericals: dict[str, str] = field(default_factory=_str_dict)
+    booleans: dict[str, bool] = field(default_factory=_bool_dict)
+    numericals: dict[str, bool] = field(default_factory=_bool_dict)
 
-    def values(self) -> dict[VariableKind, dict[str, str]]:
+    def values(self) -> dict[VariableKind, dict[str, bool]]:
         return {
-            VariableKind.CONCEPT: self.concepts,
             VariableKind.BOOLEAN: self.booleans,
             VariableKind.NUMERICAL: self.numericals,
         }
@@ -48,6 +50,7 @@ class TerminationEdge:
     source: int
     target: int
     rule: str
+    boolean_changes: dict[str, str] = field(default_factory=_str_dict)
     numerical_changes: dict[str, str] = field(default_factory=_str_dict)
 
 
@@ -83,19 +86,6 @@ def _ordered_variables(vertex: TerminationVertex) -> list[tuple[VariableKind, st
     return [(kind, name) for kind in VARIABLE_KINDS for name in values[kind]]
 
 
-def _cycle_table(edges: list[TerminationEdge]) -> Table:
-    if edges:
-        vertices = [edges[0].source, *(edge.target for edge in edges)]
-        edge_indices = [edge.index for edge in edges]
-    else:
-        vertices, edge_indices = [], []
-    return Table(
-        name=Keys.CYCLE,
-        columns=[TableColumns.VERTEX_INDICES, TableColumns.EDGE_INDICES],
-        rows=[[",".join(map(str, vertices)), ",".join(map(str, edge_indices))]],
-    )
-
-
 def counterexample_document(
     *,
     header: list[tuple[str, str]],
@@ -110,32 +100,38 @@ def counterexample_document(
     vertex_rows: list[list[JsonValue]] = []
     for vertex in vertices:
         values = vertex.values()
-        cells = [values[kind].get(name, "") for kind, name in variables]
+        valuation = " ".join(
+            alias if values[kind][name] else f"¬{alias}"
+            for (kind, name), alias in zip(variables, aliases, strict=True)
+        )
         if include_memory:
             if vertex.memory_state is None:
                 raise ValueError("termination vertex is missing its memory state")
-            vertex_rows.append([vertex.index, dicts.memory(vertex.memory_state), *cells])
+            vertex_rows.append([vertex.index, dicts.memory(vertex.memory_state), valuation])
         else:
-            vertex_rows.append([vertex.index, *cells])
+            vertex_rows.append([vertex.index, valuation])
 
     edge_rows: list[list[JsonValue]] = []
     for edge in edges:
         changes = " ".join(
-            f"{dicts.variable(VariableKind.NUMERICAL, name)}:{change}"
-            for name, change in edge.numerical_changes.items()
+            f"{dicts.variable(kind, name)}{change}"
+            for kind, values in (
+                (VariableKind.BOOLEAN, edge.boolean_changes),
+                (VariableKind.NUMERICAL, edge.numerical_changes),
+            )
+            for name, change in values.items()
         )
         edge_rows.append([edge.index, edge.source, edge.target, dicts.rule(edge.rule), changes])
 
     return Document(
         header=header,
         sections=[
-            _cycle_table(edges),
             Table(
                 name=Keys.VERTICES,
                 columns=[
                     TableColumns.VERTEX_INDEX,
                     *([TableColumns.MEMORY_ID] if include_memory else []),
-                    *aliases,
+                    TableColumns.VALUATION,
                 ],
                 rows=vertex_rows,
             ),

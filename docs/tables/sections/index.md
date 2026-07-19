@@ -23,7 +23,6 @@
 
 ## Structural Termination
 
-- [`[cycle]`](runir.ps.ext.termination.cycle.md)
 - [`[vertices]`](runir.ps.ext.termination.vertices.md)
 - [`[edges]`](runir.ps.ext.termination.edges.md)
 

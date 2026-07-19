@@ -32,20 +32,46 @@ def test_classifier_witness_document():
 def test_termination_cycle_document():
     dicts = TerminationDictionaries()
     vertices = [
-        TerminationVertex(0, "q_init", concepts={"c_undelivered": "{b1,b2}"}, booleans={"b_holding": "T"}, numericals={"n_count": "3"}),
-        TerminationVertex(1, "q_init", concepts={"c_undelivered": "{b1}"}, booleans={"b_holding": "T"}, numericals={"n_count": "2"}),
+        TerminationVertex(
+            0,
+            "q_init",
+            booleans={"b_holding": True},
+            numericals={"n_count": True},
+        ),
+        TerminationVertex(
+            1,
+            "q_init",
+            booleans={"b_holding": False},
+            numericals={"n_count": False},
+        ),
     ]
     edges = [
-        TerminationEdge(0, 0, 1, "pickup", numerical_changes={"n_count": "dec"}),
-        TerminationEdge(1, 1, 0, "advance", numerical_changes={"n_count": "inc"}),
+        TerminationEdge(
+            0,
+            0,
+            1,
+            "pickup",
+            boolean_changes={"b_holding": "↓"},
+            numerical_changes={"n_count": "↓"},
+        ),
+        TerminationEdge(
+            1,
+            1,
+            0,
+            "advance",
+            boolean_changes={"b_holding": "↑"},
+            numerical_changes={"n_count": "↑"},
+        ),
     ]
     doc = counterexample_document(header=[("tool", "prove_termination")], vertices=vertices, edges=edges, dicts=dicts)
     psv = render_document(doc, "psv")
-    assert "[cycle]\nvertex_indices|edge_indices\n0,1,0|0,1" in psv
-    assert "[vertices]\nvertex_index|memory_id|v0|v1|v2\n0|m0|{b1,b2}|T|3\n1|m0|{b1}|T|2" in psv
-    assert "[edges]\nedge_index|source_vertex_index|target_vertex_index|rule_id|deltas\n0|0|1|r0|v2:dec\n1|1|0|r1|v2:inc" in psv
-    # variables interned concept, boolean, numerical in that grouping order
-    assert dicts.tables()["variables"].rows == [["v0", "concept", "c_undelivered"], ["v1", "boolean", "b_holding"], ["v2", "numerical", "n_count"]]
+    assert "[cycle]" not in psv
+    assert "[vertices]\nvertex_index|memory_id|valuation\n0|m0|v0 v1\n1|m0|¬v0 ¬v1" in psv
+    assert "[edges]\nedge_index|source_vertex_index|target_vertex_index|rule_id|deltas\n0|0|1|r0|v0↓ v1↓\n1|1|0|r1|v0↑ v1↑" in psv
+    assert dicts.tables()["variables"].rows == [
+        ["v0", "boolean", "b_holding"],
+        ["v1", "numerical", "n_count"],
+    ]
 
 
 def test_base_termination_cycle_document_omits_memory():
@@ -54,8 +80,8 @@ def test_base_termination_cycle_document_omits_memory():
         TerminationVertex(
             0,
             None,
-            booleans={"b_loaded": "T"},
-            numericals={"n_remaining": ">0"},
+            booleans={"b_loaded": True},
+            numericals={"n_remaining": True},
         )
     ]
     edges = [
@@ -64,7 +90,8 @@ def test_base_termination_cycle_document_omits_memory():
             0,
             0,
             "loop",
-            numerical_changes={"n_remaining": "unchanged"},
+            boolean_changes={"b_loaded": "="},
+            numerical_changes={"n_remaining": "="},
         )
     ]
     doc = counterexample_document(
@@ -76,6 +103,7 @@ def test_base_termination_cycle_document_omits_memory():
     )
 
     psv = render_document(doc, "psv")
-    assert "[vertices]\nvertex_index|v0|v1\n0|T|>0" in psv
+    assert "[vertices]\nvertex_index|valuation\n0|v0 v1" in psv
+    assert "[edges]\nedge_index|source_vertex_index|target_vertex_index|rule_id|deltas\n0|0|0|r0|v0= v1=" in psv
     assert "memory_id" not in psv
     assert set(dicts.tables(include_memory=False)) == {"variables", "rules"}
