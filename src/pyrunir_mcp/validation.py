@@ -609,7 +609,7 @@ def _search_options(
     options: GroundSketchSearchOptions,
     *,
     random_seed: int,
-    shuffle_labeled_succ_nodes: bool,
+    shuffle_choice_points: bool,
     search_budget: SearchBudget,
 ) -> GroundSketchSearchOptions: ...
 
@@ -619,7 +619,7 @@ def _search_options(
     options: GroundModuleProgramSearchOptions,
     *,
     random_seed: int,
-    shuffle_labeled_succ_nodes: bool,
+    shuffle_choice_points: bool,
     search_budget: SearchBudget,
 ) -> GroundModuleProgramSearchOptions: ...
 
@@ -628,11 +628,11 @@ def _search_options(
     options: GroundSketchSearchOptions | GroundModuleProgramSearchOptions,
     *,
     random_seed: int,
-    shuffle_labeled_succ_nodes: bool,
+    shuffle_choice_points: bool,
     search_budget: SearchBudget,
 ) -> GroundSketchSearchOptions | GroundModuleProgramSearchOptions:
     options.random_seed = random_seed
-    options.shuffle_labeled_succ_nodes = shuffle_labeled_succ_nodes
+    options.shuffle_choice_points = shuffle_choice_points
     if search_budget.max_num_states is not None:
         options.max_num_states = search_budget.max_num_states
     if search_budget.max_time_seconds is not None:
@@ -678,7 +678,7 @@ def _find_policy_solution(
     num_rollouts: int,
     random_seed: int,
     random_seed_start: int,
-    shuffle_labeled_succ_nodes: bool,
+    shuffle_choice_points: bool,
     search_budget: SearchBudget,
     plan_trace_budget: SearchBudget,
 ) -> FindPolicySolutionResult:
@@ -699,7 +699,7 @@ def _find_policy_solution(
         options = _search_options(
             GroundSketchSearchOptions(),
             random_seed=seed,
-            shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+            shuffle_choice_points=shuffle_choice_points,
             search_budget=search_budget,
         )
         options.universal = universal
@@ -758,7 +758,6 @@ def _find_module_program_solution(
     num_rollouts: int,
     random_seed: int,
     random_seed_start: int,
-    shuffle_labeled_succ_nodes: bool,
     shuffle_choice_points: bool,
     search_budget: SearchBudget,
     plan_trace_budget: SearchBudget,
@@ -780,12 +779,11 @@ def _find_module_program_solution(
         options = _search_options(
             GroundModuleProgramSearchOptions(),
             random_seed=seed,
-            shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+            shuffle_choice_points=shuffle_choice_points,
             search_budget=search_budget,
         )
         options.universal = universal
         options.classifier = task_classifier
-        options.shuffle_choice_points = shuffle_choice_points
         results.append(
             (
                 seed,
@@ -846,7 +844,6 @@ def find_solution(
     num_rollouts: int = 1,
     random_seed: int = 0,
     random_seed_start: int = 0,
-    shuffle_labeled_succ_nodes: bool = True,
     shuffle_choice_points: bool = True,
     search_budget: SearchBudget | None = None,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
@@ -863,7 +860,6 @@ def find_solution(
     num_rollouts: int = 1,
     random_seed: int = 0,
     random_seed_start: int = 0,
-    shuffle_labeled_succ_nodes: bool = True,
     shuffle_choice_points: bool = True,
     search_budget: SearchBudget | None = None,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
@@ -879,7 +875,6 @@ def find_solution(
     num_rollouts: int = 1,
     random_seed: int = 0,
     random_seed_start: int = 0,
-    shuffle_labeled_succ_nodes: bool = True,
     shuffle_choice_points: bool = True,
     search_budget: SearchBudget | None = None,
     plan_trace_budget: SearchBudget = PLAN_TRACE_BUDGET,
@@ -894,7 +889,7 @@ def find_solution(
             num_rollouts=num_rollouts,
             random_seed=random_seed,
             random_seed_start=random_seed_start,
-            shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
+            shuffle_choice_points=shuffle_choice_points,
             search_budget=budget,
             plan_trace_budget=plan_trace_budget,
         )
@@ -906,7 +901,6 @@ def find_solution(
         num_rollouts=num_rollouts,
         random_seed=random_seed,
         random_seed_start=random_seed_start,
-        shuffle_labeled_succ_nodes=shuffle_labeled_succ_nodes,
         shuffle_choice_points=shuffle_choice_points,
         search_budget=budget,
         plan_trace_budget=plan_trace_budget,

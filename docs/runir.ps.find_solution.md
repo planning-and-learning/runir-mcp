@@ -13,7 +13,6 @@ result = find_solution(
     num_rollouts=1,
     random_seed=0,
     random_seed_start=0,
-    shuffle_labeled_succ_nodes=True,
     shuffle_choice_points=True,
     search_budget=None,
     plan_trace_budget=SearchBudget(
@@ -36,8 +35,7 @@ Passing a `Policy` returns `FindPolicySolutionResult`; passing a `ModuleProgram`
 | `num_rollouts` | `int` | `1` | Existential rollout count, or universal regular-evidence capacity. Must be at least 1. |
 | `random_seed` | `int` | `0` | Seed for one rollout or the universal search. |
 | `random_seed_start` | `int` | `0` | First seed when existential mode requests multiple rollouts. |
-| `shuffle_labeled_succ_nodes` | `bool` | `True` | Shuffle labeled successor nodes using the selected seed. |
-| `shuffle_choice_points` | `bool` | `True` | Shuffle module-program choice points; ignored for base policies. |
+| `shuffle_choice_points` | `bool` | `True` | Shuffle policy or module-program choice points using the selected seed. |
 | `search_budget` | `SearchBudget | None` | `None` | Search budget. `None` selects the mode-specific default described below. |
 | `plan_trace_budget` | `SearchBudget` | 1,000,000 states, 10 s | FF budget used by `dump_result(...)` for an open-state plan trace. |
 
